@@ -1,0 +1,4 @@
+version=4
+options="mode=git,pgpmode=gittag,compression=gzip" \
+  https://gitlab.com/cryptsetup/cryptsetup.git \
+  refs/tags/v?@ANY_VERSION@

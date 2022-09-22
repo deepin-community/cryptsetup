@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -e
+
+# dh_installsystemd(1) doesn't support overrides but we manually copy
+# the snippet it would add.
+if [ -d /run/systemd/system ]; then
+    systemctl --system daemon-reload >/dev/null || true
+fi
+
+#DEBHELPER#
+exit 0

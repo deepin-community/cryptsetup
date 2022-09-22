@@ -1,0 +1,12 @@
+cryptsetup (2:2.3.3-3+exp1) experimental; urgency=medium
+
+  This release adds a new binary package 'cryptsetup-suspend' which brings
+  support to suspend encrypted LUKS devices before the system goes to sleep
+  (via ACPI S3 system suspend). In other words, the encryption keys for
+  LUKS devices are removed automatically from system memory before system
+  suspend. After system resume, LUKS devices will be unlocked again and
+  the user may be asked to provide a passphrase if required.
+
+  See the cryptsetup-suspend(7) manpage for more information.
+
+ -- Jonas Meurer <jonas@freesources.org>  Wed, 12 Aug 2020 21:31:47 +0200

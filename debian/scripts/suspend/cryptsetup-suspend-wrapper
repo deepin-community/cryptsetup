@@ -1,0 +1,283 @@
+#!/bin/sh
+
+set -e
+PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+
+# import cryptsetup shell functions
+[ -f /lib/cryptsetup/functions ] || return 0
+. /lib/cryptsetup/functions
+
+INITRAMFS_MNT="/run/cryptsetup/cryptsetup-suspend-initramfs"
+INITRAMFS_DIR="$INITRAMFS_MNT"
+BIND_PATHS="/sys /proc /dev /run"
+SYSTEM_SLEEP_PATH="/lib/systemd/system-sleep"
+CONFIG_FILE="/etc/cryptsetup/suspend.conf"
+
+read_config() {
+    # define defaults
+    export UNLOCK_SESSIONS="false"
+    export KEEP_INITRAMFS="false"
+
+    # read config file if it exists
+    # shellcheck source=/etc/cryptsetup/suspend.conf
+    [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE" || true
+}
+
+# run_dir ARGS...
+# Run all executable scripts in directory SYSTEM_SLEEP_PATH with arguments ARGS
+# mimic systemd behavior
+run_dir() {
+    find "$SYSTEM_SLEEP_PATH" -type f -executable -execdir {} "$@" \;
+}
+
+log_error() {
+    # arg1 should be message
+    echo "Error: $1" | systemd-cat -t cryptsetup-suspend -p err
+    echo "Error: $1" >&2
+}
+
+mount_initramfs() {
+    local k v u IFS MemAvailable=0 SwapFree=0
+    # update-initramfs(8) hardcodes /boot also: there is a `-b bootdir`
+    # option but no config file to put it to
+    local INITRAMFS="/boot/initrd.img-$(uname -r)" p
+    if [ ! -f "$INITRAMFS" ]; then
+        log_error "No initramfs found at $INITRAMFS"
+        exit 1
+    fi
+
+    if [ ! -d "$INITRAMFS_MNT" ]; then
+        # we need at about 300 MiB on ubuntu, 200 on debian
+        # https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=34e431b0ae398fc54ea69ff85ec700722c9da773
+        while IFS=" 	" read -r k v u; do
+            # /proc/meminfo format is documented in proc(5)
+            case "$u" in
+                MB) u=1048576;;
+                kB) u=1024;;
+                *)  u=1;;
+            esac
+            case "$k" in
+                "MemAvailable:") MemAvailable=$((v*u));;
+                "SwapFree:") SwapFree=$((v*u));;
+            esac
+        done </proc/meminfo
+        if [ $((MemAvailable+SwapFree)) -lt $((300*1024*1024)) ]; then
+            log_error "Not enough memory available. Please close some programs or add swap space to suspend successfully."
+            exit 1
+        fi
+
+        mkdir "$INITRAMFS_MNT"
+        mount -t ramfs -o mode=0755 ramfs "$INITRAMFS_MNT"
+
+        # extract initrd.img to initramfs dir
+        unmkinitramfs "$INITRAMFS" "$INITRAMFS_MNT"
+    fi
+
+    # unmkinitramfs extracts microcode into folders "early*" and the actual initramfs into "main"
+    if [ -d "$INITRAMFS_MNT/main" ]; then
+        INITRAMFS_DIR="$INITRAMFS_MNT/main"
+    fi
+
+    # copy all firmware files to ramdisk to prevent dead-lock
+    # see https://salsa.debian.org/mejo/cryptsetup-suspend/issues/38)
+    # XXX we should probably identify which firmwares need to be loaded
+    # and only copy those
+    if [ -d /lib/firmware ]; then
+        rm -rf -- "$INITRAMFS_DIR/lib/firmware"
+        cp -rT -- /lib/firmware "$INITRAMFS_DIR/lib/firmware"
+    fi
+
+    for p in $BIND_PATHS; do
+        mkdir -p -m 0755 "$INITRAMFS_DIR$p"
+        if [ "$p" = "/proc" ]; then
+            mount -t proc /proc "$INITRAMFS_DIR/proc"
+        else
+            mount --rbind "$p" "$INITRAMFS_DIR$p"
+        fi
+    done
+    mount --make-rprivate "$INITRAMFS_MNT"
+}
+
+umount_initramfs() {
+    if [ "$KEEP_INITRAMFS" = "true" ]; then
+        # recursively unmount bind mounts, but keep initramfs
+        for p in $BIND_PATHS; do
+            umount -R "$INITRAMFS_DIR$p"
+        done
+    else
+        # recursively unmount everything
+        umount -R "$INITRAMFS_MNT"
+        rmdir "$INITRAMFS_MNT"
+    fi
+}
+
+CGROUP_FREEZER=
+freeze_cgroups() {
+    # add all machines/containers and user cgroups
+    CGROUPS="$hierarchy/machine.slice/cgroup.freeze \
+        $hierarchy/user.slice/cgroup.freeze"
+
+    # add all system cgroups but us
+    CGROUPS_SYSTEM="$(find "$hierarchy"/system.slice/ -mindepth 2 -maxdepth 2 -name cgroup.freeze)"
+
+    # add systemd itself
+    CGROUP_SYSTEMD="$hierarchy/init.scope/cgroup.freeze"
+
+    # get my second level cgroup
+    MY_CGROUP="$(grep -m1 ^0:: /proc/self/cgroup | cut -sd/ -f3)"
+
+    # freeze all unfrozen cgroups
+    for c in $CGROUPS $CGROUPS_SYSTEM "$CGROUP_SYSTEMD"; do
+        [ ! -f "$c" ] && continue
+        local val="$(cat "$c")"
+        printf "%s" "$c" | grep -qE "systemd-suspend|systemd-udev|$MY_CGROUP" && continue
+
+        # dont freeze our cgroup, systemd-suspend/udevd or frozen cgroups
+        # freezing udevd blocks luksResume
+        printf "%s" "$c" | grep -qE "systemd-suspend|systemd-udev|$MY_CGROUP" && continue
+
+        if [ 0 -eq "$val" ]; then
+            echo 1 > "$c"
+            CGROUP_FREEZER="$c $CGROUP_FREEZER"
+        fi
+    done
+}
+
+thaw_cgroups() {
+    for c in $CGROUP_FREEZER; do
+       echo 0 > "$c"
+    done
+}
+
+get_active_devices() {
+    for m in $dm_devices; do
+        [ "x$m" = "x$CRYPTTAB_NAME" ] || continue
+        crypttab_parse_options --quiet
+        _get_crypt_type
+        if [ "$CRYPTTAB_TYPE" != "luks" ]; then
+            cryptsetup_message "WARNING: $CRYPTTAB_NAME: unable to suspend non-luks device"
+            continue
+        fi
+        printf "%s " "$m"
+        break
+    done
+}
+
+# Stop udev service and prevent it to be autostarted.
+# Otherwise, luksResume will hang waiting for udev, which is itself waiting
+# for I/O on the root device.
+udev_service() {
+    systemctl "$1" systemd-udevd-control.socket
+    systemctl "$1" systemd-udevd-kernel.socket
+    systemctl "$1" systemd-udevd.service
+}
+
+clean_up() {
+    # we always want to run through the whole cleanup
+    set +e
+
+    # thaw all frozen cgroups
+    thaw_cgroups
+
+    # restart systemd-udevd
+    udev_service start
+
+    # Run post-suspend scripts
+    run_dir post suspend
+
+    umount_initramfs
+
+    # unlock sessions
+    if [ "$UNLOCK_SESSIONS" = "true" ]; then
+        loginctl unlock-sessions
+    fi
+}
+
+## Main script
+
+# check unified cgroups hierarchy
+# https://github.com/systemd/systemd/blob/master/docs/CGROUP_DELEGATION.md
+if [ -d /sys/fs/cgroup/system.slice/ ]; then
+    hierarchy="/sys/fs/cgroup/"
+elif [ -d /sys/fs/cgroup/unified/system.slice/ ]; then
+    # hybrid cgroup hierarchy
+    hierarchy="/sys/fs/cgroup/unified"
+else
+    log_error "No unified cgroups hierarchy"
+    exit 1
+fi
+
+# check that not run as user
+# XXX: We should catch also cases where libpam-systemd is not installed
+if grep -q "user.slice" /proc/self/cgroup; then
+    log_error "Don't run this script as user"
+    exit 1
+fi
+
+# always thaw cgroups, re-mount filesystems and remove initramfs at the end of the script
+trap clean_up EXIT
+
+read_config
+
+# extract temporary filesystem to switch to
+mount_initramfs
+
+# copy our binary to ramdisk
+cp /lib/cryptsetup/scripts/suspend/cryptsetup-suspend "$INITRAMFS_DIR/bin/cryptsetup-suspend"
+
+# Run pre-suspend scripts
+run_dir pre suspend
+
+# freezing of udevd was not possible, but it still blocks sometimes
+udev_service stop
+
+# get list of active crypt devices
+dm_devices="$(dm_active_crypt_devices)"
+devices="$(crypttab_foreach_entry get_active_devices)"
+
+# freeze all cgroups but us
+freeze_cgroups
+
+# No longer fail in case of errors
+set +e
+
+# change into ramdisk
+devices_remaining="$(chroot "$INITRAMFS_DIR" /bin/sh -c "
+    # suspend active luks devices (in reverse order) and system
+    /bin/cryptsetup-suspend --reverse $devices
+
+    TABFILE=\"/cryptroot/crypttab\"
+    . /lib/cryptsetup/functions
+
+    # resume active luks devices (only initramfs devices)
+    for dev in $devices; do
+        unset -v CRYPTTAB_NAME \
+                 CRYPTTAB_SOURCE \
+                 CRYPTTAB_KEY \
+                 CRYPTTAB_OPTIONS
+
+        crypttab_find_entry --quiet \$dev
+        if [ -n \"\$CRYPTTAB_SOURCE\" ]; then
+            resume_device \$dev || true
+        else
+            # write remaining devices to stdout
+            printf \"%s \" \$dev
+        fi
+    done
+")"
+
+# resume remaining active luks devices (non-initramfs devices)
+for dev in $devices_remaining; do
+    unset -v CRYPTTAB_NAME \
+             CRYPTTAB_SOURCE \
+             CRYPTTAB_KEY \
+             CRYPTTAB_OPTIONS
+
+    crypttab_find_entry --quiet "$dev"
+    if [ -n "$CRYPTTAB_SOURCE" ]; then
+        resume_device "$dev" || true
+    else
+        log_error "'$dev' not found in /etc/crypttab"
+    fi
+done

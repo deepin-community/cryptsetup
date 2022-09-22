@@ -1,0 +1,3 @@
+#!/bin/sh
+umount -R /run/cryptsetup/cryptsetup-suspend-initramfs
+rmdir /run/cryptsetup/cryptsetup-suspend-initramfs

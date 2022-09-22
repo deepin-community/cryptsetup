@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN" "/usr/share/xml/docbook/schema/dtd/4.2/docbookx.dtd">
+
+<refentry id="overview.cryptsetup-suspend">
+
+ <xi:include href="variables.xml"
+	     xpointer="xpointer(/refentry/refentryinfo)"
+	     xmlns:xi="http://www.w3.org/2001/XInclude"/>
+
+ <refmeta>
+  <refentrytitle>cryptsetup-suspend</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <xi:include href="variables.xml"
+	      xpointer="xpointer(/refentry/refmeta/*)"
+	      xmlns:xi="http://www.w3.org/2001/XInclude"/>
+ </refmeta>
+
+ <refnamediv>
+  <refname>cryptsetup-suspend</refname>
+  <refpurpose>automatically suspend LUKS devices on system suspend</refpurpose>
+ </refnamediv>
+
+ <refsect1 id="cryptsetup-suspend.description">
+  <title>DESCRIPTION</title>
+  <simpara>
+   <emphasis>cryptsetup-suspend</emphasis> brings support to automatically
+   suspend LUKS devices before entering system suspend mode. Devices will be
+   unlocked at system resume time, asking for passwords if required.
+   The feature is enabled automatically by installing the
+   <emphasis>cryptsetup-suspend</emphasis> package. No further configuration
+   is required.
+  </simpara>
+  <simpara>
+   <emphasis>cryptsetup-suspend</emphasis> supports all setups of LUKS
+   devices that are supported by the <emphasis>cryptsetup</emphasis>
+   packages. To do so, it depends on scripts from the Debian package
+   <emphasis>cryptsetup-initramfs</emphasis>. See the
+   <reference>INTERNALS</reference> section about details on how it works.
+  </simpara>
+ </refsect1>
+
+ <refsect1 id="cryptsetup-suspend.security-aspects">
+  <title>SECURITY ASPECTS</title>
+  <simpara>
+   Suspending LUKS devices basically means to remove the corresponding
+   encryption keys from system memory. This protects against all sort of
+   attacks that try to read out the memory from a suspended system, like
+   for example cold-boot attacks.
+  </simpara>
+  <simpara>
+   <emphasis>cryptsetup-suspend</emphasis> protects <emphasis>only</emphasis>
+   the encryption keys of your LUKS devices against being read from the
+   memory. Most likely there's more sensitive data in system memory, be
+   it other kinds of private keys (e.g. OpenPGP, OpenSSH) or any kind
+   of documents with sensitive content.
+  </simpara>
+  <simpara>
+   The initramfs image is extracted in memory and left unencrypted (see the
+   <reference>INTERNALS</reference> section) so all key material it might
+   include, for instance key files copied using the hooks'
+   <emphasis>KEYFILE_PATTERN=</emphasis> option, will remain unprotected.
+  </simpara>
+ </refsect1>
+
+
+ <refsect1 id="cryptsetup-suspend.limitations">
+  <title>LIMITATIONS</title>
+  <simpara>
+   The <emphasis>cryptsetup-suspend</emphasis> feature is limited to LUKS
+   devices and doesn't work with <emphasis>plain dm-crypt</emphasis> or
+   <emphasis>tcrypt</emphasis> devices.
+  </simpara>
+ </refsect1>
+
+ <refsect1 id="cryptsetup-suspend.internals">
+  <title>INTERNALS</title>
+  <simpara>
+   <emphasis>cryptsetup-suspend</emphasis> consists of three parts:
+   <simplelist type="inline">
+    <member>
+     <command>cryptsetup-suspend</command>: A c program that takes a list
+     of LUKS devices as arguments, suspends them via
+     <emphasis>luksSuspend</emphasis> and suspends the system afterwards.
+    </member>
+    <member>
+     <command>cryptsetup-suspend-wrapper</command>: A shell wrapper script
+     which works the following way:
+     <simplelist type="inline">
+      <member>1. Disable swap and extract the initramfs into a tmpfs (the chroot)</member>
+      <member>2. Run (systemd) pre-suspend scripts, stop udev, freeze cgroups</member>
+      <member>3. run cryptsetup-suspend in chroot</member>
+      <member>4. resume initramfs devices inside chroot after resume</member>
+      <member>5. resume non-initramfs devices outside chroot</member>
+      <member>6. thaw groups, start udev, run (systemd) post-suspend scripts</member>
+      <member>7. Unmount the tmpfs and re-enable swap</member>
+     </simplelist>
+    </member>
+    <member>
+     A systemd unit drop-in file that overrides the Exec property of
+     <filename class="devicefile">systemd-suspend.service</filename> so that
+     it invokes the script <command>cryptsetup-suspend-wrapper</command>.
+    </member>
+   </simplelist>
+  </simpara>
+ </refsect1>
+
+ <refsect1 id="cryptsetup-suspend.see_also">
+  <title>SEE ALSO</title>
+  <simpara>
+   <emphasis>cryptsetup</emphasis>(8), <emphasis>crypttab</emphasis>(5)
+  </simpara>
+ </refsect1>
+
+ <refsect1 id="cryptsetup-suspend.author">
+  <title>AUTHOR</title><simpara>This manual page was written by Jonas Meurer
+   &lt;jonas@freesources.org&gt; in December 2019.
+  </simpara>
+ </refsect1>
+
+</refentry>

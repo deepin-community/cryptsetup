@@ -1,0 +1,50 @@
+#!/bin/bash
+
+[ -z "$CRYPTSETUP_PATH" ] && CRYPTSETUP_PATH=".."
+
+function pversion() {
+	if [ ! -x $CRYPTSETUP_PATH/$1 ] ; then
+		return
+	fi
+
+	echo -n "$CRYPTSETUP_PATH/"
+	$CRYPTSETUP_PATH/$1 --version
+}
+
+echo "Cryptsetup test environment ($(date))"
+uname -a
+if [ "$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)" = "1" ] ; then
+	echo "Kernel running in FIPS mode."
+fi
+
+if [ -f /etc/os-release ] ; then
+	source /etc/os-release
+	echo "$PRETTY_NAME ($NAME) $VERSION"
+fi
+
+echo "Memory"
+free -m
+
+pversion cryptsetup
+pversion veritysetup
+pversion integritysetup
+pversion cryptsetup-reencrypt
+
+[ -x $CRYPTSETUP_PATH/cryptsetup ] && {
+	echo -e "Cryptsetup defaults:"
+	$CRYPTSETUP_PATH/cryptsetup --help | sed -n '/optional key file for/,$p' | tail -n +3
+}
+
+[ $(id -u) != 0 ] && exit 77
+
+modprobe dm-crypt     >/dev/null 2>&1
+modprobe dm-verity    >/dev/null 2>&1
+modprobe dm-integrity >/dev/null 2>&1
+modprobe dm-zero      >/dev/null 2>&1
+
+dmsetup version
+
+echo "Device mapper targets:"
+dmsetup targets
+
+exit 0

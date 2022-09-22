@@ -1,0 +1,764 @@
+#!/bin/bash
+
+set -eux
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+TMPDIR="$AUTOPKGTEST_TMP"
+
+# wrappers
+luks1Format() {
+    cryptsetup luksFormat --batch-mode --type=luks1 \
+        --pbkdf-force-iterations=1000 \
+        "$@"
+}
+luks2Format() {
+    cryptsetup luksFormat --batch-mode --type=luks2 \
+        --pbkdf=argon2id --pbkdf-force-iterations=4 --pbkdf-memory=32 \
+        "$@"
+}
+diff() { command diff --color=auto --text "$@"; }
+
+# create disk image
+CRYPT_IMG="$TMPDIR/disk.img"
+CRYPT_DEV=""
+install -m0600 /dev/null "$TMPDIR/keyfile"
+disk_setup() {
+    local lo
+    for lo in $(losetup -j "$CRYPT_IMG" | cut -sd: -f1); do
+        losetup -d "$lo"
+    done
+    dd if="/dev/zero" of="$CRYPT_IMG" bs=1M count=64
+    CRYPT_DEV="$(losetup --find --show -- "$CRYPT_IMG")"
+}
+
+
+#######################################################################
+# make sure empty passphrases are NEVER accepted
+
+disk_setup
+! cryptsetup luksFormat "$CRYPT_DEV" </dev/null || exit 1
+! blkid -p "$CRYPT_DEV" || exit 1
+
+! echo -n "" | cryptsetup luksFormat "$CRYPT_DEV" - || exit 1
+! blkid -p "$CRYPT_DEV" || exit 1
+
+! cryptsetup luksFormat --batch-mode "$CRYPT_DEV" /dev/null || exit 1
+! blkid -p "$CRYPT_DEV" || exit 1
+
+! cryptsetup luksFormat --batch-mode "$CRYPT_DEV" </dev/null || exit 1
+! blkid -p "$CRYPT_DEV" || exit 1
+
+! echo -n "" | luks2Format "$CRYPT_DEV" - || exit 1
+! blkid -p "$CRYPT_DEV" || exit 1
+
+
+#######################################################################
+# LUKS
+
+# interactive
+disk_setup
+cat /proc/sys/kernel/random/uuid >"$TMPDIR/passphrase"
+luks2Format -- "$CRYPT_DEV" <"$TMPDIR/passphrase"
+t="$(blkid -s TYPE -o value -- "$CRYPT_DEV")"
+test "$t" = "crypto_LUKS"
+
+cat >/etc/crypttab <<-EOF
+	test0_crypt $CRYPT_DEV none
+EOF
+cryptdisks_start test0_crypt </dev/tty & pid=$!
+
+# check command line and environment
+until [ -p /lib/cryptsetup/passfifo ]; do sleep 1; done
+pid2="$(find /proc/[0-9]* -mindepth 1 -maxdepth 1 -name "exe" \
+    -execdir sh -euc 'diff -q -- "$0" /usr/lib/cryptsetup/askpass >/dev/null' {} \; \
+    -print 2>/dev/null | cut -sd/ -f3)"
+test -n "$pid2"
+printf '%s\0Please unlock disk %s: \0' /lib/cryptsetup/askpass test0_crypt >"$TMPDIR/cmdline"
+diff -u --label=a/cmdline --label=b/cmdline -- "$TMPDIR/cmdline" "/proc/$pid2/cmdline"
+tr '\n' '\0' >"$TMPDIR/environ" <<-EOF
+	CRYPTTAB_NAME=test0_crypt
+	CRYPTTAB_OPTIONS=
+	CRYPTTAB_SOURCE=$CRYPT_DEV
+	CRYPTTAB_TRIED=0
+	_CRYPTTAB_NAME=test0_crypt
+	_CRYPTTAB_OPTIONS=
+	_CRYPTTAB_SOURCE=$CRYPT_DEV
+EOF
+grep -Ez "^_?CRYPTTAB_" <"/proc/$pid2/environ" | sort -z | diff -u --label=a/environ --label=b/environ -- "$TMPDIR/environ" -
+
+# unlock device
+tr -d '\n' <"$TMPDIR/passphrase" >/lib/cryptsetup/passfifo # remove trailing newline
+wait $pid
+stty sane || true
+test -b /dev/mapper/test0_crypt
+
+# check default cipher (if it changes we probably want to update the doc and revise some scripts)
+cipher="$(dmsetup table --target=crypt test0_crypt | cut -d" " -f4)"
+test "$cipher" = "aes-xts-plain64"
+
+# make sure the kernel keyring is used by default for the encryption key
+key="$(dmsetup table --target=crypt test0_crypt | cut -d" " -f5)"
+test "${key:0:21}" = ":64:logon:cryptsetup:"
+
+cryptdisks_stop test0_crypt
+
+# remove trailing newline and unlock via key file
+tr -d '\n' <"$TMPDIR/passphrase" >"$TMPDIR/keyfile"
+cat >/etc/crypttab <<-EOF
+	test0_crypt $CRYPT_DEV $TMPDIR/keyfile
+EOF
+cryptdisks_start test0_crypt
+test -b /dev/mapper/test0_crypt
+cryptdisks_stop test0_crypt
+
+# special characters
+ln -sT -- keyfile "$TMPDIR/key fi:le"
+cat >/etc/crypttab <<-EOF
+	test0\\0045crypt $CRYPT_DEV $TMPDIR/key\\0040fi\\0072le
+EOF
+cryptdisks_start "test0%crypt"
+dmsetup table --target=crypt "test0%crypt" | cut -d" " -f5 | grep -F ":64:logon:cryptsetup:" # name in /dev/mapper is probably mangled
+cryptdisks_stop "test0%crypt"
+
+
+#######################################################################
+# cipher=, size= (plain)
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+cat >/etc/crypttab <<-EOF
+	plain_crypt $CRYPT_DEV $TMPDIR/keyfile plain,cipher=twofish-cbc-essiv:sha256,size=256
+EOF
+
+cryptdisks_start plain_crypt
+test -b /dev/mapper/plain_crypt
+
+# check cipher
+cipher="$(dmsetup table --target=crypt plain_crypt | cut -d" " -f4)"
+test "$cipher" = "twofish-cbc-essiv:sha256"
+
+# check encryption key
+xxd -ps -c256 "$TMPDIR/keyfile" >"$TMPDIR/keyfile-hex"
+dmsetup table --target=crypt --showkeys plain_crypt | cut -d" " -f5 | \
+    diff --label=a/key --label=b/key "$TMPDIR/keyfile-hex" -
+
+cryptdisks_stop plain_crypt
+
+
+#######################################################################
+# sector-size=
+
+disk_setup
+cat >/etc/crypttab <<-EOF
+	sector_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-cbc-essiv:sha256,size=256,sector-size=4096
+EOF
+
+cryptdisks_start sector_crypt
+test -b /dev/mapper/sector_crypt
+
+dmsetup table --target=crypt sector_crypt | cut -d" " -f10- | grep -Fw "sector_size:4096"
+
+cryptdisks_stop sector_crypt
+
+
+#######################################################################
+# hash= (interactive, ignored with keyfile)
+
+disk_setup
+cat /proc/sys/kernel/random/uuid >"$TMPDIR/passphrase"
+cat >/etc/crypttab <<-EOF
+	hash_crypt $CRYPT_DEV none plain,cipher=aes-cbc-essiv:sha256,size=256,hash=sha256
+EOF
+
+cryptdisks_start hash_crypt </dev/tty & pid=$!
+until [ -p /lib/cryptsetup/passfifo ]; do sleep 1; done
+tr -d '\n' <"$TMPDIR/passphrase" >/lib/cryptsetup/passfifo # remove trailing newline
+wait $pid
+stty sane || true
+test -b /dev/mapper/hash_crypt
+
+# check encryption key
+tr -d '\n' <"$TMPDIR/passphrase" | sha256sum | cut -d" " -f1 >"$TMPDIR/passphrase-hash"
+dmsetup table --target=crypt --showkeys hash_crypt | cut -d" " -f5 | \
+    diff --label=a/key --label=b/key "$TMPDIR/passphrase-hash" -
+cryptdisks_stop hash_crypt
+
+
+#######################################################################
+# offset=, skip=
+
+offset=2048 # in 512 byte sectors
+skip=256    # in 512 byte sectors
+disk_setup
+cat >/etc/crypttab <<-EOF
+	offset_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-cbc-essiv:sha256,size=256,offset=$offset,skip=$skip
+EOF
+
+# having an existing file system before the offset has no effect (cf. #994056)
+dmsetup create hidden --table "0 $offset linear $CRYPT_DEV 0"
+mke2fs -t ext2 -m0 -Fq /dev/mapper/hidden
+u="$(blkid -p -s UUID -o value /dev/mapper/hidden)"
+dd if=/dev/mapper/hidden of="$TMPDIR/hidden.img" bs=512
+dmsetup remove hidden
+u2="$(blkid -p -s UUID -o value -- "$CRYPT_DEV")"
+test "$u" = "$u2"
+
+cryptdisks_start offset_crypt
+test -b /dev/mapper/offset_crypt
+
+# check offset and skip values
+offset2="$(dmsetup table --target=crypt offset_crypt | cut -d" " -f8)" && test $offset -eq $offset2
+skip2="$(  dmsetup table --target=crypt offset_crypt | cut -d" " -f6)" && test $skip   -eq $skip2
+
+# ensure that the first 2048 sectors (only) are left zeroed out
+dd if=/dev/zero of=/dev/mapper/offset_crypt bs=1M || true
+cryptdisks_stop offset_crypt
+
+dd if="$CRYPT_DEV" of="$TMPDIR/hidden2.img" bs=512 count="$offset"
+command diff -q -- "$TMPDIR/hidden.img" "$TMPDIR/hidden2.img" || exit 1
+! xxd -l32 -s$((offset*512)) -ps -c32 <"$CRYPT_DEV" | grep -Fxq 0000000000000000000000000000000000000000000000000000000000000000
+rm -f -- "$TMPDIR/hidden.img" "$TMPDIR/hidden2.img"
+
+
+#######################################################################
+# keyfile-offset=, keyfile-size=
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+install -m0600 /dev/null "$TMPDIR/keyfile2"
+
+# keyfile-offset=
+head -c1024 </dev/urandom >"$TMPDIR/keyfile2"
+cat "$TMPDIR/keyfile" >>"$TMPDIR/keyfile2"
+cat >/etc/crypttab <<-EOF
+	keyfile_crypt $CRYPT_DEV $TMPDIR/keyfile2 keyfile-offset=1024
+EOF
+cryptdisks_start keyfile_crypt
+test -b /dev/mapper/keyfile_crypt
+cryptdisks_stop keyfile_crypt
+
+# keyfile-size=
+cat "$TMPDIR/keyfile" >"$TMPDIR/keyfile2"
+head -c1024 </dev/urandom >>"$TMPDIR/keyfile2"
+cat >/etc/crypttab <<-EOF
+	keyfile_crypt $CRYPT_DEV $TMPDIR/keyfile2 keyfile-size=32
+EOF
+cryptdisks_start keyfile_crypt
+test -b /dev/mapper/keyfile_crypt
+cryptdisks_stop keyfile_crypt
+
+# keyfile-offset= + keyfile-size=
+head -c32 </dev/urandom >"$TMPDIR/keyfile2"
+cat "$TMPDIR/keyfile" >>"$TMPDIR/keyfile2"
+head -c32 </dev/urandom >>"$TMPDIR/keyfile2"
+cat >/etc/crypttab <<-EOF
+	keyfile_crypt $CRYPT_DEV $TMPDIR/keyfile2 keyfile-offset=32,keyfile-size=32
+EOF
+cryptdisks_start keyfile_crypt
+test -b /dev/mapper/keyfile_crypt
+cryptdisks_stop keyfile_crypt
+
+# make sure the key isn't valid without offset and size
+cat >/etc/crypttab <<-EOF
+	keyfile_crypt $CRYPT_DEV $TMPDIR/keyfile2
+EOF
+! cryptdisks_start keyfile_crypt
+test ! -b /dev/mapper/keyfile_crypt
+rm -vf -- "$TMPDIR/keyfile2"
+
+
+#######################################################################
+# key-slot=
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format --key-slot=0 -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+
+install -m0600 /dev/null "$TMPDIR/keyfile2"
+head -c32 </dev/urandom >"$TMPDIR/keyfile2"
+cryptsetup luksAddKey --key-file="$TMPDIR/keyfile" \
+    --pbkdf=pbkdf2 --pbkdf-force-iterations=1000 \
+    --key-slot=1 -- "$CRYPT_DEV" "$TMPDIR/keyfile2"
+
+cryptsetup luksOpen --test-passphrase --key-file="$TMPDIR/keyfile"  --key-slot=0 -- "$CRYPT_DEV"
+cryptsetup luksOpen --test-passphrase --key-file="$TMPDIR/keyfile2" --key-slot=1 -- "$CRYPT_DEV"
+
+# use slot #1 after trying #0
+cat >/etc/crypttab <<-EOF
+	keyslot_crypt $CRYPT_DEV $TMPDIR/keyfile2
+EOF
+cryptdisks_start keyslot_crypt
+test -b /dev/mapper/keyslot_crypt
+cryptdisks_stop keyslot_crypt
+
+# use wrong slot #0
+cat >/etc/crypttab <<-EOF
+	keyslot_crypt $CRYPT_DEV $TMPDIR/keyfile2 key-slot=0
+EOF
+! cryptdisks_start keyslot_crypt
+test ! -b /dev/mapper/keyslot_crypt
+
+# use right slot #1
+cat >/etc/crypttab <<-EOF
+	keyslot_crypt $CRYPT_DEV $TMPDIR/keyfile2 key-slot=1
+EOF
+cryptdisks_start keyslot_crypt
+test -b /dev/mapper/keyslot_crypt
+cryptdisks_stop keyslot_crypt
+rm -f -- "$TMPDIR/keyfile2"
+
+
+#######################################################################
+# header=
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format --header="$TMPDIR/crypt_img.hdr" -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+test -f "$TMPDIR/crypt_img.hdr"
+
+# make sure the signature is on the header only
+t="$(blkid -s TYPE -o value -- "$TMPDIR/crypt_img.hdr")"
+test "$t" = "crypto_LUKS"
+! blkid -p -- "$CRYPT_DEV"
+
+# make sure we can't unlock without the header
+cat >/etc/crypttab <<-EOF
+	header_crypt $CRYPT_DEV $TMPDIR/keyfile luks
+EOF
+! cryptdisks_start header_crypt
+test ! -b /dev/mapper/header_crypt
+
+# unlock using the header
+cat >/etc/crypttab <<-EOF
+	header_crypt $CRYPT_DEV $TMPDIR/keyfile header=$TMPDIR/crypt_img.hdr
+EOF
+cryptdisks_start header_crypt
+test -b /dev/mapper/header_crypt
+cryptdisks_stop header_crypt
+rm -f -- "$TMPDIR/crypt_img.hdr"
+
+
+#######################################################################
+# readonly
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+
+# unlock readonly from crypttab(5)
+cat >/etc/crypttab <<-EOF
+	readonly_crypt $CRYPT_DEV $TMPDIR/keyfile readonly
+EOF
+cryptdisks_start readonly_crypt
+test -b /dev/mapper/readonly_crypt
+dm="$(readlink -e "/dev/mapper/readonly_crypt")"
+ro="$(< "/sys/block/${dm##*/}/ro")"
+test "$ro" -eq 1
+cryptdisks_stop readonly_crypt
+
+# unlock readonly with --readonly
+cat >/etc/crypttab <<-EOF
+	readonly_crypt $CRYPT_DEV $TMPDIR/keyfile
+EOF
+cryptdisks_start --readonly readonly_crypt
+test -b /dev/mapper/readonly_crypt
+dm="$(readlink -e "/dev/mapper/readonly_crypt")"
+ro="$(< "/sys/block/${dm##*/}/ro")"
+test "$ro" -eq 1
+cryptdisks_stop readonly_crypt
+
+# double check that default is read-write
+cryptdisks_start readonly_crypt
+test -b /dev/mapper/readonly_crypt
+dm="$(readlink -e "/dev/mapper/readonly_crypt")"
+ro="$(< "/sys/block/${dm##*/}/ro")"
+test "$ro" -eq 0
+cryptdisks_stop readonly_crypt
+
+
+#######################################################################
+# tries=
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+
+# fail after 3 tries default
+cat >/etc/crypttab <<-EOF
+	tries_crypt $CRYPT_DEV none
+EOF
+
+cryptdisks_start tries_crypt </dev/tty & pid=$!
+echo -n bad1 >/lib/cryptsetup/passfifo
+sleep 1
+echo -n bad2 >/lib/cryptsetup/passfifo
+sleep 1
+echo -n bad3 >/lib/cryptsetup/passfifo
+! wait $pid
+stty sane || true
+test ! -b /dev/mapper/tries_crypt
+
+# success on the 3rd try
+cryptdisks_start tries_crypt </dev/tty & pid=$!
+echo -n bad1 >/lib/cryptsetup/passfifo
+sleep 1
+echo -n bad2 >/lib/cryptsetup/passfifo
+sleep 1
+cat <"$TMPDIR/keyfile" >/lib/cryptsetup/passfifo
+wait $pid
+stty sane || true
+test -b /dev/mapper/tries_crypt
+cryptdisks_stop tries_crypt
+
+# force single try
+cat >/etc/crypttab <<-EOF
+	tries_crypt $CRYPT_DEV none tries=1
+EOF
+
+cryptdisks_start tries_crypt </dev/tty & pid=$!
+echo -n bad1 >/lib/cryptsetup/passfifo
+! wait $pid
+stty sane || true
+test ! -b /dev/mapper/tries_crypt
+
+cryptdisks_start tries_crypt </dev/tty & pid=$!
+cat <"$TMPDIR/keyfile" >/lib/cryptsetup/passfifo
+wait $pid
+stty sane || true
+test -b /dev/mapper/tries_crypt
+cryptdisks_stop tries_crypt
+
+
+#######################################################################
+# discard
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+
+cat >/etc/crypttab <<-EOF
+	flagopt_crypt $CRYPT_DEV $TMPDIR/keyfile discard
+EOF
+
+cryptdisks_start flagopt_crypt
+dmsetup table --target=crypt flagopt_crypt | cut -d" " -f10- | grep -Fw "allow_discards"
+cryptdisks_stop flagopt_crypt
+
+
+#######################################################################
+# same-cpu-crypt
+
+cat >/etc/crypttab <<-EOF
+	flagopt_crypt $CRYPT_DEV $TMPDIR/keyfile same-cpu-crypt
+EOF
+
+cryptdisks_start flagopt_crypt
+dmsetup table --target=crypt flagopt_crypt | cut -d" " -f10- | grep -Fw "same_cpu_crypt"
+cryptdisks_stop flagopt_crypt
+
+
+#######################################################################
+# submit-from-crypt-cpus
+
+cat >/etc/crypttab <<-EOF
+	flagopt_crypt $CRYPT_DEV $TMPDIR/keyfile submit-from-crypt-cpus
+EOF
+
+cryptdisks_start flagopt_crypt
+dmsetup table --target=crypt flagopt_crypt | cut -d" " -f10- | grep -Fw "submit_from_crypt_cpus"
+cryptdisks_stop flagopt_crypt
+
+
+#######################################################################
+# no-read-workqueue
+
+cat >/etc/crypttab <<-EOF
+	flagopt_crypt $CRYPT_DEV $TMPDIR/keyfile no-read-workqueue
+EOF
+
+cryptdisks_start flagopt_crypt
+dmsetup table --target=crypt flagopt_crypt | cut -d" " -f10- | grep -Fw "no_read_workqueue"
+cryptdisks_stop flagopt_crypt
+
+
+#######################################################################
+# no-write-workqueue
+
+cat >/etc/crypttab <<-EOF
+	flagopt_crypt $CRYPT_DEV $TMPDIR/keyfile no-write-workqueue
+EOF
+
+cryptdisks_start flagopt_crypt
+dmsetup table --target=crypt flagopt_crypt | cut -d" " -f10- | grep -Fw "no_write_workqueue"
+cryptdisks_stop flagopt_crypt
+
+
+#######################################################################
+# swap
+
+disk_setup
+cat >/etc/crypttab <<-EOF
+	swap_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-xts-plain64,size=256,swap
+EOF
+
+cryptdisks_start swap_crypt
+test -b /dev/mapper/swap_crypt
+
+t="$(blkid -s TYPE -o value /dev/mapper/swap_crypt)"
+test "$t" = "swap"
+cryptdisks_stop swap_crypt
+
+# refuse to proceed if the target contains a file system...
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+
+cat >/etc/crypttab <<-EOF
+	swap_crypt  $CRYPT_DEV $TMPDIR/keyfile swap
+	swap_crypt2 $CRYPT_DEV $TMPDIR/keyfile
+EOF
+cryptdisks_start swap_crypt2
+mke2fs -t ext4 -m0 -Fq /dev/mapper/swap_crypt2
+t="$(blkid -s TYPE -o value /dev/mapper/swap_crypt2)"
+test "$t" = "ext4"
+cryptdisks_stop swap_crypt2
+
+! cryptdisks_start swap_crypt
+test ! -b /dev/mapper/swap_crypt
+
+# ... unless that's already a swap device
+cryptdisks_start swap_crypt2
+mkswap -f /dev/mapper/swap_crypt2
+t="$(blkid -s TYPE -o value /dev/mapper/swap_crypt2)"
+test "$t" = "swap"
+u="$(blkid -s UUID -o value /dev/mapper/swap_crypt2)"
+cryptdisks_stop swap_crypt2
+
+cryptdisks_start swap_crypt
+test -b /dev/mapper/swap_crypt
+t="$(blkid -s TYPE -o value /dev/mapper/swap_crypt)"
+test "$t" = "swap"
+u2="$(blkid -s UUID -o value /dev/mapper/swap_crypt)"
+test "$u" != "$u2"
+cryptdisks_stop swap_crypt
+
+
+#######################################################################
+# tmp=
+
+disk_setup
+cat >/etc/crypttab <<-EOF
+	tmp_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-xts-plain64,size=256,tmp=ext2
+EOF
+
+# run mkfs.ext2
+cryptdisks_start tmp_crypt
+test -b /dev/mapper/tmp_crypt
+
+t="$(blkid -s TYPE -o value /dev/mapper/tmp_crypt)"
+test "$t" = "ext2"
+cryptdisks_stop tmp_crypt
+
+# default type is ext4
+cat >/etc/crypttab <<-EOF
+	tmp_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-xts-plain64,size=256,tmp
+EOF
+cryptdisks_start tmp_crypt
+t="$(blkid -s TYPE -o value /dev/mapper/tmp_crypt)"
+test "$t" = "ext4"
+cryptdisks_stop tmp_crypt
+
+
+#######################################################################
+# check=
+
+disk_setup
+cat >/etc/crypttab <<-EOF
+	check_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-xts-plain64,size=256
+EOF
+
+# precheck failed: $CRYPT_DEV contains a filesystem
+mke2fs -t ext4 -m0 -Fq -- "$CRYPT_DEV"
+t="$(blkid -s TYPE -o value -- "$CRYPT_DEV")"
+test "$t" = "ext4"
+! cryptdisks_start check_crypt
+test ! -b /dev/mapper/check_crypt
+
+# precheck failed: $CRYPT_DEV contains a filesystem at the given offset (cf. #994056)
+offset=2048
+disk_setup
+cat >/etc/crypttab <<-EOF
+	check_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-xts-plain64,size=256,offset=$offset
+EOF
+
+dmsetup create hidden --table "0 4096 linear $CRYPT_DEV $offset"
+mke2fs -t ext2 -m0 -Fq /dev/mapper/hidden
+u="$(blkid -p -s UUID -o value /dev/mapper/hidden)"
+dmsetup remove hidden
+u2="$(blkid -p -O$((offset*512)) -s UUID -o value -- "$CRYPT_DEV")"
+test "$u" = "$u2"
+t="$(blkid  -p -O$((offset*512)) -s TYPE -o value -- "$CRYPT_DEV")"
+test "$t" = "ext2"
+
+! cryptdisks_start check_crypt
+test ! -b /dev/mapper/check_crypt
+
+# check failed: mapped device does not contain a known file system
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+cat >/etc/crypttab <<-EOF
+	check_crypt  $CRYPT_DEV $TMPDIR/keyfile plain,cipher=aes-xts-plain64,size=256,check
+	check_crypt2 $CRYPT_DEV $TMPDIR/keyfile plain,cipher=aes-xts-plain64,size=256
+EOF
+
+! cryptdisks_start check_crypt
+test ! -b /dev/mapper/check_crypt
+
+# success
+cryptdisks_start check_crypt2
+mke2fs -t ext4 -m0 -Fq /dev/mapper/check_crypt2
+u="$(blkid -s UUID -o value /dev/mapper/check_crypt2)"
+cryptdisks_stop check_crypt2
+cryptdisks_start check_crypt
+test -b /dev/mapper/check_crypt
+u2="$(blkid -s UUID -o value /dev/mapper/check_crypt)"
+test "$u" = "$u2"
+cryptdisks_stop check_crypt
+
+# custom check
+install -m0755 -- /dev/null "$TMPDIR/check"
+cat >"$TMPDIR/check" <<-EOF
+	#!/bin/bash
+	printf '%s\\0' "\$0" >"$TMPDIR/cmdline"
+	while [ \$# -gt 0 ]; do
+	    printf '%s\\0' "\$1"
+	    shift
+	done >>"$TMPDIR/cmdline"
+	exit 0
+EOF
+
+cat >/etc/crypttab <<-EOF
+	check_crypt $CRYPT_DEV $TMPDIR/keyfile plain,cipher=aes-xts-plain64,size=256,check=$TMPDIR/check
+EOF
+cryptdisks_start check_crypt
+dm="$(readlink -e "/dev/mapper/check_crypt")"
+cryptdisks_stop check_crypt
+printf '%s\0%s\0' "$TMPDIR/check" "$dm" >"$TMPDIR/cmdline2"
+diff -u --label=a/cmdline --label=b/cmdline -- "$TMPDIR/cmdline2" "$TMPDIR/cmdline"
+
+
+#######################################################################
+# checkargs=
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+cat >/etc/crypttab <<-EOF
+	checkargs_crypt  $CRYPT_DEV $TMPDIR/keyfile plain,cipher=aes-xts-plain64,size=256,check,checkargs=ext4
+	checkargs_crypt2 $CRYPT_DEV $TMPDIR/keyfile plain,cipher=aes-xts-plain64,size=256
+EOF
+
+# check failed: mapped device does not contain a known file system
+! cryptdisks_start checkargs_crypt
+test ! -b /dev/mapper/checkargs_crypt
+
+# check failed: mapped device is not ext4
+cryptdisks_start checkargs_crypt2
+mke2fs -t ext2 -m0 -Fq /dev/mapper/checkargs_crypt2
+cryptdisks_stop checkargs_crypt2
+! cryptdisks_start checkargs_crypt
+test ! -b /dev/mapper/checkargs_crypt
+
+# success
+cryptdisks_start checkargs_crypt2
+mke2fs -t ext4 -m0 -Fq /dev/mapper/checkargs_crypt2
+u="$(blkid -s UUID -o value /dev/mapper/checkargs_crypt2)"
+cryptdisks_stop checkargs_crypt2
+cryptdisks_start checkargs_crypt
+u2="$(blkid -s UUID -o value /dev/mapper/checkargs_crypt)"
+test "$u" = "$u2"
+test -b /dev/mapper/checkargs_crypt
+cryptdisks_stop checkargs_crypt
+
+# check failed: mapped device is not ext2
+sed -i "s/checkargs=ext4/checkargs=ext2/" /etc/crypttab
+! cryptdisks_start checkargs_crypt
+test ! -b /dev/mapper/checkargs_crypt
+
+# custom check
+cat >/etc/crypttab <<-EOF
+	checkargs_crypt $CRYPT_DEV $TMPDIR/keyfile plain,cipher=aes-xts-plain64,size=256,check=$TMPDIR/check,checkargs=foo\\0012b\\0011a\\0054r\\0040
+EOF
+cryptdisks_start checkargs_crypt
+dm="$(readlink -e "/dev/mapper/checkargs_crypt")"
+cryptdisks_stop checkargs_crypt
+printf '%s\0%s\0foo\nb\ta,r \0' "$TMPDIR/check" "$dm" >"$TMPDIR/cmdline2"
+diff -u --label=a/cmdline --label=b/cmdline -- "$TMPDIR/cmdline2" "$TMPDIR/cmdline"
+
+
+#######################################################################
+# noauto
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+
+cat >/etc/crypttab <<-EOF
+	noauto_crypt $CRYPT_DEV $TMPDIR/keyfile noauto
+EOF
+cryptdisks_start noauto_crypt
+test -b /dev/mapper/noauto_crypt
+cryptdisks_stop noauto_crypt
+
+
+#######################################################################
+# (custom) keyscript
+
+disk_setup
+head -c32 </dev/urandom >"$TMPDIR/keyfile"
+luks2Format -- "$CRYPT_DEV" "$TMPDIR/keyfile"
+
+KEYSCRIPT="$TMPDIR/decrypt_foo,bar
+b a z"
+
+# make sure we export CRYPTTAB_* as documented
+install -m0755 -- /dev/null "$KEYSCRIPT"
+cat >"$KEYSCRIPT" <<-EOF
+	#!/bin/bash
+	printf '%s\\0' "\$0" >"$TMPDIR/cmdline"
+	while [ \$# -gt 0 ]; do
+	    printf '%s\\0' "\$1"
+	    shift
+	done >>"$TMPDIR/cmdline"
+	install -m0600 "/proc/\$\$/environ" "$TMPDIR/environ"
+	cat <"$TMPDIR/keyfile"
+EOF
+
+# add extra unknown option (visible in $CRYPTTAB_OPTIONS but there is no $CRYPTTAB_OPTION_*)
+cat >/etc/crypttab <<-EOF
+	keyscript\\0045crypt $CRYPT_IMG foo\\0011bar\\0040baz nonexistent,keyscript=$TMPDIR/decrypt_foo\\0054bar\\0012b\\0040a\\0040z,luks
+EOF
+
+cryptdisks_start "keyscript%crypt"
+dmsetup table --target=crypt "keyscript%crypt" | cut -d" " -f5 | grep -F ":64:logon:cryptsetup:" # name in /dev/mapper is probably mangled
+cryptdisks_stop "keyscript%crypt"
+
+# compare command line
+printf '%s\0foo\tbar baz\0' "$KEYSCRIPT" >"$TMPDIR/cmdline2"
+diff -u --label=a/cmdline --label=b/cmdline -- "$TMPDIR/cmdline2" "$TMPDIR/cmdline"
+
+# compare environment
+tr '\n' '\0' <<-EOF | sed -rz "s|@@DECRYPT_FOOBAR@@|${KEYSCRIPT//$'\n'/"\\n"}|" >"$TMPDIR/environ2"
+	CRYPTTAB_KEY=foo	bar baz
+	CRYPTTAB_NAME=keyscript%crypt
+	CRYPTTAB_OPTIONS=nonexistent,keyscript=@@DECRYPT_FOOBAR@@,luks
+	CRYPTTAB_OPTION_keyscript=@@DECRYPT_FOOBAR@@
+	CRYPTTAB_OPTION_luks=yes
+	CRYPTTAB_SOURCE=$CRYPT_IMG
+	CRYPTTAB_TRIED=0
+	_CRYPTTAB_KEY=foo\\0011bar\\0040baz
+	_CRYPTTAB_NAME=keyscript\\0045crypt
+	_CRYPTTAB_OPTIONS=nonexistent,keyscript=$TMPDIR/decrypt_foo\\0054bar\\0012b\\0040a\\0040z,luks
+	_CRYPTTAB_SOURCE=$CRYPT_IMG
+EOF
+grep -Ez "^_?CRYPTTAB_" <"$TMPDIR/environ" | sort -z | diff -u --label=a/environ --label=b/environ -- "$TMPDIR/environ2" -

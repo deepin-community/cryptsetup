@@ -1,0 +1,3 @@
+Tests: cryptdisks
+Depends: cryptsetup
+Restrictions: allow-stderr, needs-root, isolation-machine

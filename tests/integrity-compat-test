@@ -1,0 +1,519 @@
+#!/bin/bash
+#
+# Test integritysetup compatibility.
+#
+[ -z "$CRYPTSETUP_PATH" ] && CRYPTSETUP_PATH=".."
+INTSETUP=$CRYPTSETUP_PATH/integritysetup
+
+INTSETUP_VALGRIND=../.libs/integritysetup
+INTSETUP_LIB_VALGRIND=../.libs
+
+DEV_NAME=dmc_test
+DEV_NAME2=dmc_fake
+DEV_LOOP=""
+DEV=test123.img
+DEV2=test124.img
+KEY_FILE=key.img
+KEY_FILE2=key2.img
+
+dmremove() { # device
+	udevadm settle >/dev/null 2>&1
+	dmsetup remove --retry $1 >/dev/null 2>&1
+}
+
+cleanup() {
+	[ -b /dev/mapper/$DEV_NAME ] && dmremove $DEV_NAME
+	[ -b /dev/mapper/$DEV_NAME2 ] && dmremove $DEV_NAME2
+	[ -n "$DEV_LOOP" ] && losetup -d "$DEV_LOOP"
+	DEV_LOOP=""
+	rm -f $DEV $DEV2 $KEY_FILE $KEY_FILE2 >/dev/null 2>&1
+}
+
+fail()
+{
+	[ -n "$1" ] && echo "$1"
+	echo "FAILED backtrace:"
+	while caller $frame; do ((frame++)); done
+	cleanup
+	exit 100
+}
+
+skip()
+{
+	[ -n "$1" ] && echo "$1"
+	exit 77
+}
+
+function dm_integrity_features()
+{
+	VER_STR=$(dmsetup targets | grep integrity | cut -f2 -dv)
+	[ -z "$VER_STR" ] && skip "Cannot find dm-integrity target, test skipped."
+
+	VER_MAJ=$(echo $VER_STR | cut -f 1 -d.)
+	VER_MIN=$(echo $VER_STR | cut -f 2 -d.)
+	VER_PTC=$(echo $VER_STR | cut -f 3 -d.)
+
+	[ $VER_MAJ -lt 1 ] && return
+	[ $VER_MIN -gt 1 ] && {
+		DM_INTEGRITY_META=1
+		DM_INTEGRITY_RECALC=1
+	}
+	[ $VER_MIN -gt 2 ] && {
+		DM_INTEGRITY_BITMAP=1
+	}
+	[ $VER_MIN -gt 6 ] && {
+		DM_INTEGRITY_HMAC_FIX=1
+	}
+	[ $VER_MIN -gt 7 ] && {
+		DM_INTEGRITY_RESET=1
+	}
+}
+
+add_device() {
+	cleanup
+	dd if=/dev/urandom of=$KEY_FILE bs=4096 count=1 >/dev/null 2>&1
+	dd if=/dev/urandom of=$KEY_FILE2 bs=1 count=32 >/dev/null 2>&1
+	dd if=/dev/zero of=$DEV bs=1M count=32 >/dev/null 2>&1
+	dd if=/dev/zero of=$DEV2 bs=1M count=32 >/dev/null 2>&1
+	sync
+}
+
+status_check() # name value
+{
+	X=$($INTSETUP status $DEV_NAME | grep "$1" | sed 's/.*: //' | sed 's/^[[:space:]]*//')
+	if [ "$X" != "$2" ] ; then
+		echo "[status FAIL]"
+		echo " Expecting $1:$2 got \"$X\"."
+		fail
+	fi
+}
+
+dump_check() # name value
+{
+	X=$($INTSETUP dump $DEV | grep "$1" | cut -d' '  -f 2)
+	if [ "$X" != "$2" ] ; then
+		echo "[dump FAIL]"
+		echo " Expecting $1:$2 got \"$X\"."
+		fail
+	fi
+}
+
+kernel_param_check() # number value
+{
+	X=$(dmsetup table $DEV_NAME | cut -d " " -f $1)
+	if [ "$X" != $2 ] ; then
+		echo "[param_check FAIL]"
+		echo "Expecting $2 got \"$X\"."
+		fail
+	fi
+}
+
+function valgrind_setup()
+{
+	which valgrind >/dev/null 2>&1 || fail "Cannot find valgrind."
+	[ ! -f $INTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
+	export LD_LIBRARY_PATH="$INTSETUP_LIB_VALGRIND:$LD_LIBRARY_PATH"
+}
+
+function valgrind_run()
+{
+	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${INTSETUP_VALGRIND} "$@"
+}
+
+int_check_sum_only() # checksum
+{
+	VSUM=$(sha256sum /dev/mapper/$DEV_NAME | cut -d' ' -f 1)
+	if [ "$VSUM" = "$1" ] ; then
+		echo -n "[CHECKSUM OK]"
+	else
+		echo "[FAIL]"
+		echo " Expecting $1 got $VSUM."
+		fail
+	fi
+}
+
+int_check_sum() # alg checksum [keyfile keysize]
+{
+	if [ -n "$4" ] ; then
+		KEY_PARAMS="--integrity-key-file $3 --integrity-key-size $4"
+	else
+		KEY_PARAMS=""
+	fi
+
+	# Fill device with zeroes and reopen it
+	dd if=/dev/zero of=/dev/mapper/$DEV_NAME bs=1M oflag=direct >/dev/null 2>&1
+	dmremove $DEV_NAME
+
+	$INTSETUP open $DEV $DEV_NAME --integrity $1 $KEY_PARAMS || fail "Cannot activate device."
+
+	int_check_sum_only $2
+}
+
+intformat() # alg alg_out tagsize outtagsize sector_size csum [keyfile keysize]
+{
+	if [ -n "$8" ] ; then
+		KEY_PARAMS="--integrity-key-file $7 --integrity-key-size $8"
+	else
+		KEY_PARAMS=""
+	fi
+
+	if [ $3 -ne 0 ] ; then
+		TAG_PARAMS="--tag-size $3"
+	else
+		TAG_PARAMS=""
+	fi
+
+	echo -n "[INTEGRITY:$2:$4:$5]"
+	[ -n "$8" ] && echo -n "[KEYFILE:$8]"
+	echo -n "[FORMAT]"
+	$INTSETUP format --integrity-legacy-padding -q --integrity $1 $TAG_PARAMS --sector-size $5 $KEY_PARAMS $DEV >/dev/null 2>&1
+	if [ $? -ne 0 ] ; then
+		if [[ $1 =~ "sha" || $1 =~ "crc" ]] ; then
+			fail "Cannot format device."
+		fi
+		echo "[N/A]"
+		return
+	fi
+
+	dump_check "tag_size" $4
+	dump_check "sector_size" $5
+	echo -n "[ACTIVATE]"
+	$INTSETUP open $DEV $DEV_NAME --integrity $1 $KEY_PARAMS || fail "Cannot activate device."
+	if [ -n "$8" ]; then
+		KEY_HEX=$(xxd -c 4096 -l $8 -p $7)
+		[ -z "$KEY_HEX" ] && fail "Cannot decode key."
+		dmsetup table --showkeys $DEV_NAME | grep -q $KEY_HEX || fail "Key mismatch."
+	fi
+	status_check "tag size" $4
+	status_check "integrity" $2
+	status_check "sector size" "$5 bytes"
+	int_check_sum $1 $6 $7 $8
+	echo -n "[REMOVE]"
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	echo "[OK]"
+}
+
+int_error_detection() # mode alg tagsize outtagsize sector_size key_file key_size
+{
+	if [ "$1" == "B" ] ; then
+		INT_MODE="-B"
+	else
+		INT_MODE=""
+	fi
+	if [ -n "$7" ] ; then
+		KEY_PARAMS="--integrity-key-file $6 --integrity-key-size $7"
+	else
+		KEY_PARAMS=""
+	fi
+	if [ $3 -ne 0 ] ; then
+		TAG_PARAMS="--tag-size $3"
+	else
+		TAG_PARAMS=""
+	fi
+	dd if=/dev/zero of=$DEV bs=1M count=32 >/dev/null 2>&1
+
+	echo -n "[INTEGRITY:$1:$2:$4:$5]"
+	echo -n "[FORMAT]"
+	$INTSETUP format -q --integrity $2 $TAG_PARAMS --sector-size $5 $KEY_PARAMS $DEV $INT_MODE >/dev/null || fail "Cannot format device."
+	echo -n "[ACTIVATE]"
+	$INTSETUP open $DEV $DEV_NAME --integrity $2 --integrity-no-journal $KEY_PARAMS $INT_MODE || fail "Cannot activate device."
+
+	if [ -n "$6" -a -n "$7" ]; then
+		echo -n "[KEYED HASH]"
+		KEY_HEX=$(xxd -c 256 -l $7 -p $6)
+		[ -z "$KEY_HEX" ] && fail "Cannot decode key."
+		dmsetup table --showkeys $DEV_NAME | grep -q $KEY_HEX || fail "Key mismatch."
+	fi
+
+	echo -n "[WRITE DATA]"
+	echo -n "EXAMPLE TEXT" | dd of=/dev/mapper/$DEV_NAME >/dev/null 2>&1 || fail "Cannot write to device."
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+
+	# find offset of data area
+	ARR=($(dd if=$DEV bs=512 2>/dev/null | hexdump -C | grep 'EXAMPLE TEXT'))
+	OFF_HEX=${ARR[0]}
+	OFF_DEC=$((16#$OFF_HEX))
+
+	echo -n "[CORRUPT DATA:$OFF_DEC]"
+	echo -n "Z" | dd of=$DEV bs=1 seek=$OFF_DEC conv=notrunc >/dev/null 2>&1 || fail "Cannot write to device."
+
+	echo -n "[DETECT ERROR]"
+	$INTSETUP open $DEV $DEV_NAME --integrity $2 $KEY_PARAMS $INT_MODE || fail "Cannot activate device."
+	dd if=/dev/mapper/$DEV_NAME  >/dev/null 2>&1 && fail "Error detection failed."
+	echo -n "[REMOVE]"
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	echo "[OK]"
+}
+
+int_journal() # 1 alg, 2 tagsize, 3 sector_size, 4 watermark, 5 commit_time, 6 journal_integrity, 7 key-file, 8 key-size, 9 journal_integrity_out
+{
+	echo -n "[INTEGRITY JOURNAL:$6:${4}%:${5}ms:$8]"
+	echo -n "[FORMAT]"
+	ARGS="--integrity $1 --journal-watermark $4 --journal-commit-time $5 --journal-integrity $6 --journal-integrity-key-file $7 --journal-integrity-key-size $8"
+	$INTSETUP format -q --tag-size $2 --sector-size $3 $ARGS $DEV || fail "Cannot format device."
+
+	echo -n "[ACTIVATE]"
+
+	$INTSETUP open $DEV $DEV_NAME $ARGS || fail "Cannot activate device."
+
+	echo -n "[KEYED HASH]"
+	KEY_HEX=$(xxd -c 4096 -l $8 -p $7)
+	[ -z "$KEY_HEX" ] && fail "Cannot decode key."
+	dmsetup table --showkeys $DEV_NAME | grep -q $KEY_HEX || fail "Key mismatch."
+
+	status_check "journal watermark" "${4}%"
+	status_check "journal commit time" "${5} ms"
+	status_check "journal integrity MAC" $9
+
+	echo -n "[REMOVE]"
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	echo "[OK]"
+}
+
+
+int_journal_crypt() # crypt_alg crypt_alg_kernel crypt_key crypt_key_size
+{
+	echo -n "[JOURNAL CRYPT:$1:${4}B]"
+
+	echo -n "[FORMAT]"
+	ARGS="--journal-crypt $1 --journal-crypt-key-file $3 --journal-crypt-key-size $4"
+	$INTSETUP format -q $ARGS $DEV || fail "Cannot format device."
+
+	echo -n "[ACTIVATE]"
+	$INTSETUP open $DEV $DEV_NAME $ARGS || fail "Cannot activate device."
+
+	KEY_HEX=$(xxd -c 256 -l $4 -p $3)
+	[ -z "$KEY_HEX" ] && fail "Cannot decode key."
+	dmsetup table --showkeys $DEV_NAME | grep -q "journal_crypt:$2:$KEY_HEX" || fail "Key mismatch."
+
+	$INTSETUP close $DEV_NAME
+	echo "[OK]"
+}
+
+int_mode() # alg tag_size sector_size [keyfile keysize]
+{
+	if [ -n "$5" ] ; then
+		KEY_PARAMS="--integrity-key-file $4 --integrity-key-size $5"
+	else
+		KEY_PARAMS=""
+	fi
+
+	echo -n "[MODE TESTS:$1:$2:$3]"
+	ARGS="--tag-size $2 --sector-size $3"
+
+	$INTSETUP format -q $ARGS $KEY_PARAMS $DEV --integrity $1 || fail "Cannot format device."
+
+	echo -n "[JOURNALED WRITES]"
+	$INTSETUP open $DEV $DEV_NAME --integrity $1 $KEY_PARAMS || fail "Cannot activate device with journal."
+	status_check "mode" "read/write"
+	kernel_param_check 7 "J"
+
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+
+	echo -n "[DIRECT WRITES]"
+	$INTSETUP open $DEV $DEV_NAME --integrity $1 $KEY_PARAMS --integrity-no-journal || fail "Cannot activate device without journal."
+	status_check "mode" "read/write"
+	status_check "journal" "not active"
+	kernel_param_check 7 "D"
+
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+
+	echo -n "[RECOVERY MODE]"
+	$INTSETUP open $DEV $DEV_NAME --integrity $1 $KEY_PARAMS --integrity-recovery-mode || fail "Cannot activate device in recovery mode."
+	status_check "mode" "read/write recovery"
+	kernel_param_check 7 "R"
+
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+
+	echo "[OK]"
+}
+
+[ $(id -u) != 0 ] && skip "WARNING: You must be root to run this test, test skipped."
+[ ! -x "$INTSETUP" ] && skip "Cannot find $INTSETUP, test skipped."
+which blockdev >/dev/null || skip "Cannot find blockdev utility, test skipped."
+
+[ -n "$VALG" ] && valgrind_setup && INTSETUP=valgrind_run
+which hexdump >/dev/null 2>&1 || skip "WARNING: hexdump tool required."
+which xxd >/dev/null 2>&1 || skip "WARNING: xxd tool required."
+modprobe dm-integrity >/dev/null 2>&1
+dm_integrity_features
+
+add_device
+intformat blake2s-256 blake2s-256    32 32  512 8e5fe4119558e117bfc40e3b0f13ade3abe497b52604d4c7cca0cfd6c7f4cf11
+intformat blake2b-256 blake2b-256    32 32  512 8e5fe4119558e117bfc40e3b0f13ade3abe497b52604d4c7cca0cfd6c7f4cf11
+intformat crc32c      crc32c          0  4  512 08f63eb27fb9ce2ce903b0a56429c68ce5e209253ba42154841ef045a53839d7
+intformat crc32       crc32           0  4  512 08f63eb27fb9ce2ce903b0a56429c68ce5e209253ba42154841ef045a53839d7
+intformat sha1        sha1            0 20  512 6eedd6344dab8875cd185fcd6565dfc869ab36bc57e577f40c685290b1fa7fe7
+intformat sha1        sha1           16 16 4096 e152ec88227b539cd9cafd8bdb587a1072d720cd6bcebe1398d4136c9e7f337b
+intformat sha256      sha256          0 32  512 8e5fe4119558e117bfc40e3b0f13ade3abe497b52604d4c7cca0cfd6c7f4cf11
+intformat hmac-sha256 hmac\(sha256\)  0 32  512 8e5fe4119558e117bfc40e3b0f13ade3abe497b52604d4c7cca0cfd6c7f4cf11 $KEY_FILE 32
+intformat sha256      sha256          0 32 4096 33f7dfa5163ca9f740383fb8b0919574e38a7b20a94a4170fde4238196b7c4b4
+intformat hmac-sha256 hmac\(sha256\)  0 32 4096 33f7dfa5163ca9f740383fb8b0919574e38a7b20a94a4170fde4238196b7c4b4 $KEY_FILE 32
+intformat hmac-sha256 hmac\(sha256\)  0 32 4096 33f7dfa5163ca9f740383fb8b0919574e38a7b20a94a4170fde4238196b7c4b4 $KEY_FILE 4096
+
+echo "Error detection tests:"
+int_error_detection J crc32c  0  4  512
+int_error_detection J crc32c  0  4  4096
+int_error_detection J crc32   0  4  512
+int_error_detection J crc32   0  4  4096
+int_error_detection J sha1    0 20 512
+int_error_detection J sha1   16 16 512
+int_error_detection J sha1    0 20 4096
+int_error_detection J sha256  0 32 512
+int_error_detection J sha256  0 32 4096
+
+which xxd >/dev/null 2>&1 || skip "WARNING: xxd tool required."
+int_error_detection J hmac-sha256  0 32 512 $KEY_FILE 32
+int_error_detection J hmac-sha256  0 32 4096 $KEY_FILE 32
+
+echo "Journal parameters tests:"
+# Watermark is calculated in kernel, so it can be rounded down/up
+int_journal crc32  4  512  66 1000 hmac-sha256 $KEY_FILE 32 hmac\(sha256\)
+int_journal sha256 32 4096 34 5000 hmac-sha1   $KEY_FILE 16 hmac\(sha1\)
+int_journal sha1   20 512  75 9999 hmac-sha256 $KEY_FILE 32 hmac\(sha256\)
+int_journal sha1   20 512  75 9999 hmac-sha256 $KEY_FILE 4096 hmac\(sha256\)
+
+echo "Journal encryption tests:"
+int_journal_crypt cbc-aes cbc\(aes\) $KEY_FILE 32
+int_journal_crypt cbc-aes cbc\(aes\) $KEY_FILE 16
+int_journal_crypt ctr-aes ctr\(aes\) $KEY_FILE 32
+int_journal_crypt ctr-aes ctr\(aes\) $KEY_FILE 16
+
+echo "Mode tests:"
+int_mode crc32c      4  512
+int_mode crc32       4  512
+int_mode sha1        20 512
+int_mode sha256      32 512
+int_mode hmac-sha256 32 512  $KEY_FILE 32
+int_mode hmac-sha256 32 4096 $KEY_FILE 32
+
+echo -n "Recalculate tags in-kernel:"
+add_device
+if [ -n "$DM_INTEGRITY_RECALC" ] ; then
+	$INTSETUP format -q $DEV --no-wipe || fail "Cannot format device."
+	$INTSETUP open $DEV $DEV_NAME --integrity-recalculate || fail "Cannot activate device."
+	dd if=/dev/mapper/$DEV_NAME of=/dev/null bs=1M 2>/dev/null || fail "Cannot recalculate tags in-kernel"
+	int_check_sum_only 08f63eb27fb9ce2ce903b0a56429c68ce5e209253ba42154841ef045a53839d7
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	echo -n "[OK]"
+	if [ -n "$DM_INTEGRITY_RESET" ] ; then
+		$INTSETUP open $DEV $DEV_NAME -I sha256 --integrity-recalculate-reset || fail "Cannot activate device."
+		dd if=/dev/mapper/$DEV_NAME of=/dev/null bs=1M 2>/dev/null || fail "Cannot reset recalculate tags in-kernel"
+		int_check_sum_only 08f63eb27fb9ce2ce903b0a56429c68ce5e209253ba42154841ef045a53839d7
+		$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+		echo "[RESET OK]"
+	else
+		echo "[RESET N/A]"
+	fi
+else
+	echo "[N/A]"
+fi
+
+echo -n "Separate metadata device:"
+if [ -n "$DM_INTEGRITY_META" ] ; then
+	add_device
+	$INTSETUP format -q $DEV --data-device $DEV2 || fail "Cannot format device."
+	$INTSETUP open $DEV --data-device $DEV2 $DEV_NAME || fail "Cannot activate device."
+	int_check_sum_only 83ee47245398adee79bd9c0a8bc57b821e92aba10f5f9ade8a5d1fae4d8c4302
+	$INTSETUP status $DEV_NAME | grep -q 'metadata device:' || fail
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	echo "[OK]"
+else
+	echo "[N/A]"
+fi
+
+echo -n "Bitmap mode parameters:"
+if [ -n "$DM_INTEGRITY_BITMAP" ] ; then
+	add_device
+	$INTSETUP format -q $DEV --integrity-bitmap-mode $DEV2 || fail "Cannot format device."
+	$INTSETUP open $DEV --integrity-bitmap-mode --bitmap-sectors-per-bit 65536 --bitmap-flush-time 5000 $DEV_NAME || fail "Cannot activate device."
+	$INTSETUP status $DEV_NAME | grep -q 'bitmap 512-byte sectors per bit: 65536' || fail
+	$INTSETUP status $DEV_NAME | grep -q 'bitmap flush interval: 5000 ms' || fail
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	echo "[OK]"
+	echo "Bitmap error detection tests:"
+	int_error_detection B crc32c      0  4 512
+	int_error_detection B crc32c      0  4 4096
+	int_error_detection B sha256      0 32 512
+	int_error_detection B sha256      0 32 4096
+	int_error_detection B hmac-sha256 0 32 512 $KEY_FILE 32
+	int_error_detection B hmac-sha256 0 32 4096 $KEY_FILE 32
+else
+	echo "[N/A]"
+fi
+
+echo -n "Big device:"
+add_device
+DEV_LOOP=$(losetup -f $DEV --show)
+if [ -n "$DEV_LOOP" ] ; then
+dmsetup create $DEV_NAME2 <<EOF
+0 16284 linear $DEV_LOOP 0
+16284 80000000000 zero
+EOF
+	[ ! -b /dev/mapper/$DEV_NAME2 ] && fail
+	$INTSETUP format -q -s 512 --no-wipe /dev/mapper/$DEV_NAME2
+	$INTSETUP open /dev/mapper/$DEV_NAME2 $DEV_NAME || fail
+	D_SIZE=$($INTSETUP dump /dev/mapper/$DEV_NAME2 | grep provided_data_sectors | sed -e 's/.*provided_data_sectors\ \+//g')
+	A_SIZE=$(blockdev --getsz /dev/mapper/$DEV_NAME)
+	# Compare strings (to avoid 64bit integers), not integers
+	[ -n "$A_SIZE" -a "$D_SIZE" != "$A_SIZE" ] && fail
+	echo "[OK]"
+else
+	echo "[N/A]"
+fi
+
+echo -n "Deferred removal of device:"
+add_device
+$INTSETUP format -q $DEV || fail "Cannot format device."
+$INTSETUP open $DEV $DEV_NAME || fail "Cannot activate device."
+dmsetup create $DEV_NAME2 --table "0 8 linear /dev/mapper/$DEV_NAME 0"
+[ ! -b /dev/mapper/$DEV_NAME2 ] && fail
+$INTSETUP close $DEV_NAME >/dev/null 2>&1 && fail
+$INTSETUP -q status $DEV_NAME >/dev/null 2>&1 || fail
+$INTSETUP close --deferred $DEV_NAME >/dev/null 2>&1
+if [ $? -eq 0 ] ; then
+	dmsetup info $DEV_NAME | grep -q "DEFERRED REMOVE" || fail
+	$INTSETUP close --cancel-deferred $DEV_NAME >/dev/null 2>&1
+	dmsetup info $DEV_NAME | grep -q "DEFERRED REMOVE" >/dev/null 2>&1 && fail
+	$INTSETUP close --deferred $DEV_NAME >/dev/null 2>&1
+	dmsetup remove $DEV_NAME2 || fail
+	$INTSETUP -q status $DEV_NAME >/dev/null 2>&1 && fail
+	echo "[OK]"
+else
+	dmsetup remove $DEV_NAME2 >/dev/null 2>&1
+	$INTSETUP close $DEV_NAME >/dev/null 2>&1
+	echo "[N/A]"
+fi
+
+echo -n "Fixed HMAC and legacy flags:"
+if [ -n "$DM_INTEGRITY_HMAC_FIX" ] ; then
+	add_device
+	# only data HMAC
+	ARGS="--integrity hmac-sha256 --integrity-key-file $KEY_FILE --integrity-key-size 32"
+	$INTSETUP format -q $DEV --integrity-legacy-hmac --no-wipe --tag-size 32 $ARGS || fail "Cannot format device."
+	$INTSETUP open $DEV $DEV_NAME --integrity-recalculate $ARGS >/dev/null 2>&1 && fail "Cannot activate device."
+	$INTSETUP open $DEV $DEV_NAME --integrity-legacy-recalculate $ARGS || fail "Cannot activate device."
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	# New version - must fail (no journal HMAC)
+	$INTSETUP format -q $DEV --no-wipe --tag-size 32 $ARGS || fail "Cannot format device."
+	$INTSETUP open $DEV $DEV_NAME --integrity-recalculate $ARGS  >/dev/null 2>&1 && fail "Cannot activate device."
+	$INTSETUP open $DEV $DEV_NAME --integrity-legacy-recalculate $ARGS || fail "Cannot activate device."
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+
+	# data and journal HMAC
+	ARGS="$ARGS --journal-integrity hmac-sha256 --journal-integrity-key-file $KEY_FILE2 --journal-integrity-key-size 32"
+	$INTSETUP format -q $DEV --integrity-legacy-hmac --no-wipe --tag-size 32 $ARGS || fail "Cannot format device."
+	$INTSETUP open $DEV $DEV_NAME --integrity-recalculate $ARGS >/dev/null 2>&1 && fail "Cannot activate device."
+	$INTSETUP open $DEV $DEV_NAME --integrity-legacy-recalculate $ARGS || fail "Cannot activate device."
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	# New fixed version
+	$INTSETUP format -q $DEV --no-wipe --tag-size 32 $ARGS || fail "Cannot format device."
+	$INTSETUP dump $DEV | grep "flags" | grep -q "fix_hmac" || fail "Flag for HMAC not set."
+	$INTSETUP open $DEV $DEV_NAME --integrity-recalculate $ARGS || fail "Cannot activate device."
+	$INTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+	echo "[OK]"
+else
+	echo "[N/A]"
+fi
+
+cleanup

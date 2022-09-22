@@ -1,0 +1,2 @@
+lib/${DEB_HOST_MULTIARCH}/libcryptsetup.la
+lib/${DEB_HOST_MULTIARCH}/cryptsetup/libcryptsetup-token-ssh.la

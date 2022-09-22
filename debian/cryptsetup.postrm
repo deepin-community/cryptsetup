@@ -1,0 +1,26 @@
+#! /bin/sh
+
+set -e
+
+case "$1" in
+    remove)
+	for file in cryptdisks_start cryptdisks_stop; do
+		if [ -L /usr/sbin/$file ]; then
+			rm /usr/sbin/$file
+		fi
+	done
+    ;;
+esac
+
+#DEBHELPER#
+
+# try to remove /etc/init if it exists, it's empty and isn't owned
+# NOTE: this needs to placed *after* the dh_installdeb-replaced snippet
+# which contains calls to `dpkg-maintscript-helper rm_conffile`
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    if [ -d /etc/init ] && ! { dpkg-query -S /etc/init >/dev/null 2>&1 || [ $? -ne 1 ]; } then
+        rmdir --ignore-fail-on-non-empty /etc/init
+    fi
+fi
+
+exit 0

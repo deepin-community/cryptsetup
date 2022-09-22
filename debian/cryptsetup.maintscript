@@ -1,0 +1,2 @@
+rm_conffile /etc/init/cryptdisks-udev.conf 2:2.4.0-1
+rm_conffile /etc/init/cryptdisks.conf 2:2.4.0-1

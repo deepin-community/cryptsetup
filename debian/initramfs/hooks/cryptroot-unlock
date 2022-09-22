@@ -1,0 +1,40 @@
+#!/bin/sh
+
+prereqs()
+{
+    # cryptroot-unlock needs to be run last among crypt* since other hooks might include askpass
+    local req script
+    for req in "${0%/*}"/crypt*; do
+        script="${req##*/}"
+        if [ "$script" != "${0##*/}" ]; then
+            printf '%s\n' "$script"
+        fi
+    done
+}
+
+case "$1" in
+    prereqs)
+        prereqs
+        exit 0
+        ;;
+esac
+
+if [ ! -f "$DESTDIR/lib/cryptsetup/askpass" ]; then
+    # cryptroot-unlock is useless without askpass
+    exit 0
+fi
+
+. /usr/share/initramfs-tools/hook-functions
+if [ ! -f "$DESTDIR/bin/cryptroot-unlock" ] &&
+        ! copy_file script /usr/share/cryptsetup/initramfs/bin/cryptroot-unlock /bin/cryptroot-unlock; then
+    echo "ERROR: Couldn't copy /bin/cryptroot-unlock" >&2
+    exit 1
+fi
+
+if [ -f /etc/initramfs-tools/etc/motd ]; then
+    copy_file text /etc/initramfs-tools/etc/motd /etc/motd
+else
+    cat >>"$DESTDIR/etc/motd" <<- EOF
+		To unlock root partition, and maybe others like swap, run \`cryptroot-unlock\`.
+	EOF
+fi

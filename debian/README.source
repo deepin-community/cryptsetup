@@ -1,0 +1,43 @@
+General maintenance
+
+    This package is maintained in Git via the Alioth pkg-cryptsetup project.
+    Alioth is used only for repository access control and mailinglist hosting,
+    not for any of its other features.
+
+    This package uses the "3.0 (quilt)" source format.
+
+Importing a new upstream release
+
+    Since upstream release 1.7.2, we use cryptographically signed Git release
+    tags as basis for the Debian cryptsetup package.
+
+    To import a new upstream release into our packaging repository, do the
+    following:
+
+    0. Ensure that you have the cryptsetup upstream Git repository available
+       as a remote in the Git repository where you're doing the packaging
+       work and it's up to date:
+
+           git remote add upstream https://gitlab.com/cryptsetup/cryptsetup.git
+           git config remote.upstream.fetch +refs/heads/master:refs/remotes/upstream/master
+           git branch -u refs/remotes/upstream/master upstream/latest
+           git config remote.upstream.tagOpt --tags
+
+    1. Merge the newest upstream release tag (pass --upstream-version=$VERSION
+       if you want a specific upstream version) into the 'debian/latest'
+       branch of your packaging repository:
+
+           gbp import-orig --uscan
+
+       That commands does all the magic, namely
+       - updating the `upstream` remote,
+       - verifying the cryptographic signature on the upstream tag 'v$VERSION',
+       - creating a new tag 'upstream/$VERSION' with 'v$VERSION' as additional parent, and
+       - merging 'upstream/$VERSION' it into 'debian/latest'
+
+    N. After development and testing, the final packages to be uploaded to
+       Debian are built and tagged in the repository as follows:
+
+           gbp buildpackage --git-tag
+
+ -- Jonas Meurer <jonas@freesources.org>  Fri, 15 Jun 2018 13:39:49 +0200

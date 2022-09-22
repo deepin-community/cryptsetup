@@ -1,0 +1,331 @@
+#!/bin/bash
+
+[ -z "$CRYPTSETUP_PATH" ] && CRYPTSETUP_PATH=".."
+CRYPTSETUP=$CRYPTSETUP_PATH/cryptsetup
+MNT_DIR="./mnt_luks"
+DEV_NAME="dummy"
+DEV_NAME2="ymmud"
+PWD1="93R4P4pIqAH8"
+PWD2="mymJeD8ivEhE"
+FAST_PBKDF_OPT="--pbkdf pbkdf2 --pbkdf-force-iterations 1000"
+SKIP_COUNT=0
+
+cleanup() {
+	[ -b /dev/mapper/$DEV_NAME ] && dmsetup remove --retry $DEV_NAME
+	udevadm settle >/dev/null 2>&1
+	if [ -d "$MNT_DIR" ] ; then
+	    umount -f $MNT_DIR 2>/dev/null
+	    rmdir $MNT_DIR 2>/dev/null
+	fi
+	rmmod scsi_debug >/dev/null 2>&1
+}
+
+fail()
+{
+	[ -n "$1" ] && echo "FAIL $1"
+	echo "FAILED backtrace:"
+	while caller $frame; do ((frame++)); done
+	cleanup
+	exit 100
+}
+
+skip()
+{
+	echo "TEST SKIPPED: $1"
+	cleanup
+	exit 77
+}
+
+add_device() {
+	rmmod scsi_debug >/dev/null 2>&1
+	[ -d /sys/module/scsi_debug ] && skip "Cannot use scsi_debug module (in use or compiled-in)."
+
+	modprobe scsi_debug $@ delay=0 >/dev/null 2>&1
+	[ $? -ne 0 ] && skip "This kernel seems to not support proper scsi_debug module."
+
+	sleep 1
+	SCSI_DEV=$(grep -l -e scsi_debug /sys/block/*/device/model | cut -f4 -d /)
+
+	[ -b "/dev/$SCSI_DEV" ] || fail "Cannot find $SCSI_DEV."
+}
+
+function dm_crypt_features()
+{
+	modprobe dm-crypt >/dev/null 2>&1 || fail "dm-crypt failed to load"
+	VER_STR=$(dmsetup targets | grep crypt | cut -f2 -dv)
+	[ -z "$VER_STR" ] && fail "Failed to parse dm-crypt version."
+
+	VER_MAJ=$(echo $VER_STR | cut -f 1 -d.)
+	VER_MIN=$(echo $VER_STR | cut -f 2 -d.)
+	VER_PTC=$(echo $VER_STR | cut -f 3 -d.)
+
+	[ $VER_MAJ -lt 1 ] && return
+	[ $VER_MAJ -gt 1 ] && {
+		DM_PERF_CPU=1
+		DM_SECTOR_SIZE=1
+		test -d /proc/sys/kernel/keys && DM_KEYRING=1
+		return
+	}
+
+	[ $VER_MIN -lt 14 ] && return
+	DM_PERF_CPU=1
+	if [ $VER_MIN -ge 17 -o \( $VER_MIN -eq 14 -a $VER_PTC -ge 5 \) ]; then
+		DM_SECTOR_SIZE=1
+	fi
+	if [ $VER_MIN -gt 18 -o \( $VER_MIN -eq 18 -a $VER_PTC -ge 1 \) ]; then
+		 test -d /proc/sys/kernel/keys && DM_KEYRING=1
+	fi
+
+	[ $VER_MIN -lt 22 ] && return
+	DM_PERF_NO_WORKQUEUE=1
+}
+
+function dm_crypt_keyring_support()
+{
+	VER_STR=$(dmsetup targets | grep crypt | cut -f2 -dv)
+	[ -z "$VER_STR" ] && fail "Failed to parse dm-crypt version."
+
+	VER_MAJ=$(echo $VER_STR | cut -f 1 -d.)
+	VER_MIN=$(echo $VER_STR | cut -f 2 -d.)
+
+	# run the test with dm-crypt v1.15.0+ on purpose
+	# the fix is in dm-crypt v1.18.1+
+	[ $VER_MAJ -gt 1 ] && return 0
+	[ $VER_MAJ -lt 1 ] && return 1
+	[ $VER_MIN -ge 15 ]
+}
+
+format() # format
+{
+	dd if=/dev/zero of=$DEV bs=1M count=32 >/dev/null 2>&1
+
+	echo $PWD1 | $CRYPTSETUP luksFormat --type $1 $DEV -q  $FAST_PBKDF_OPT -c aes-cbc-essiv:sha256
+	[ $? -ne 0 ] && fail "Format failed."
+
+	# test some operation, just in case
+	echo -e "$PWD1\n$PWD2" | $CRYPTSETUP luksAddKey $DEV -i1 --key-slot 1
+	[ $? -ne 0 ] && fail "Keyslot add failed."
+
+	$CRYPTSETUP -q luksKillSlot $DEV 1
+	[ $? -ne 0 ] && fail "Keyslot removal failed."
+}
+
+check_sector_size() # $1 expected sector size
+{
+	$CRYPTSETUP status $DEV_NAME | grep "sector size" | grep -q $1 || fail
+	if [ $S -gt 512 ]; then
+		dmsetup table $DEV_NAME | grep -q "sector_size:$1" || fail
+	fi
+}
+
+if [ $(id -u) != 0 ]; then
+	skip "You must be root to run this test, test skipped."
+fi
+
+dm_crypt_features
+
+[ ! -d $MNT_DIR ] && mkdir $MNT_DIR
+
+echo "[1] Using tmpfs for image"
+DEV="$MNT_DIR/test.img"
+mount -t tmpfs none $MNT_DIR || skip "Mounting tmpfs not available."
+format luks1
+
+echo "[2] Kernel dmcrypt performance options"
+if [ -z "$DM_PERF_CPU" ]; then
+	echo "TEST SKIPPED: dmcrypt options not available"
+	SKIP_COUNT=$((SKIP_COUNT+1))
+else
+	echo -n "PLAIN: same_cpu_crypt submit_from_cpus "
+	echo -e "$PWD1" | $CRYPTSETUP open -q --type plain --hash sha256 $DEV $DEV_NAME --perf-same_cpu_crypt --perf-submit_from_crypt_cpus || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo -n "allow_discards "
+	echo -e "$PWD1" | $CRYPTSETUP open -q --type plain --hash sha256 $DEV $DEV_NAME --perf-same_cpu_crypt --allow-discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo -e "$PWD1" | $CRYPTSETUP open -q --type plain --hash sha256 $DEV $DEV_NAME || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh --hash sha256 -q $DEV_NAME --perf-same_cpu_crypt --allow-discards || fail
+	# Hash affects volume key for plain device. Check we can detect it
+	echo -e "$PWD1" | $CRYPTSETUP refresh -q $DEV_NAME --hash sha512 --perf-same_cpu_crypt --allow-discards 2>/dev/null && fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh --hash sha256 -q $DEV_NAME --allow-discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt && fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh --hash sha256 -q $DEV_NAME || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards && fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt && fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh --hash sha256 $DEV $DEV_NAME2 2>/dev/null && fail
+	if [ -n "$DM_PERF_NO_WORKQUEUE" ]; then
+		echo -n "no_read_workqueue no_write_workqueue"
+		echo -e "$PWD1" | $CRYPTSETUP refresh --hash sha256 -q $DEV_NAME --perf-no_read_workqueue --perf-no_write_workqueue || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_read_workqueue || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_write_workqueue || fail
+	fi
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo
+
+	echo -n "LUKS: same_cpu_crypt submit_from_cpus "
+	echo -e "$PWD1" | $CRYPTSETUP open --type luks1 $DEV $DEV_NAME --perf-same_cpu_crypt --perf-submit_from_crypt_cpus || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo -n "allow_discards "
+	echo -e "$PWD1" | $CRYPTSETUP open --type luks1 $DEV $DEV_NAME --perf-same_cpu_crypt --allow-discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV_NAME --allow-discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt && fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV_NAME --allow-discards --perf-same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV_NAME || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards && fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt && fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME2 2>/dev/null && fail
+	if [ -n "$DM_PERF_NO_WORKQUEUE" ]; then
+		echo -n "no_read_workqueue no_write_workqueue"
+		echo -e "$PWD1" | $CRYPTSETUP refresh $DEV_NAME  --perf-no_read_workqueue --perf-no_write_workqueue || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_read_workqueue || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_write_workqueue || fail
+	fi
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo
+
+	format luks2
+	echo -n "LUKS2: same_cpu_crypt submit_from_cpus "
+	echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME --perf-same_cpu_crypt --perf-submit_from_crypt_cpus --persistent || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	# Stored in metadata
+	echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo -n "allow_discards [persistent flags] "
+	echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME --perf-same_cpu_crypt --allow-discards --persistent || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP close $DEV_NAME || fail
+
+	echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME --persistent || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt && fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards && fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME --perf-same_cpu_crypt --perf-submit_from_crypt_cpus --persistent || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV_NAME || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME --perf-same_cpu_crypt --allow-discards --persistent || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV_NAME || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME --perf-submit_from_crypt_cpus || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus || fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus && fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME --persistent || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q same_cpu_crypt && fail
+	$CRYPTSETUP status $DEV_NAME | grep -q discards && fail
+	$CRYPTSETUP status $DEV_NAME | grep -q submit_from_crypt_cpus && fail
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME --disable-keyring || fail
+	$CRYPTSETUP status $DEV_NAME | grep -q keyring && fail
+	if [ -n "$DM_KEYRING" ]; then
+		echo -n "keyring "
+		echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q keyring || fail
+	fi
+	if [ -n "$DM_PERF_NO_WORKQUEUE" ]; then
+		echo -n "no_read_workqueue no_write_workqueue"
+		echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME --perf-no_read_workqueue --perf-no_write_workqueue --persistent || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_read_workqueue || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_write_workqueue || fail
+		$CRYPTSETUP close $DEV_NAME || fail
+		echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_read_workqueue || fail
+		$CRYPTSETUP status $DEV_NAME | grep -q no_write_workqueue || fail
+	fi
+	echo -e "$PWD1" | $CRYPTSETUP refresh $DEV $DEV_NAME2 2>/dev/null && fail
+	$CRYPTSETUP close $DEV_NAME || fail
+	echo
+fi
+
+echo "[3] Kernel dmcrypt sector size options"
+echo -e "$PWD1" | $CRYPTSETUP open --type plain --hash sha256 $DEV $DEV_NAME --sector-size 4096 >/dev/null 2>&1
+ret=$?
+[ -z "$DM_SECTOR_SIZE" -a $ret -eq 0 ] && fail "cryptsetup activated device with --sector-size option on incompatible kernel!"
+if [ $ret -ne 0 ] ; then
+	SKIP_COUNT=$((SKIP_COUNT+1))
+	if [ $SKIP_COUNT -ge 2 ]; then
+		skip "dmcrypt sector-size option not available"
+	fi
+	echo "TEST SKIPPED: dmcrypt sector-size option not available"
+else
+	$CRYPTSETUP close $DEV_NAME || fail
+
+	echo -n "PLAIN sector size:"
+	echo -e "$PWD1" | $CRYPTSETUP open --type plain --hash sha256 $DEV $DEV_NAME --sector-size 1234 >/dev/null 2>&1 && fail
+	for S in 512 1024 2048 4096; do
+		echo -n "[$S]"
+		echo -e "$PWD1" | $CRYPTSETUP open -q --type plain --hash sha256 $DEV $DEV_NAME --sector-size $S || fail
+		check_sector_size $S
+		$CRYPTSETUP close $DEV_NAME || fail
+	done
+
+	echo -e "$PWD1" | $CRYPTSETUP open --type plain --hash sha256 $DEV $DEV_NAME --iv-large-sectors >/dev/null 2>&1 && fail
+	for S in 1024 2048 4096; do
+		echo -n "[$S/IV]"
+		echo -e "$PWD1" | $CRYPTSETUP open -q --type plain --hash sha256 $DEV $DEV_NAME --sector-size $S --iv-large-sectors || fail
+		check_sector_size $S
+		dmsetup table $DEV_NAME | grep -q "iv_large_sectors" || fail
+		$CRYPTSETUP close $DEV_NAME || fail
+	done
+	echo
+
+	echo -n "LUKS2 sector size:"
+	echo -e "$PWD1" | $CRYPTSETUP luksFormat --type luks2 -$DEV --sector-size 1234 >/dev/null 2>&1 && fail
+	for S in 512 1024 2048 4096; do
+		echo -n "[$S]"
+		echo -e "$PWD1" | $CRYPTSETUP -q luksFormat --type luks2 --pbkdf pbkdf2 --pbkdf-force-iterations 1000 $DEV --sector-size $S || fail
+		echo -e "$PWD1" | $CRYPTSETUP open $DEV $DEV_NAME || fail
+		check_sector_size $S
+		$CRYPTSETUP close $DEV_NAME || fail
+	done
+	echo
+fi
+
+echo "[4] Disappeared device test:"
+KEY="00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"
+for F in LUKS1 LUKS2 BITLK TCRYPT; do
+	add_device dev_size_mb=1 sector_size=512 num_tgts=1 lbpu=1
+	echo -n "$F"
+	# Fake CRYPT UUID to force code to parse type-specific path
+	dmsetup create $DEV_NAME --uuid CRYPT-$F-$DEV_NAME --table "0 1024 crypt aes-xts-plain64 $KEY 16 /dev/$SCSI_DEV 16"
+	$CRYPTSETUP status $DEV_NAME >/dev/null 2>&1 || fail
+	echo 1 > /sys/block/$SCSI_DEV/device/delete
+	udevadm settle >/dev/null 2>&1
+	$CRYPTSETUP status $DEV_NAME >/dev/null 2>&1 || fail
+	dmsetup remove $DEV_NAME --retry || fail
+	rmmod scsi_debug >/dev/null 2>&1
+	echo -n "[OK] "
+done
+echo
+
+cleanup
+exit 0
