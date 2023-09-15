@@ -1,8 +1,8 @@
 /*
  * Password quality check wrapper
  *
- * Copyright (C) 2012-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2021 Milan Broz
+ * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -49,10 +49,8 @@ static int tools_check_pwquality(const char *password)
 		log_err(_("Password quality check failed:\n %s"),
 			pwquality_strerror(NULL, 0, r, auxerror));
 		r = -EPERM;
-	} else {
-		log_dbg("New password libpwquality score is %d.", r);
+	} else
 		r = 0;
-	}
 
 	pwquality_free_settings(pwq);
 	return r;
@@ -106,6 +104,7 @@ static int tools_check_password(const char *password)
 
 /* Password reading helpers */
 
+/* coverity[ -taint_source : arg-1 ] */
 static ssize_t read_tty_eol(int fd, char *pass, size_t maxlen)
 {
 	bool eol = false;
@@ -128,14 +127,17 @@ static ssize_t read_tty_eol(int fd, char *pass, size_t maxlen)
 }
 
 /* The pass buffer is zeroed and has trailing \0 already " */
-static int untimed_read(int fd, char *pass, size_t maxlen)
+static int untimed_read(int fd, char *pass, size_t maxlen, size_t *realsize)
 {
 	ssize_t i;
 
 	i = read_tty_eol(fd, pass, maxlen);
 	if (i > 0) {
-		if (pass[i-1] == '\n')
+		if (pass[i-1] == '\n') {
 			pass[i-1] = '\0';
+			*realsize = i - 1;
+		} else
+			*realsize = i;
 		i = 0;
 	} else if (i == 0) /* empty input */
 		i = -1;
@@ -143,7 +145,7 @@ static int untimed_read(int fd, char *pass, size_t maxlen)
 	return i;
 }
 
-static int timed_read(int fd, char *pass, size_t maxlen, long timeout)
+static int timed_read(int fd, char *pass, size_t maxlen, size_t *realsize, long timeout)
 {
 	struct timeval t;
 	fd_set fds = {}; /* Just to avoid scan-build false report for FD_SET */
@@ -155,7 +157,7 @@ static int timed_read(int fd, char *pass, size_t maxlen, long timeout)
 	t.tv_usec = 0;
 
 	if (select(fd+1, &fds, NULL, NULL, &t) > 0)
-		failed = untimed_read(fd, pass, maxlen);
+		failed = untimed_read(fd, pass, maxlen, realsize);
 
 	return failed;
 }
@@ -166,6 +168,7 @@ static int interactive_pass(const char *prompt, char *pass, size_t maxlen,
 	struct termios orig, tmp;
 	int failed = -1;
 	int infd, outfd;
+	size_t realsize = 0;
 
 	if (maxlen < 1)
 		return failed;
@@ -189,12 +192,15 @@ static int interactive_pass(const char *prompt, char *pass, size_t maxlen,
 
 	tcsetattr(infd, TCSAFLUSH, &tmp);
 	if (timeout)
-		failed = timed_read(infd, pass, maxlen, timeout);
+		failed = timed_read(infd, pass, maxlen, &realsize, timeout);
 	else
-		failed = untimed_read(infd, pass, maxlen);
+		failed = untimed_read(infd, pass, maxlen, &realsize);
 	tcsetattr(infd, TCSAFLUSH, &orig);
 out:
 	if (!failed && write(outfd, "\n", 1)) {};
+
+	if (realsize == maxlen)
+		log_dbg("Read stopped at maximal interactive input length, passphrase can be trimmed.");
 
 	if (infd != STDIN_FILENO)
 		close(infd);
@@ -247,6 +253,7 @@ static int crypt_get_key_tty(const char *prompt,
 	}
 
 	*key = pass;
+	/* coverity[string_null] (crypt_safe_alloc wipes string with additional \0) */
 	*key_size = strlen(pass);
 	r = 0;
 out:
@@ -279,14 +286,18 @@ int tools_get_key(const char *prompt,
 			if (keyfile_offset) {
 				log_err(_("Cannot use offset with terminal input."));
 			} else {
+				r = 0;
 				if (!prompt && !crypt_get_device_name(cd))
-					snprintf(tmp, sizeof(tmp), _("Enter passphrase: "));
+					r = snprintf(tmp, sizeof(tmp), _("Enter passphrase: "));
 				else if (!prompt) {
 					backing_file = crypt_loop_backing_file(crypt_get_device_name(cd));
-					snprintf(tmp, sizeof(tmp), _("Enter passphrase for %s: "), backing_file ?: crypt_get_device_name(cd));
+					r = snprintf(tmp, sizeof(tmp), _("Enter passphrase for %s: "), backing_file ?: crypt_get_device_name(cd));
 					free(backing_file);
 				}
-				r = crypt_get_key_tty(prompt ?: tmp, key, key_size, timeout, verify);
+				if (r >= 0)
+					r = crypt_get_key_tty(prompt ?: tmp, key, key_size, timeout, verify);
+				else
+					r = -EINVAL;
 			}
 		} else {
 			log_dbg("STDIN descriptor passphrase entry requested.");
@@ -317,60 +328,4 @@ void tools_passphrase_msg(int r)
 		log_err(_("No key available with this passphrase."));
 	else if (r == -ENOENT)
 		log_err(_("No usable keyslot is available."));
-}
-
-int tools_read_mk(const char *file, char **key, int keysize)
-{
-	int fd = -1, r = -EINVAL;
-
-	if (keysize <= 0 || !key)
-		return -EINVAL;
-
-	*key = crypt_safe_alloc(keysize);
-	if (!*key)
-		return -ENOMEM;
-
-	fd = open(file, O_RDONLY);
-	if (fd == -1) {
-		log_err(_("Cannot read keyfile %s."), file);
-		goto out;
-	}
-
-	if (read_buffer(fd, *key, keysize) != keysize) {
-		log_err(_("Cannot read %d bytes from keyfile %s."), keysize, file);
-		goto out;
-	}
-	r = 0;
-out:
-	if (fd != -1)
-		close(fd);
-
-	if (r) {
-		crypt_safe_free(*key);
-		*key = NULL;
-	}
-
-	return r;
-}
-
-int tools_write_mk(const char *file, const char *key, int keysize)
-{
-	int fd, r = -EINVAL;
-
-	if (keysize <= 0 || !key)
-		return -EINVAL;
-
-	fd = open(file, O_CREAT|O_EXCL|O_WRONLY, S_IRUSR);
-	if (fd < 0) {
-		log_err(_("Cannot open keyfile %s for write."), file);
-		return r;
-	}
-
-	if (write_buffer(fd, key, keysize) == keysize)
-		r = 0;
-	else
-		log_err(_("Cannot write to keyfile %s."), file);
-
-	close(fd);
-	return r;
 }

@@ -2,8 +2,8 @@
  * utils_crypt - cipher utilities for cryptsetup
  *
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2021 Milan Broz
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -30,6 +30,8 @@
 
 #include "libcryptsetup.h"
 #include "utils_crypt.h"
+
+#define MAX_CAPI_LEN_STR "143" /* for sscanf of crypto API string + 16  + \0 */
 
 int crypt_parse_name_and_mode(const char *s, char *cipher, int *key_nums,
 			      char *cipher_mode)
@@ -152,10 +154,50 @@ int crypt_parse_pbkdf(const char *s, const char **pbkdf)
 	return 0;
 }
 
+/*
+ * Thanks Mikulas Patocka for these two char converting functions.
+ *
+ * This function is used to load cryptographic keys, so it is coded in such a
+ * way that there are no conditions or memory accesses that depend on data.
+ *
+ * Explanation of the logic:
+ * (ch - '9' - 1) is negative if ch <= '9'
+ * ('0' - 1 - ch) is negative if ch >= '0'
+ * we "and" these two values, so the result is negative if ch is in the range
+ * '0' ... '9'
+ * we are only interested in the sign, so we do a shift ">> 8"; note that right
+ * shift of a negative value is implementation-defined, so we cast the
+ * value to (unsigned) before the shift --- we have 0xffffff if ch is in
+ * the range '0' ... '9', 0 otherwise
+ * we "and" this value with (ch - '0' + 1) --- we have a value 1 ... 10 if ch is
+ * in the range '0' ... '9', 0 otherwise
+ * we add this value to -1 --- we have a value 0 ... 9 if ch is in the range '0'
+ * ... '9', -1 otherwise
+ * the next line is similar to the previous one, but we need to decode both
+ * uppercase and lowercase letters, so we use (ch & 0xdf), which converts
+ * lowercase to uppercase
+ */
+static int hex_to_bin(unsigned char ch)
+{
+	unsigned char cu = ch & 0xdf;
+	return -1 +
+		((ch - '0' +  1) & (unsigned)((ch - '9' - 1) & ('0' - 1 - ch)) >> 8) +
+		((cu - 'A' + 11) & (unsigned)((cu - 'F' - 1) & ('A' - 1 - cu)) >> 8);
+}
+
+static char hex2asc(unsigned char c)
+{
+	return c + '0' + ((unsigned)(9 - c) >> 4 & 0x27);
+}
+
 ssize_t crypt_hex_to_bytes(const char *hex, char **result, int safe_alloc)
 {
-	char buf[3] = "xx\0", *endp, *bytes;
+	char *bytes;
 	size_t i, len;
+	int bl, bh;
+
+	if (!hex || !result)
+		return -EINVAL;
 
 	len = strlen(hex);
 	if (len % 2)
@@ -167,15 +209,57 @@ ssize_t crypt_hex_to_bytes(const char *hex, char **result, int safe_alloc)
 		return -ENOMEM;
 
 	for (i = 0; i < len; i++) {
-		memcpy(buf, &hex[i * 2], 2);
-		bytes[i] = strtoul(buf, &endp, 16);
-		if (endp != &buf[2]) {
+		bh = hex_to_bin(hex[i * 2]);
+		bl = hex_to_bin(hex[i * 2 + 1]);
+		if (bh == -1 || bl == -1) {
 			safe_alloc ? crypt_safe_free(bytes) : free(bytes);
 			return -EINVAL;
 		}
+		bytes[i] = (bh << 4) | bl;
 	}
 	*result = bytes;
 	return i;
+}
+
+char *crypt_bytes_to_hex(size_t size, const char *bytes)
+{
+	unsigned i;
+	char *hex;
+
+	if (size && !bytes)
+		return NULL;
+
+	/* Alloc adds trailing \0 */
+	if (size == 0)
+		hex = crypt_safe_alloc(2);
+	else
+		hex = crypt_safe_alloc(size * 2 + 1);
+	if (!hex)
+		return NULL;
+
+	if (size == 0)
+		hex[0] = '-';
+	else for (i = 0; i < size; i++) {
+		hex[i * 2]     = hex2asc((const unsigned char)bytes[i] >> 4);
+		hex[i * 2 + 1] = hex2asc((const unsigned char)bytes[i] & 0xf);
+	}
+
+	return hex;
+}
+
+void crypt_log_hex(struct crypt_device *cd,
+		   const char *bytes, size_t size,
+		   const char *sep, int numwrap, const char *wrapsep)
+{
+	unsigned i;
+
+	for (i = 0; i < size; i++) {
+		if (wrapsep && numwrap && i && !(i % numwrap))
+			crypt_logf(cd, CRYPT_LOG_NORMAL, wrapsep);
+		crypt_logf(cd, CRYPT_LOG_NORMAL, "%c%c%s",
+			   hex2asc((const unsigned char)bytes[i] >> 4),
+			   hex2asc((const unsigned char)bytes[i] & 0xf), sep);
+	}
 }
 
 bool crypt_is_cipher_null(const char *cipher_spec)
@@ -183,4 +267,81 @@ bool crypt_is_cipher_null(const char *cipher_spec)
 	if (!cipher_spec)
 		return false;
 	return (strstr(cipher_spec, "cipher_null") || !strcmp(cipher_spec, "null"));
+}
+
+int crypt_capi_to_cipher(char **org_c, char **org_i, const char *c_dm, const char *i_dm)
+{
+	char cipher[MAX_CAPI_ONE_LEN], mode[MAX_CAPI_ONE_LEN], iv[MAX_CAPI_ONE_LEN],
+	     auth[MAX_CAPI_ONE_LEN], tmp[MAX_CAPI_LEN], dmcrypt_tmp[MAX_CAPI_LEN*2],
+	     capi[MAX_CAPI_LEN+1];
+	size_t len;
+	int i;
+
+	if (!c_dm)
+		return -EINVAL;
+
+	/* legacy mode */
+	if (strncmp(c_dm, "capi:", 4)) {
+		if (!(*org_c = strdup(c_dm)))
+			return -ENOMEM;
+		if (i_dm) {
+			if (!(*org_i = strdup(i_dm))) {
+				free(*org_c);
+				*org_c = NULL;
+				return -ENOMEM;
+			}
+		} else
+			*org_i = NULL;
+		return 0;
+	}
+
+	/* modes with capi: prefix */
+	i = sscanf(c_dm, "capi:%" MAX_CAPI_LEN_STR "[^-]-%" MAX_CAPI_ONE_LEN_STR "s", tmp, iv);
+	if (i != 2)
+		return -EINVAL;
+
+	len = strlen(tmp);
+	if (len < 2)
+		return -EINVAL;
+
+	if (tmp[len-1] == ')')
+		tmp[len-1] = '\0';
+
+	if (sscanf(tmp, "rfc4309(%" MAX_CAPI_LEN_STR "s", capi) == 1) {
+		if (!(*org_i = strdup("aead")))
+			return -ENOMEM;
+	} else if (sscanf(tmp, "rfc7539(%" MAX_CAPI_LEN_STR "[^,],%" MAX_CAPI_ONE_LEN_STR "s", capi, auth) == 2) {
+		if (!(*org_i = strdup(auth)))
+			return -ENOMEM;
+	} else if (sscanf(tmp, "authenc(%" MAX_CAPI_ONE_LEN_STR "[^,],%" MAX_CAPI_LEN_STR "s", auth, capi) == 2) {
+		if (!(*org_i = strdup(auth)))
+			return -ENOMEM;
+	} else {
+		if (i_dm) {
+			if (!(*org_i = strdup(i_dm)))
+				return -ENOMEM;
+		} else
+			*org_i = NULL;
+		memset(capi, 0, sizeof(capi));
+		strncpy(capi, tmp, sizeof(capi)-1);
+	}
+
+	i = sscanf(capi, "%" MAX_CAPI_ONE_LEN_STR "[^(](%" MAX_CAPI_ONE_LEN_STR "[^)])", mode, cipher);
+	if (i == 2)
+		i = snprintf(dmcrypt_tmp, sizeof(dmcrypt_tmp), "%s-%s-%s", cipher, mode, iv);
+	else
+		i = snprintf(dmcrypt_tmp, sizeof(dmcrypt_tmp), "%s-%s", capi, iv);
+	if (i < 0 || (size_t)i >= sizeof(dmcrypt_tmp)) {
+		free(*org_i);
+		*org_i = NULL;
+		return -EINVAL;
+	}
+
+	if (!(*org_c = strdup(dmcrypt_tmp))) {
+		free(*org_i);
+		*org_i = NULL;
+		return -ENOMEM;
+	}
+
+	return 0;
 }

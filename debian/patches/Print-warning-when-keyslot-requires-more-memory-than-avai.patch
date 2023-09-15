@@ -1,0 +1,49 @@
+From: Milan Broz <gmazyland@gmail.com>
+Date: Tue, 28 Feb 2023 14:18:10 +0100
+Subject: Print warning when keyslot requires more memory than available
+
+This warning is displayed only if maximum memory was adjusted:
+no swap, not enough memory, but is not printed if user set keyslot
+memory cost above default limit intentionally.
+
+In the latter case we have to check all available memory and guess
+if swap is enough - this is not job af cryptsetup and also
+it should not excessively parse any /sys files during keyslot open.
+
+Origin: https://gitlab.com/cryptsetup/cryptsetup/-/commit/27f8e5c08f0e0054225c9a2b1eda5b4200d4565b
+Bug: https://gitlab.com/cryptsetup/cryptsetup/-/issues/802#note_1287298872
+Bug-Debian: https://bugs.debian.org/1032734
+---
+ lib/luks2/luks2_keyslot_luks2.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/lib/luks2/luks2_keyslot_luks2.c b/lib/luks2/luks2_keyslot_luks2.c
+index 491dcad..3be1135 100644
+--- a/lib/luks2/luks2_keyslot_luks2.c
++++ b/lib/luks2/luks2_keyslot_luks2.c
+@@ -307,7 +307,7 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
+ 	char *volume_key, size_t volume_key_len)
+ {
+ 	struct volume_key *derived_key = NULL;
+-	struct crypt_pbkdf_type pbkdf;
++	struct crypt_pbkdf_type pbkdf, *cd_pbkdf;
+ 	char *AfKey = NULL;
+ 	size_t AFEKSize;
+ 	const char *af_hash = NULL;
+@@ -360,6 +360,16 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
+ 		goto out;
+ 	}
+ 
++	/*
++	 * Print warning when keyslot requires more memory than available
++	 * (if maximum memory was adjusted - no swap, not enough memory),
++	 * but be silent if user set keyslot memory cost above default limit intentionally.
++	 */
++	cd_pbkdf = crypt_get_pbkdf(cd);
++	if (cd_pbkdf->max_memory_kb && pbkdf.max_memory_kb > cd_pbkdf->max_memory_kb &&
++	    pbkdf.max_memory_kb <= DEFAULT_LUKS2_MEMORY_KB)
++		log_std(cd, _("Warning: keyslot operation could fail as it requires more than available memory.\n"));
++
+ 	/*
+ 	 * If requested, serialize unlocking for memory-hard KDF. Usually NOOP.
+ 	 */

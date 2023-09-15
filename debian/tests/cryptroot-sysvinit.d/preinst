@@ -1,0 +1,16 @@
+cat >/etc/crypttab <<-EOF
+	vda3_crypt /dev/vda3 /etc/homefs.key luks,discard
+	vda4_crypt /dev/vda4 /dev/urandom plain,cipher=aes-xts-plain64,size=256,discard,swap
+	vda5_crypt UUID=$(blkid -s UUID -o value /dev/vda5) none luks,discard
+EOF
+
+cat >/etc/fstab <<-EOF
+	/dev/mapper/vda3_crypt /home auto defaults          0 2
+	/dev/mapper/vda4_crypt none  swap sw                0 0
+	/dev/mapper/vda5_crypt /     auto errors=remount-ro 0 1
+	UUID=$(blkid -s UUID -o value /dev/vda2) /boot auto defaults 0 2
+EOF
+
+echo "RESUME=none" >/etc/initramfs-tools/conf.d/resume
+
+# vim: set filetype=sh :

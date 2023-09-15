@@ -144,3 +144,24 @@ CRYPTSETUP_2.4 {
 		crypt_token_external_disable;
 		crypt_token_external_path;
 } CRYPTSETUP_2.0;
+
+CRYPTSETUP_2.5 {
+	global:
+		crypt_get_label;
+		crypt_get_subsystem;
+		crypt_resume_by_token_pin;
+} CRYPTSETUP_2.4;
+
+CRYPTSETUP_2.6 {
+	global:
+		crypt_keyslot_context_free;
+		crypt_keyslot_context_init_by_passphrase;
+		crypt_keyslot_context_init_by_keyfile;
+		crypt_keyslot_context_init_by_token;
+		crypt_keyslot_context_init_by_volume_key;
+		crypt_keyslot_context_get_error;
+		crypt_keyslot_context_set_pin;
+		crypt_keyslot_context_get_type;
+		crypt_keyslot_add_by_keyslot_context;
+		crypt_volume_key_get_by_keyslot_context;
+} CRYPTSETUP_2.5;

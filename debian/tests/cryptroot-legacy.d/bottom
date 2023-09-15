@@ -1,0 +1,9 @@
+umount "$ROOT/boot"
+umount "$ROOT"
+
+swapoff /dev/cryptvg/swap
+lvm vgchange -an "cryptvg"
+
+cryptsetup close "vda3_crypt"
+
+# vim: set filetype=sh :

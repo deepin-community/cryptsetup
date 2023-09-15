@@ -1,8 +1,8 @@
 /*
  * Metadata on-disk locking for processes serialization
  *
- * Copyright (C) 2016-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2021 Ondrej Kozina
+ * Copyright (C) 2016-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -32,7 +32,6 @@
 # include <sys/sysmacros.h>     /* for major, minor */
 #endif
 #include <libgen.h>
-#include <assert.h>
 
 #include "internal.h"
 #include "utils_device_locking.h"
@@ -106,7 +105,7 @@ static int open_lock_dir(struct crypt_device *cd, const char *dir, const char *b
 	lockdfd = openat(dirfd, base, O_RDONLY | O_NOFOLLOW | O_DIRECTORY | O_CLOEXEC);
 	if (lockdfd < 0) {
 		if (errno == ENOENT) {
-			log_dbg(cd, _("Locking directory %s/%s will be created with default compiled-in permissions."), dir, base);
+			log_dbg(cd, "Locking directory %s/%s will be created with default compiled-in permissions.", dir, base);
 
 			/* success or failure w/ errno == EEXIST either way just try to open the 'base' directory again */
 			if (mkdirat(dirfd, base, DEFAULT_LUKS2_LOCK_DIR_PERMS) && errno != EEXIST)
@@ -229,7 +228,7 @@ static void release_lock_handle(struct crypt_device *cd, struct crypt_lock_handl
 	    !stat(res, &buf_b) && /* does path file still exist? */
 	    same_inode(buf_a, buf_b)) { /* is it same id as the one referenced by fd? */
 		/* coverity[toctou] */
-		if (unlink(res)) /* yes? unlink the file */
+		if (unlink(res)) /* yes? unlink the file. lgtm[cpp/toctou-race-condition] */
 			log_dbg(cd, "Failed to unlink resource file: %s", res);
 	}
 
@@ -240,7 +239,7 @@ static void release_lock_handle(struct crypt_device *cd, struct crypt_lock_handl
 	    !stat(res, &buf_b) && /* does path file still exist? */
 	    same_inode(buf_a, buf_b)) { /* is it same id as the one referenced by fd? */
 		/* coverity[toctou] */
-		if (unlink(res)) /* yes? unlink the file */
+		if (unlink(res)) /* yes? unlink the file. lgtm[cpp/toctou-race-condition] */
 			log_dbg(cd, "Failed to unlink resource file: %s", res);
 	}
 
@@ -505,11 +504,11 @@ int device_locked_verify(struct crypt_device *cd, int dev_fd, struct crypt_lock_
 
 	/* if device handle is regular file the handle must match the lock handle */
 	if (S_ISREG(dev_st.st_mode)) {
-		log_dbg(cd, "Veryfing locked device handle (regular file)");
+		log_dbg(cd, "Verifying locked device handle (regular file)");
 		if (!same_inode(dev_st, lck_st))
 			return 1;
 	} else if (S_ISBLK(dev_st.st_mode)) {
-		log_dbg(cd, "Veryfing locked device handle (bdev)");
+		log_dbg(cd, "Verifying locked device handle (bdev)");
 		if (resource_by_devno(res, sizeof(res), dev_st.st_rdev, 1) ||
 		    stat(res, &st) ||
 		    !same_inode(lck_st, st))

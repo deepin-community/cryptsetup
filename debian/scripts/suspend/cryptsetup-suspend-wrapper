@@ -1,6 +1,25 @@
 #!/bin/sh
 
-set -e
+# Wrapper for cryptsetup-suspend(7)
+#
+# Copyright © 2019-2020 Tim <tim@systemli.org>
+#           © 2019-2020 Jonas Meurer <jonas@freesources.org>
+#           © 2020-2022 Guilhem Moulin <guilhem@debian.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -ue
 PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 export PATH
 
@@ -9,10 +28,9 @@ export PATH
 . /lib/cryptsetup/functions
 
 INITRAMFS_MNT="/run/cryptsetup/cryptsetup-suspend-initramfs"
-INITRAMFS_DIR="$INITRAMFS_MNT"
-BIND_PATHS="/sys /proc /dev /run"
 SYSTEM_SLEEP_PATH="/lib/systemd/system-sleep"
 CONFIG_FILE="/etc/cryptsetup/suspend.conf"
+unset -v INITRAMFS_DIR
 
 read_config() {
     # define defaults
@@ -28,6 +46,7 @@ read_config() {
 # Run all executable scripts in directory SYSTEM_SLEEP_PATH with arguments ARGS
 # mimic systemd behavior
 run_dir() {
+    [ -d "$SYSTEM_SLEEP_PATH" ] || return 0
     find "$SYSTEM_SLEEP_PATH" -type f -executable -execdir {} "$@" \;
 }
 
@@ -38,13 +57,21 @@ log_error() {
 }
 
 mount_initramfs() {
-    local k v u IFS MemAvailable=0 SwapFree=0
+    local k v u IFS MemAvailable=0 SwapFree=0 new="n"
     # update-initramfs(8) hardcodes /boot also: there is a `-b bootdir`
     # option but no config file to put it to
     local INITRAMFS="/boot/initrd.img-$(uname -r)" p
     if [ ! -f "$INITRAMFS" ]; then
         log_error "No initramfs found at $INITRAMFS"
         exit 1
+    fi
+
+    if [ -d "$INITRAMFS_MNT" ] && [ ! "$INITRAMFS" -ot "$INITRAMFS_MNT" ]; then
+        # need to unpack again: initramfs is newer than what we unpacked earlier
+        if mountpoint -q "$INITRAMFS_MNT"; then
+            umount "$INITRAMFS_MNT"
+        fi
+        rmdir "$INITRAMFS_MNT" || exit 1
     fi
 
     if [ ! -d "$INITRAMFS_MNT" ]; then
@@ -67,110 +94,138 @@ mount_initramfs() {
             exit 1
         fi
 
-        mkdir "$INITRAMFS_MNT"
-        mount -t ramfs -o mode=0755 ramfs "$INITRAMFS_MNT"
+        mkdir -m0700 "$INITRAMFS_MNT"
+        mount -t ramfs -o nodev,mode=0700 ramfs "$INITRAMFS_MNT"
 
         # extract initrd.img to initramfs dir
         unmkinitramfs "$INITRAMFS" "$INITRAMFS_MNT"
+        new="y"
     fi
 
-    # unmkinitramfs extracts microcode into folders "early*" and the actual initramfs into "main"
-    if [ -d "$INITRAMFS_MNT/main" ]; then
+    # unmkinitramfs(8) extracts microcode into folders "early*" and the actual initramfs into "main"
+    if [ -f "$INITRAMFS_MNT/sbin/cryptsetup" ]; then
+        INITRAMFS_DIR="$INITRAMFS_MNT"
+    elif [ -f "$INITRAMFS_MNT/main/sbin/cryptsetup" ]; then
         INITRAMFS_DIR="$INITRAMFS_MNT/main"
+    else
+        log_error "Directory $INITRAMFS_MNT has unpected content" >&2
+        exit 1
     fi
 
-    # copy all firmware files to ramdisk to prevent dead-lock
-    # see https://salsa.debian.org/mejo/cryptsetup-suspend/issues/38)
-    # XXX we should probably identify which firmwares need to be loaded
-    # and only copy those
-    if [ -d /lib/firmware ]; then
-        rm -rf -- "$INITRAMFS_DIR/lib/firmware"
-        cp -rT -- /lib/firmware "$INITRAMFS_DIR/lib/firmware"
-    fi
+    if [ "$new" = "y" ]; then
+        for p in /dev /proc /run /sys; do
+            if [ ! -d "$INITRAMFS_DIR$p" ]; then
+                mkdir -m0755 "$INITRAMFS_DIR$p"
+            fi
+        done
 
-    for p in $BIND_PATHS; do
-        mkdir -p -m 0755 "$INITRAMFS_DIR$p"
-        if [ "$p" = "/proc" ]; then
-            mount -t proc /proc "$INITRAMFS_DIR/proc"
-        else
-            mount --rbind "$p" "$INITRAMFS_DIR$p"
+        # copy our binary to ramdisk
+        install -m0755 -t "$INITRAMFS_DIR/bin" /lib/cryptsetup/scripts/suspend/cryptsetup-suspend
+
+        # copy all firmware files to ramdisk to prevent dead-lock
+        # see https://salsa.debian.org/mejo/cryptsetup-suspend/issues/38)
+        # TODO we should try to identify which firmwares need to be loaded
+        # and only copy those
+        if [ -d /lib/firmware ] && [ ! -d "$INITRAMFS_DIR/lib/firmware" ]; then
+            cp -dR -T -- /lib/firmware "$INITRAMFS_DIR/lib/firmware"
         fi
-    done
-    mount --make-rprivate "$INITRAMFS_MNT"
+    fi
+
+    # from initramfs-tools-core's /usr/share/initramfs-tools/init
+    mount -t devtmpfs -o noexec,nosuid,mode=0755 udev "$INITRAMFS_DIR/dev"
+    mount -t proc -o nodev,noexec,nosuid proc "$INITRAMFS_DIR/proc"
+    mount -t ramfs -o nodev,noexec,nosuid,mode=0755 ramfs "$INITRAMFS_DIR/run"
+    mount -t sysfs -o nodev,noexec,nosuid sysfs "$INITRAMFS_DIR/sys"
+
+    [ -d "$INITRAMFS_DIR/dev/pts" ] || mkdir -m0755 "$INITRAMFS_DIR/dev/pts"
+    mount -t devpts -o noexec,nosuid,gid=5,mode=0620 devpts "$INITRAMFS_DIR/dev/pts" || true
+
+    # remount read-only, private and unbindable
+    mount -oremount,ro --make-rprivate --make-runbindable "$INITRAMFS_MNT"
 }
 
 umount_initramfs() {
-    if [ "$KEEP_INITRAMFS" = "true" ]; then
-        # recursively unmount bind mounts, but keep initramfs
-        for p in $BIND_PATHS; do
-            umount -R "$INITRAMFS_DIR$p"
-        done
-    else
-        # recursively unmount everything
-        umount -R "$INITRAMFS_MNT"
-        rmdir "$INITRAMFS_MNT"
+    if [ -d "${INITRAMFS_DIR-}" ]; then
+        umount -- "$INITRAMFS_DIR/dev/pts"
+        umount -- "$INITRAMFS_DIR/dev"
+        umount -- "$INITRAMFS_DIR/proc"
+        umount -- "$INITRAMFS_DIR/run"
+        umount -- "$INITRAMFS_DIR/sys"
+    fi
+    if [ "$KEEP_INITRAMFS" != "true" ] || [ -z "${INITRAMFS_DIR+x}" ]; then
+        # always unmount if we error out before setting INITRAMFS_DIR
+        umount -- "$INITRAMFS_MNT"
+        rmdir -- "$INITRAMFS_MNT"
     fi
 }
 
 CGROUP_FREEZER=
+freeze_cgroup() {
+    local c="$1" v
+    # freeze cgroup if non-frozen
+    if [ -f "$c" ] && v="$(cat <"$c")" && [ $v -eq 0 ]; then
+        echo 1 >"$c"
+        CGROUP_FREEZER="$c${CGROUP_FREEZER:+" $CGROUP_FREEZER"}"
+    fi
+}
 freeze_cgroups() {
-    # add all machines/containers and user cgroups
-    CGROUPS="$hierarchy/machine.slice/cgroup.freeze \
-        $hierarchy/user.slice/cgroup.freeze"
+    local mycgroup c
 
-    # add all system cgroups but us
-    CGROUPS_SYSTEM="$(find "$hierarchy"/system.slice/ -mindepth 2 -maxdepth 2 -name cgroup.freeze)"
-
-    # add systemd itself
-    CGROUP_SYSTEMD="$hierarchy/init.scope/cgroup.freeze"
+    # freeze all machines/containers and user cgroups
+    freeze_cgroup "$hierarchy/machine.slice/cgroup.freeze"
+    freeze_cgroup "$hierarchy/user.slice/cgroup.freeze"
 
     # get my second level cgroup
-    MY_CGROUP="$(grep -m1 ^0:: /proc/self/cgroup | cut -sd/ -f3)"
+    mycgroup="$(grep -m1 "^0::" /proc/self/cgroup | cut -sd/ -f3)"
 
-    # freeze all unfrozen cgroups
-    for c in $CGROUPS $CGROUPS_SYSTEM "$CGROUP_SYSTEMD"; do
-        [ ! -f "$c" ] && continue
-        local val="$(cat "$c")"
-        printf "%s" "$c" | grep -qE "systemd-suspend|systemd-udev|$MY_CGROUP" && continue
-
-        # dont freeze our cgroup, systemd-suspend/udevd or frozen cgroups
-        # freezing udevd blocks luksResume
-        printf "%s" "$c" | grep -qE "systemd-suspend|systemd-udev|$MY_CGROUP" && continue
-
-        if [ 0 -eq "$val" ]; then
-            echo 1 > "$c"
-            CGROUP_FREEZER="$c $CGROUP_FREEZER"
+    # freeze all system cgroups except ours and systemd-suspend
+    for c in "$hierarchy"/system.slice/*/cgroup.freeze; do
+        if  [ "$c" != "$hierarchy/system.slice/$mycgroup/cgroup.freeze" ] && \
+                [ "${c#"$hierarchy/system.slice/systemd-suspend."}" = "$c" ]; then
+            freeze_cgroup "$c"
         fi
     done
+
+    # freeze systemd itself
+    freeze_cgroup "$hierarchy/init.scope/cgroup.freeze"
 }
 
 thaw_cgroups() {
+    local c
     for c in $CGROUP_FREEZER; do
-       echo 0 > "$c"
+        echo 0 >"$c"
     done
 }
 
-get_active_devices() {
-    for m in $dm_devices; do
-        [ "x$m" = "x$CRYPTTAB_NAME" ] || continue
-        crypttab_parse_options --quiet
-        _get_crypt_type
-        if [ "$CRYPTTAB_TYPE" != "luks" ]; then
-            cryptsetup_message "WARNING: $CRYPTTAB_NAME: unable to suspend non-luks device"
-            continue
-        fi
-        printf "%s " "$m"
-        break
-    done
-}
+populate_ACTIVE_DEVICES() {
+    local DEV MAJ MIN
+    if ! dm_blkdevname "$CRYPTTAB_NAME" >/dev/null; then
+        # silently ignore unmapped devices
+        return 0
+    elif [ "$(dmsetup info --noheadings -c -o subsystem -- "$CRYPTTAB_NAME")" != "CRYPT" ]; then
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Subsystem mismatch"
+        return 1
+    elif ! _resolve_device "$CRYPTTAB_SOURCE"; then
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Missing source $CRYPTTAB_SOURCE"
+        return 1
+    elif [ "$(dmsetup info -c --noheadings -o devnos_used -- "$CRYPTTAB_NAME" 2>/dev/null)" != "$MAJ:$MIN" ]; then
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Source mismatch"
+        return 1
+    fi
 
-# Stop udev service and prevent it to be autostarted.
-# Otherwise, luksResume will hang waiting for udev, which is itself waiting
-# for I/O on the root device.
-udev_service() {
-    systemctl "$1" systemd-udevd-control.socket
-    systemctl "$1" systemd-udevd-kernel.socket
-    systemctl "$1" systemd-udevd.service
+    if ! crypttab_parse_options --quiet; then
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: Unable to parse options field"
+        return 1
+    elif [ "$CRYPTTAB_TYPE" != "luks" ]; then
+        # XXX does it even work with detached headers?
+        cryptsetup_message "WARNING: $CRYPTTAB_NAME: unable to suspend non-LUKS device"
+        return 0
+    fi
+
+    # XXX that's not robust since $CRYPTTAB_NAME might contain spaces or
+    # special characters; we need to create a NUL-delimited list in a
+    # file instead
+    ACTIVE_DEVICES="${ACTIVE_DEVICES:+"$ACTIVE_DEVICES "}$CRYPTTAB_NAME"
 }
 
 clean_up() {
@@ -179,9 +234,6 @@ clean_up() {
 
     # thaw all frozen cgroups
     thaw_cgroups
-
-    # restart systemd-udevd
-    udev_service start
 
     # Run post-suspend scripts
     run_dir post suspend
@@ -198,9 +250,9 @@ clean_up() {
 
 # check unified cgroups hierarchy
 # https://github.com/systemd/systemd/blob/master/docs/CGROUP_DELEGATION.md
-if [ -d /sys/fs/cgroup/system.slice/ ]; then
-    hierarchy="/sys/fs/cgroup/"
-elif [ -d /sys/fs/cgroup/unified/system.slice/ ]; then
+if [ -d /sys/fs/cgroup/system.slice ]; then
+    hierarchy="/sys/fs/cgroup"
+elif [ -d /sys/fs/cgroup/unified/system.slice ]; then
     # hybrid cgroup hierarchy
     hierarchy="/sys/fs/cgroup/unified"
 else
@@ -210,7 +262,7 @@ fi
 
 # check that not run as user
 # XXX: We should catch also cases where libpam-systemd is not installed
-if grep -q "user.slice" /proc/self/cgroup; then
+if grep -Eq '^[0-9]+:[^:]*:/user\.slice/' /proc/self/cgroup; then
     log_error "Don't run this script as user"
     exit 1
 fi
@@ -223,18 +275,12 @@ read_config
 # extract temporary filesystem to switch to
 mount_initramfs
 
-# copy our binary to ramdisk
-cp /lib/cryptsetup/scripts/suspend/cryptsetup-suspend "$INITRAMFS_DIR/bin/cryptsetup-suspend"
-
 # Run pre-suspend scripts
 run_dir pre suspend
 
-# freezing of udevd was not possible, but it still blocks sometimes
-udev_service stop
-
-# get list of active crypt devices
-dm_devices="$(dm_active_crypt_devices)"
-devices="$(crypttab_foreach_entry get_active_devices)"
+# populate list of active crypt devices
+ACTIVE_DEVICES=""
+crypttab_foreach_entry populate_ACTIVE_DEVICES
 
 # freeze all cgroups but us
 freeze_cgroups
@@ -245,38 +291,29 @@ set +e
 # change into ramdisk
 devices_remaining="$(chroot "$INITRAMFS_DIR" /bin/sh -c "
     # suspend active luks devices (in reverse order) and system
-    /bin/cryptsetup-suspend --reverse $devices
+    /bin/cryptsetup-suspend --reverse $ACTIVE_DEVICES
 
     TABFILE=\"/cryptroot/crypttab\"
     . /lib/cryptsetup/functions
 
     # resume active luks devices (only initramfs devices)
-    for dev in $devices; do
-        unset -v CRYPTTAB_NAME \
-                 CRYPTTAB_SOURCE \
-                 CRYPTTAB_KEY \
-                 CRYPTTAB_OPTIONS
-
-        crypttab_find_entry --quiet \$dev
-        if [ -n \"\$CRYPTTAB_SOURCE\" ]; then
-            resume_device \$dev || true
+    for dev in $ACTIVE_DEVICES; do
+        if crypttab_find_entry --quiet \"\$dev\"; then
+            DM_DISABLE_UDEV=y resume_device \"\$dev\" || sleep 5
         else
-            # write remaining devices to stdout
-            printf \"%s \" \$dev
+            # write remaining devices to FD3
+            printf \"%s \" \"\$dev\" >&3
         fi
     done
-")"
+" 3>&- 3>&1 >&2)"
 
 # resume remaining active luks devices (non-initramfs devices)
 for dev in $devices_remaining; do
-    unset -v CRYPTTAB_NAME \
-             CRYPTTAB_SOURCE \
-             CRYPTTAB_KEY \
-             CRYPTTAB_OPTIONS
-
-    crypttab_find_entry --quiet "$dev"
-    if [ -n "$CRYPTTAB_SOURCE" ]; then
-        resume_device "$dev" || true
+    if crypttab_find_entry --quiet "$dev"; then
+        # explicitely disable udev support, cf. #1020553
+        # XXX this is not ideal since udev might be required in some situations
+        # (detached header or key material on removable device comes to mind)
+        DM_DISABLE_UDEV=y resume_device "$dev" || true
     else
         log_error "'$dev' not found in /etc/crypttab"
     fi

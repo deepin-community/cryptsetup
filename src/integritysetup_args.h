@@ -1,8 +1,8 @@
 /*
  * Command line arguments helpers
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -30,6 +30,7 @@
 #define CLOSE_ACTION	"close"
 #define STATUS_ACTION	"status"
 #define DUMP_ACTION	"dump"
+#define RESIZE_ACTION	"resize"
 
 #define OPT_ALLOW_DISCARDS_ACTIONS		{ OPEN_ACTION }
 #define OPT_DEFERRED_ACTIONS			{ CLOSE_ACTION }
@@ -37,8 +38,12 @@
 #define OPT_JOURNAL_SIZE_ACTIONS		{ FORMAT_ACTION }
 #define OPT_NO_WIPE_ACTIONS			{ FORMAT_ACTION }
 #define OPT_INTERLEAVE_SECTORS_ACTIONS		{ FORMAT_ACTION }
+#define OPT_PROGRESS_JSON_ACTIONS		{ FORMAT_ACTION, RESIZE_ACTION }
 #define OPT_SECTOR_SIZE_ACTIONS			{ FORMAT_ACTION }
 #define OPT_TAG_SIZE_ACTIONS			{ FORMAT_ACTION }
+#define OPT_DEVICE_SIZE_ACTIONS			{ RESIZE_ACTION }
+#define OPT_SIZE_ACTIONS			{ RESIZE_ACTION }
+#define OPT_WIPE_ACTIONS			{ RESIZE_ACTION }
 
 enum {
 OPT_UNUSED_ID = 0,

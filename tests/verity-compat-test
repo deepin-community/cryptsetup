@@ -89,8 +89,7 @@ function compare_out() # $1 what, $2 expected
 function check_root_hash_fail()
 {
 	echo -n "Root hash check "
-	ARR=(`$VERITYSETUP format $IMG $IMG_HASH --fec-device $FEC_DEV --fec-roots 2 -h sha256`)
-	ROOT_HASH=${ARR[28]}
+	ROOT_HASH=$($VERITYSETUP format $IMG $IMG_HASH --fec-device $FEC_DEV --fec-roots 2 -h sha256 | grep -e "Root hash" | cut -d: -f2 | tr -d "\t\n ")
 	ROOT_HASH_BAD=abcdef0000000000000000000000000000000000000000000000000000000000
 
 	$VERITYSETUP verify $IMG $IMG_HASH $ROOT_HASH || fail
@@ -148,7 +147,13 @@ function check_root_hash() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, [$6
 	for fail in data hash; do
 	wipe
 	echo -n "V$4(sb=$sb root_hash_as_file=$root_hash_as_file) $5 block size $1: "
-	$VERITYSETUP format $DEV_PARAMS $FORMAT_PARAMS >$DEV_OUT || fail
+	$VERITYSETUP format $DEV_PARAMS $FORMAT_PARAMS >$DEV_OUT
+	if [ $? -ne 0 ] ; then
+		if [[ $1 =~ "sha2" ]] ; then
+			fail "Cannot format device."
+		fi
+		return
+	fi
 
 	echo -n "[root hash]"
 	compare_out "root hash" $2
@@ -243,16 +248,12 @@ function check_fec()
 	if [[ "$1" == "$2" && "$1" == "$3" ]]; then
 		echo -n "[one_device_test]"
 		dd if=/dev/zero of=$IMG_TMP bs=$4 count=$5  > /dev/null 2>&1
-		ARR=(`sha256sum $IMG_TMP`)
-		HASH_ORIG=${ARR[0]}
+		HASH_ORIG=$(sha256sum $IMG_TMP | cut -d' ' -f 1)
 	else
-		ARR=(`sha256sum $1`)
-		HASH_ORIG=${ARR[0]}
+		HASH_ORIG=$(sha256sum $1 | cut -d' ' -f 1)
 	fi
 
-	ARR=(`$VERITYSETUP format $1 $2 --fec-device=$3 $PARAMS`)
-	SALT=${ARR[$INDEX]}
-	ROOT_HASH=${ARR[$(($INDEX+3))]}
+	ROOT_HASH=$($VERITYSETUP format $1 $2 --fec-device=$3 $PARAMS | grep -e "Root hash" | cut -d: -f2 | tr -d "\t\n ")
 
 	corrupt_device $1 $(($5 * $4)) ${10}
 
@@ -265,9 +266,7 @@ function check_fec()
 	udevadm settle > /dev/null 2>&1
 
 	dd if=/dev/mapper/$DEV_NAME of=$IMG_TMP > /dev/null 2>&1
-	ARR=(`sha256sum $IMG_TMP`)
-
-	HASH_REPAIRED=${ARR[0]}
+	HASH_REPAIRED=$(sha256sum $IMG_TMP | cut -d' ' -f 1)
 
 	$VERITYSETUP close $DEV_NAME
 
@@ -279,11 +278,11 @@ function check_fec()
 	else
 		echo -n "[repaired in kernel]"
 		$VERITYSETUP verify $1 $2 $ROOT_HASH --fec-device=$3 $PARAMS >/dev/null 2>&1 || fail "Userspace verify failed"
-                echo "[userspace verify][OK]"
-                RET=0
-       fi
+		echo "[userspace verify][OK]"
+		RET=0
+	fi
 	rm $1 $2 $3 $IMG_TMP > /dev/null 2>&1
-       return $RET
+	return $RET
 }
 
 function check_option() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, $6 CLI option, $7 status option
@@ -303,7 +302,7 @@ function check_option() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, $6 CLI
 
 function valgrind_setup()
 {
-	which valgrind >/dev/null 2>&1 || fail "Cannot find valgrind."
+	command -v valgrind >/dev/null || fail "Cannot find valgrind."
 	[ ! -f $VERITYSETUP_VALGRIND ] && fail "Unable to get location of veritysetup executable."
 	export LD_LIBRARY_PATH="$VERITYSETUP_LIB_VALGRIND:$LD_LIBRARY_PATH"
 }
@@ -380,8 +379,7 @@ function checkUserSpaceRepair()
 
 	echo -n "[nroots::$3]"
 
-	ARR=(`$VERITYSETUP format $IMG $HASH_DEV --fec-device $FEC $PARAMS --salt=$DEV_SALT --uuid=$DEV_UUID`)
-	ROOT_HASH=${ARR[28]}
+	ROOT_HASH=$($VERITYSETUP format $IMG $HASH_DEV --fec-device $FEC $PARAMS --salt=$DEV_SALT --uuid=$DEV_UUID | grep -e "Root hash" | cut -d: -f2 | tr -d "\t\n ")
 
 	echo -n "[Errors can be corrected]"
 	corrupt_device $IMG $(($BS*$COUNT)) $7
@@ -412,17 +410,19 @@ function check_concurrent() # $1 hash
 	# Then do two concurrent opens, and check that libdevmapper did not return -EINVAL, which is
 	# not gracefully recoverable. Either could fail depending on scheduling, so just check that
 	# the libdevmapper error does not appear in either of the outputs.
-	exec {out_1}< <($VERITYSETUP create -v $DEV_NAME $DEV_PARAMS $1 2>&1)
-	exec {out_2}< <($VERITYSETUP create -v $DEV_NAME $DEV_PARAMS $1 2>&1)
+	cat /dev/null >$DEV_OUT
+	$VERITYSETUP create -v $DEV_NAME $DEV_PARAMS $1 >>$DEV_OUT 2>&1 &
+	$VERITYSETUP create -v $DEV_NAME $DEV_PARAMS $1 >>$DEV_OUT 2>&1 &
 	wait
-	cat <&${out_1} | grep -q "Command failed with code .* (wrong or missing parameters)" && fail
-	cat <&${out_2} | grep -q "Command failed with code .* (wrong or missing parameters)" && fail
+	grep -q "Command failed with code .* (wrong or missing parameters)" $DEV_OUT && fail
 	check_exists
+	rm $DEV_OUT
 	$VERITYSETUP close $DEV_NAME >/dev/null 2>&1 || fail
 
 	echo "[OK]"
 }
 
+export LANG=C
 [ $(id -u) != 0 ] && skip "WARNING: You must be root to run this test, test skipped."
 [ ! -x "$VERITYSETUP" ] && skip "Cannot find $VERITYSETUP, test skipped."
 
@@ -476,6 +476,11 @@ if check_version 1 3; then
 	fi
 	if check_version 1 7; then
 		check_option 512 $HASH $SALT 1 sha256 "--panic-on-corruption" "panic_on_corruption"
+	fi
+
+	if check_version 1 9; then
+		echo "Verity data performance options test."
+		check_option 512 $HASH $SALT 1 sha256 "--use-tasklets" "try_verify_in_tasklet"
 	fi
 fi
 
@@ -537,17 +542,17 @@ $VERITYSETUP close $DEV_NAME >/dev/null 2>&1 && fail
 $VERITYSETUP status $DEV_NAME >/dev/null 2>&1 || fail
 $VERITYSETUP close --deferred $DEV_NAME >/dev/null 2>&1
 if [ $? -eq 0 ] ; then
-  dmsetup info $DEV_NAME | grep -q "DEFERRED REMOVE" || fail
-  $VERITYSETUP close --cancel-deferred $DEV_NAME >/dev/null 2>&1
-  dmsetup info $DEV_NAME | grep -q "DEFERRED REMOVE" >/dev/null 2>&1 && fail
-  $VERITYSETUP close --deferred $DEV_NAME >/dev/null 2>&1
-  dmsetup remove $DEV_NAME2 || fail
-  $VERITYSETUP status $DEV_NAME >/dev/null 2>&1 && fail
-  echo "[OK]"
+	dmsetup info $DEV_NAME | grep -q "DEFERRED REMOVE" || fail
+	$VERITYSETUP close --cancel-deferred $DEV_NAME >/dev/null 2>&1
+	dmsetup info $DEV_NAME | grep -q "DEFERRED REMOVE" >/dev/null 2>&1 && fail
+	$VERITYSETUP close --deferred $DEV_NAME >/dev/null 2>&1
+	dmsetup remove $DEV_NAME2 || fail
+	$VERITYSETUP status $DEV_NAME >/dev/null 2>&1 && fail
+	echo "[OK]"
 else
-  dmsetup remove $DEV_NAME2 >/dev/null 2>&1
-  $VERITYSETUP close $DEV_NAME >/dev/null 2>&1
-  echo "[N/A]"
+	dmsetup remove $DEV_NAME2 >/dev/null 2>&1
+	$VERITYSETUP close $DEV_NAME >/dev/null 2>&1
+	echo "[N/A]"
 fi
 
 remove_mapping

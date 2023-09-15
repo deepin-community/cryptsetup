@@ -1,0 +1,273 @@
+#!/bin/sh
+
+# PID1 at initramfs stage
+#
+# Copyright © 2021-2022 Guilhem Moulin <guilhem@debian.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -eux
+PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+
+trap "echo \"ALERT!  Couldn't setup system, dropping to a shell.\" >&2; sh -i" 0
+
+# set VT100 autowrap mode again (QEMU might mess the terminal up)
+printf '\033[?7h'
+
+mount -t devtmpfs -o noexec,nosuid,mode=0755 udev /dev
+
+mkdir /dev/pts /proc /run /sys
+mount -t devpts -o noexec,nosuid,gid=5,mode=0620 devpts /dev/pts
+mount -t proc -o nodev,noexec,nosuid proc /proc
+mount -t tmpfs -o nodev,noexec,nosuid,size=5%,mode=0755 tmpfs /run
+mount -t sysfs -o nodev,noexec,nosuid sysfs /sys
+
+modprobe virtio_rng # /dev/hwrng (avoid entropy starvation)
+modprobe virtio_pci
+modprobe virtio_blk # /dev/vd[a-z]
+modprobe virtio_console # /dev/hvc[0-7]
+
+# start udevd
+/lib/systemd/systemd-udevd --daemon
+udevadm trigger --type=subsystems --action=add
+udevadm trigger --type=devices --action=add
+udevadm settle
+
+. /init.conf
+
+# https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_type_GUIDs
+GUID_TYPE_MBR="024DEE41-33E7-11D3-9D69-0008C781F39F"       # MBR partition scheme
+GUID_TYPE_EFI="C12A7328-F81F-11D2-BA4B-00A0C93EC93B"       # EFI boot partition
+GUID_TYPE_BIOS_boot="21686148-6449-6E6F-744E-656564454649" # BIOS boot partition
+GUID_TYPE_Linux_FS="0FC63DAF-8483-4772-8E79-3D69D8477DE4"  # Linux filesystem data
+GUID_TYPE_LUKS="CA7D7CCB-63ED-4C53-861C-1742536059CC"      # LUKS partition
+GUID_TYPE_DMCRYPT="7FFEC5C9-2D00-49B7-8941-3EA10A5586B7"   # Plain dm-crypt partition
+GUID_TYPE_LVM="E6D6D379-F507-44C2-A23C-238F2A3DF928"       # Logical Volume Manager partition
+GUID_TYPE_RAID="A19D880F-05FC-4D3B-A006-743F0F84911E"      # RAID partition
+
+if [ "$BOOT" = "bios" ]; then
+    BOOT_PARTITION_SIZE=2
+    BOOT_PARTITION_TYPE="$GUID_TYPE_BIOS_boot"
+elif [ "$BOOT" = "efi" ]; then
+    BOOT_PARTITION_SIZE=63
+    BOOT_PARTITION_TYPE="$GUID_TYPE_EFI"
+else
+    echo "ERROR unknown boot method '$BOOT'" >&2
+    exit 1
+fi
+
+# format the target disk and create a BIOS/EFI partition
+sfdisk /dev/vda <<-EOF
+	label: gpt
+	unit: sectors
+
+	start=$((1024*2)), size=$((BOOT_PARTITION_SIZE*1024*2)), type=$BOOT_PARTITION_TYPE
+EOF
+udevadm settle
+
+ROOT="/target"
+mkdir -m0755 "$ROOT"
+# /init.setup is expected to create the root filesystem of the target
+# system and mount it (alongside other filesystems) on $ROOT
+. /init.setup
+udevadm settle
+
+# inspired by debootstrap's /usr/share/debootstrap/functions
+if [ "$MERGED_USR" = "yes" ]; then
+    case "$ARCH" in
+        amd64) libdir="lib32 lib64 libx32";;
+        i386) libdir="lib64 libx32";;
+        mips|mipsel) libdir="lib32 lib64";;
+        mips64*|mipsn32*) libdir="lib32 lib64 libo32";;
+        loongarch64*) libdir="lib32 lib64";;
+        powerpc) libdir="lib64";;
+        ppc64) libdir="lib32 lib64";;
+        ppc64el) libdir="lib64";;
+        s390x) libdir="lib32";;
+        sparc) libdir="lib64";;
+        sparc64) libdir="lib32 lib64";;
+        x32) libdir="lib32 lib64 libx32";;
+        *) libdir="";;
+    esac
+    for dir in bin sbin lib $libdir; do
+        ln -s "usr/$dir" "$ROOT/$dir"
+        mkdir -p "$ROOT/usr/$dir"
+    done
+fi
+
+mkdir /media
+DEBIAN_DIST="$(blkid -l -t LABEL="debian_dist" -o device)"
+mount -t ext2 -o ro "$DEBIAN_DIST" /media
+for pkg in /media/__stage1__/*.deb; do
+    dpkg-deb --fsys-tarfile "$pkg" | tar -C "$ROOT" -xf - --keep-directory-symlink
+done
+
+# setup hosts(5) and hostname(5)
+echo "$HOSTNAME" >"$ROOT/etc/hostname"
+echo "127.0.0.1 localhost $HOSTNAME" >"$ROOT/etc/hosts"
+
+# EFI
+if [ "$BOOT" = "efi" ]; then
+    modprobe efivarfs
+    mount -t efivarfs efivarfs /sys/firmware/efi/efivars
+
+    mkfs.vfat -F 32 /dev/vda1
+    mkdir "$ROOT/boot/efi"
+    mount -t vfat /dev/vda1 "$ROOT/boot/efi"
+
+    cat >>"$ROOT/etc/fstab" <<-EOF
+		UUID=$(blkid -s UUID -o value /dev/vda1) /boot/efi auto defaults 0 2
+	EOF
+fi
+
+# bind mount pseudo and temporary filesystems to "$ROOT"
+mount -no bind /dev "$ROOT/dev"
+mount -no bind /proc "$ROOT/proc"
+mount -no bind /sys "$ROOT/sys"
+mount -t tmpfs -o nodev,noexec,nosuid,size=5%,mode=0755 tmpfs "$ROOT/run"
+
+# prevent any services from starting during package installation, taken
+# from debootstrap(8)
+cat >"$ROOT/usr/sbin/policy-rc.d" <<-EOF
+	#!/bin/sh
+	exit 101
+EOF
+chmod +x "$ROOT/usr/sbin/policy-rc.d"
+
+mv "$ROOT/sbin/start-stop-daemon" "$ROOT/sbin/start-stop-daemon.REAL"
+cat >"$ROOT/sbin/start-stop-daemon" <<-EOF
+	#!/bin/sh
+	echo
+	echo "Warning: Fake start-stop-daemon called, doing nothing"
+EOF
+chmod +x "$ROOT/usr/sbin/policy-rc.d" "$ROOT/sbin/start-stop-daemon"
+
+DEBIAN_FRONTEND="noninteractive"
+DEBCONF_NONINTERACTIVE_SEEN="true"
+export DEBIAN_FRONTEND DEBCONF_NONINTERACTIVE_SEEN
+
+# debootstrap the target system
+mkdir "$ROOT/media"
+mount -no move /media "$ROOT/media"
+cp -p /debootstrap "$ROOT/debootstrap"
+chroot "$ROOT" /debootstrap
+rm -f "$ROOT/debootstrap"
+
+# use MODULES=dep (if it works with fewer modules then it also works
+# with the default MODULES=most)
+mkdir -p "$ROOT/etc/initramfs-tools/conf.d"
+echo "MODULES=dep" >"$ROOT/etc/initramfs-tools/conf.d/modules"
+
+cp /init.preinst "$ROOT/init.preinst"
+chroot "$ROOT" /bin/sh -eux /init.preinst
+rm -f "$ROOT/init.preinst"
+udevadm settle
+
+# install extra packages
+chroot "$ROOT" apt-get -oAPT::Sandbox::User="root" install --yes $PACKAGES
+rm -f "$ROOT/etc/apt/sources.list"
+
+# configure and install GRUB
+cat >"$ROOT/etc/default/grub" <<-EOF
+	GRUB_DEFAULT=0
+	GRUB_TIMEOUT=0
+	GRUB_CMDLINE_LINUX_DEFAULT=""
+	GRUB_CMDLINE_LINUX="console=$CONSOLE,115200n8"
+	GRUB_DISABLE_RECOVERY=true
+	GRUB_TERMINAL="console serial"
+	GRUB_SERIAL_COMMAND="serial --speed=115200"
+EOF
+chroot "$ROOT" grub-install --no-floppy --modules=part_gpt /dev/vda
+chroot "$ROOT" update-grub
+
+chroot "$ROOT" passwd --delete root # make root account passwordless
+
+# show some system info right after login to ease troubleshooting
+cat >"$ROOT/root/.profile" <<-EOF
+	run_verbose() {
+	    printf "\\\`%s\\\` output:\\\\n" "\$*"
+	    "\$@"
+	}
+	stty cols 150
+	run_verbose dmsetup table
+	run_verbose lsblk
+	run_verbose df -h
+EOF
+
+cat >"$ROOT/root/.inputrc" <<-EOF
+	# disabled bracketed paste mode
+	set enable-bracketed-paste off
+EOF
+
+if [ -d "$ROOT/etc/systemd/system" ]; then
+    # systemd
+    if [ -c "$ROOT/dev/hvc0" ]; then
+        # serial-getty@ttyS0.service is automatically enabled due to the console= kernel parameter
+        ln -s "/dev/null" "$ROOT/etc/systemd/system/serial-getty@ttyS0.service"
+        ln -s "/lib/systemd/system/serial-getty@.service" \
+            "$ROOT/etc/systemd/system/getty.target.wants/serial-getty@hvc0.service"
+    fi
+
+    # mask all timer units
+    for t in "$ROOT"/lib/systemd/system/*.timer; do
+        test -f "$t" || continue
+        ln -s "/dev/null" "$ROOT/etc/systemd/system/${t##*/}"
+    done
+
+    # mask systemd-firstboot.service
+    ln -s "/dev/null" "/root/etc/systemd/system/systemd-firstboot.service"
+fi
+
+if [ -f "$ROOT/etc/inittab" ]; then
+    # sysvinit
+    if [ -c "$ROOT/dev/hvc0" ]; then
+        echo "h0:2345:respawn:/sbin/agetty -8 -L 115200 hvc0 linux"
+    else
+        echo "S0:23:respawn:/sbin/getty -8 -L 115200 $CONSOLE linux"
+    fi >>"$ROOT/etc/inittab"
+fi
+
+if [ -f /init.postinst ]; then
+    cp /init.postinst "$ROOT/init.postinst"
+    chroot "$ROOT" /bin/sh -eux /init.postinst
+    rm -f "$ROOT/init.postinst"
+fi
+
+# allow service startup again
+mv "$ROOT/sbin/start-stop-daemon.REAL" "$ROOT/sbin/start-stop-daemon"
+rm "$ROOT/usr/sbin/policy-rc.d"
+
+# unmount pseudo filesystems from the target system
+umount "$ROOT/dev"
+umount "$ROOT/proc"
+umount "$ROOT/sys"
+
+if [ "$BOOT" = "efi" ]; then
+    umount "$ROOT/boot/efi"
+fi
+umount "$ROOT/media"
+umount "$ROOT/run"
+
+# /init.bottom is expected to umount $ROOT and its submounts
+ROOT="$ROOT" sh -eux /init.bottom
+
+# stop udevd
+udevadm control --exit
+
+# exiting this script yields "Kernel panic - not syncing: Attempted to
+# kill init!", so give the asyncronous SysRq trigger a chance to power
+# off (sending a racy C-d would still trigger a panic but we don't care)
+echo o >/proc/sysrq-trigger
+exec cat >/dev/null

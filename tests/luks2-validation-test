@@ -80,7 +80,9 @@ function test_load()
 		else
 			$CRYPTSETUP luksDump $_debug $IMG > /dev/null 2>&1
 		fi
-		test $? -ne 0 || return 1
+		ret=$?
+		test $ret -ne 0 || return 1
+		test $ret -ne 139 || return 1
 		;;
 	*)
 		fail "Internal test error"
@@ -102,7 +104,7 @@ function RUN()
 
 function valgrind_setup()
 {
-	which valgrind >/dev/null 2>&1 || fail "Cannot find valgrind."
+	command -v valgrind >/dev/null || fail "Cannot find valgrind."
 	[ ! -f $CRYPTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
 	export LD_LIBRARY_PATH="$CRYPTSETUP_LIB_VALGRIND:$LD_LIBRARY_PATH"
 }
@@ -112,9 +114,10 @@ function valgrind_run()
 	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${CRYPTSETUP_VALGRIND} "$@"
 }
 
+[ ! -x "$CRYPTSETUP" ] && skip "Cannot find $CRYPTSETUP, test skipped."
 [ -n "$VALG" ] && valgrind_setup && CRYPTSETUP=valgrind_run
 
-which jq >/dev/null 2>&1 || skip "Cannot find jq, test skipped."
+command -v jq >/dev/null || skip "Cannot find jq, test skipped."
 
 prepare
 
@@ -129,27 +132,27 @@ cd $START_DIR
 
 echo "[1] Test basic auto-recovery"
 RUN luks2-invalid-checksum-hdr0.img "R" "Failed to recover from trivial header corruption at offset 0"
-# TODO: check epoch is incresed after recovery
+# TODO: check epoch is increased after recovery
 # TODO: check only sectors related to corrupted hdr at offset 0 are written (dmstats tool/differ.c)
 
 RUN luks2-invalid-checksum-hdr1.img "R" "Failed to recover from trivial header corruption at offset 16384"
-# TODO: check epoch is incresed after recovery
+# TODO: check epoch is increased after recovery
 # TODO: check only sectors related to corrupted hdr at offset 16384 are written (dmstats tool/differ.c)
 
 RUN luks2-invalid-checksum-both-hdrs.img "F" "Failed to recognise corrupted header beyond repair"
 
 echo "[2] Test ability to auto-correct mallformed json area"
 RUN luks2-corrupted-hdr0-with-correct-chks.img "R" "Failed to auto correct malformed json area at offset 512"
-# TODO: check epoch is incresed after recovery
+# TODO: check epoch is increased after recovery
 # TODO: check only sectors related to corrupted hdr at offset 0 are written (dmstats tool/differ.c)
 
 RUN luks2-corrupted-hdr1-with-correct-chks.img "R" "Failed to auto correct malformed json area at offset 16896"
-# TODO: check epoch is incresed after recovery
+# TODO: check epoch is increased after recovery
 # TODO: check only sectors related to corrupted hdr at offset 16384 are written (dmstats tool/differ.c)
 
 RUN luks2-correct-full-json0.img "R" "Failed to parse full and correct json area"
 # TODO: detect noop (norecovery, epoch untouched)
-# TODO: check epoch is NOT incresed after recovery of secondary header
+# TODO: check epoch is NOT increased after recovery of secondary header
 
 # these tests auto-correct json in-memory only. It'll get fixed on-disk after write operation
 RUN luks2-argon2-leftover-params.img   "R" "Failed to repair keyslot with old argon2 parameters."
@@ -201,6 +204,7 @@ RUN luks2-segment-wrong-flags.img			"F" "Failed to detect invalid flags field"
 RUN luks2-segment-wrong-flags-element.img		"F" "Failed to detect invalid flags content"
 RUN luks2-segment-wrong-backup-key-0.img		"F" "Failed to detect gap in backup segments"
 RUN luks2-segment-wrong-backup-key-1.img		"F" "Failed to detect gap in backup segments"
+RUN luks2-segment-crypt-empty-encryption.img		"F" "Failed to detect empty encryption field"
 
 echo "[6] Test metadata size and keyslots size (config section)"
 RUN luks2-invalid-keyslots-size-c0.img			"F" "Failed to detect too large keyslots_size in config section"
@@ -229,6 +233,16 @@ RUN luks2-metadata-size-512k-secondary.img		"R" "Valid 512KiB metadata size in s
 RUN luks2-metadata-size-1m-secondary.img		"R" "Valid 1MiB metadata size in secondary hdr failed to validate"
 RUN luks2-metadata-size-2m-secondary.img		"R" "Valid 2MiB metadata size in secondary hdr failed to validate"
 RUN luks2-metadata-size-4m-secondary.img		"R" "Valid 4MiB metadata size in secondary hdr failed to validate"
+RUN luks2-metadata-size-invalid.img			"F" "Invalid metadata size in secondary hdr not rejected"
+RUN luks2-metadata-size-invalid-secondary.img		"F" "Invalid metadata size in secondary hdr not rejected"
+
+echo "[7] Test invalid metadata object property"
+RUN luks2-invalid-tokens.img				"F" "Invalid tokens objects not rejected"
+RUN luks2-invalid-top-objects.img			"F" "Invalid top-level objects not rejected"
+RUN luks2-keyslot-invalid-area.img			"F" "Invalid keyslot area object not rejected"
+RUN luks2-keyslot-invalid-area-size.img			"F" "Invalid keyslot area size that can overflow not rejected"
+RUN luks2-keyslot-invalid-objects.img			"F" "Invalid keyslot objects not rejected"
+RUN luks2-keyslot-invalid-af.img			"F" "Invalid keyslot objects types not rejected"
 
 remove_mapping
 

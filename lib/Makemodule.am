@@ -33,7 +33,6 @@ libcryptsetup_la_LIBADD = \
 	@JSON_C_LIBS@		\
 	@BLKID_LIBS@		\
 	@DL_LIBS@		\
-	$(LTLIBICONV)		\
 	$(LTLIBINTL)		\
 	libcrypto_backend.la	\
 	libutils_io.la
@@ -54,8 +53,6 @@ libcryptsetup_la_SOURCES = \
 	lib/utils_loop.h		\
 	lib/utils_devpath.c		\
 	lib/utils_wipe.c		\
-	lib/utils_fips.c		\
-	lib/utils_fips.h		\
 	lib/utils_device.c		\
 	lib/utils_keyring.c		\
 	lib/utils_keyring.h		\
@@ -70,14 +67,14 @@ libcryptsetup_la_SOURCES = \
 	lib/volumekey.c			\
 	lib/random.c			\
 	lib/crypt_plain.c		\
-	lib/base64.h			\
-	lib/base64.c			\
 	lib/integrity/integrity.h	\
 	lib/integrity/integrity.c	\
 	lib/loopaes/loopaes.h		\
 	lib/loopaes/loopaes.c		\
 	lib/tcrypt/tcrypt.h		\
 	lib/tcrypt/tcrypt.c		\
+	lib/keyslot_context.h		\
+	lib/keyslot_context.c		\
 	lib/luks1/af.h			\
 	lib/luks1/af.c			\
 	lib/luks1/keyencryption.c	\
@@ -100,6 +97,7 @@ libcryptsetup_la_SOURCES = \
 	lib/luks2/luks2_keyslot_luks2.c	\
 	lib/luks2/luks2_keyslot_reenc.c	\
 	lib/luks2/luks2_reencrypt.c	\
+	lib/luks2/luks2_reencrypt_digest.c	\
 	lib/luks2/luks2_segment.c	\
 	lib/luks2/luks2_token_keyring.c	\
 	lib/luks2/luks2_token.c		\
@@ -108,4 +106,6 @@ libcryptsetup_la_SOURCES = \
 	lib/utils_blkid.c		\
 	lib/utils_blkid.h		\
 	lib/bitlk/bitlk.h		\
-	lib/bitlk/bitlk.c
+	lib/bitlk/bitlk.c		\
+	lib/fvault2/fvault2.h		\
+	lib/fvault2/fvault2.c

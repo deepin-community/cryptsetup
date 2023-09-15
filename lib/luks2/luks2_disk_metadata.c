@@ -1,8 +1,8 @@
 /*
  * LUKS - Linux Unified Key Setup v2
  *
- * Copyright (C) 2015-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2021 Milan Broz
+ * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -18,8 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-
-#include <assert.h>
 
 #include "luks2_internal.h"
 
@@ -62,8 +60,8 @@ static void log_dbg_checksum(struct crypt_device *cd,
 	int i;
 
 	for (i = 0; i < crypt_hash_size(csum_alg); i++)
-		snprintf(&csum_txt[i*2], 3, "%02hhx", (const char)csum[i]);
-	csum_txt[i*2+1] = '\0'; /* Just to be safe, sprintf should write \0 there. */
+		if (snprintf(&csum_txt[i*2], 3, "%02hhx", (const char)csum[i]) != 2)
+			return;
 
 	log_dbg(cd, "Checksum:%s (%s)", &csum_txt[0], info);
 }
@@ -195,6 +193,8 @@ static int hdr_disk_sanity_check_pre(struct crypt_device *cd,
 				     size_t *hdr_json_size, int secondary,
 				     uint64_t offset)
 {
+	uint64_t hdr_size;
+
 	if (memcmp(hdr->magic, secondary ? LUKS2_MAGIC_2ND : LUKS2_MAGIC_1ST, LUKS2_MAGIC_L))
 		return -EINVAL;
 
@@ -204,24 +204,31 @@ static int hdr_disk_sanity_check_pre(struct crypt_device *cd,
 	}
 
 	if (offset != be64_to_cpu(hdr->hdr_offset)) {
-		log_dbg(cd, "LUKS2 offset 0x%04x on device differs to expected offset 0x%04x.",
-			(unsigned)be64_to_cpu(hdr->hdr_offset), (unsigned)offset);
+		log_dbg(cd, "LUKS2 offset 0x%04" PRIx64 " on device differs to expected offset 0x%04" PRIx64 ".",
+			be64_to_cpu(hdr->hdr_offset), offset);
 		return -EINVAL;
 	}
 
-	if (secondary && (offset != be64_to_cpu(hdr->hdr_size))) {
-		log_dbg(cd, "LUKS2 offset 0x%04x in secondary header does not match size 0x%04x.",
-			(unsigned)offset, (unsigned)be64_to_cpu(hdr->hdr_size));
+	hdr_size = be64_to_cpu(hdr->hdr_size);
+
+	if (hdr_size < LUKS2_HDR_16K_LEN || hdr_size > LUKS2_HDR_OFFSET_MAX) {
+		log_dbg(cd, "LUKS2 header has bogus size 0x%04" PRIx64 ".", hdr_size);
+		return -EINVAL;
+	}
+
+	if (secondary && (offset != hdr_size)) {
+		log_dbg(cd, "LUKS2 offset 0x%04" PRIx64 " in secondary header does not match size 0x%04" PRIx64 ".",
+			offset, hdr_size);
 		return -EINVAL;
 	}
 
 	/* FIXME: sanity check checksum alg. */
 
-	log_dbg(cd, "LUKS2 header version %u of size %u bytes, checksum %s.",
-		(unsigned)be16_to_cpu(hdr->version), (unsigned)be64_to_cpu(hdr->hdr_size),
+	log_dbg(cd, "LUKS2 header version %u of size %" PRIu64 " bytes, checksum %s.",
+		be16_to_cpu(hdr->version), hdr_size,
 		hdr->checksum_alg);
 
-	*hdr_json_size = be64_to_cpu(hdr->hdr_size) - LUKS2_HDR_BIN_LEN;
+	*hdr_json_size = hdr_size - LUKS2_HDR_BIN_LEN;
 	return 0;
 }
 
@@ -252,18 +259,19 @@ static int hdr_read_disk(struct crypt_device *cd,
 		return -EIO;
 	}
 
+	/*
+	 * hdr_json_size is validated if this call succeeds
+	 */
 	r = hdr_disk_sanity_check_pre(cd, hdr_disk, &hdr_json_size, secondary, offset);
-	if (r < 0) {
+	if (r < 0)
 		return r;
-	}
 
 	/*
 	 * Allocate and read JSON area. Always the whole area must be read.
 	 */
 	*json_area = malloc(hdr_json_size);
-	if (!*json_area) {
+	if (!*json_area)
 		return -ENOMEM;
-	}
 
 	if (read_lseek_blockwise(devfd, device_block_size(cd, device),
 				 device_alignment(device), *json_area, hdr_json_size,
@@ -279,6 +287,8 @@ static int hdr_read_disk(struct crypt_device *cd,
 	if (hdr_checksum_check(cd, hdr_disk->checksum_alg, hdr_disk,
 				*json_area, hdr_json_size)) {
 		log_dbg(cd, "LUKS2 header checksum error (offset %" PRIu64 ").", offset);
+		free(*json_area);
+		*json_area = NULL;
 		r = -EINVAL;
 	}
 	memset(hdr_disk->csum, 0, LUKS2_CHECKSUM_L);
@@ -695,7 +705,7 @@ int LUKS2_disk_hdr_read(struct crypt_device *cd, struct luks2_hdr *hdr,
 			memcpy(&hdr_disk2, &hdr_disk1, LUKS2_HDR_BIN_LEN);
 			r = crypt_random_get(cd, (char*)hdr_disk2.salt, sizeof(hdr_disk2.salt), CRYPT_RND_SALT);
 			if (r)
-				log_dbg(cd, "Cannot generate master salt.");
+				log_dbg(cd, "Cannot generate header salt.");
 			else {
 				hdr_from_disk(&hdr_disk1, &hdr_disk2, hdr, 0);
 				r = hdr_write_disk(cd, device, hdr, json_area1, 1);
@@ -716,7 +726,7 @@ int LUKS2_disk_hdr_read(struct crypt_device *cd, struct luks2_hdr *hdr,
 			memcpy(&hdr_disk1, &hdr_disk2, LUKS2_HDR_BIN_LEN);
 			r = crypt_random_get(cd, (char*)hdr_disk1.salt, sizeof(hdr_disk1.salt), CRYPT_RND_SALT);
 			if (r)
-				log_dbg(cd, "Cannot generate master salt.");
+				log_dbg(cd, "Cannot generate header salt.");
 			else {
 				hdr_from_disk(&hdr_disk2, &hdr_disk1, hdr, 1);
 				r = hdr_write_disk(cd, device, hdr, json_area2, 0);

@@ -6,7 +6,6 @@ lib/volumekey.c
 lib/crypt_plain.c
 lib/utils_crypt.c
 lib/utils_loop.c
-lib/utils_fips.c
 lib/utils_device.c
 lib/utils_devpath.c
 lib/utils_pbkdf.c
@@ -23,6 +22,7 @@ lib/luks1/keymanage.c
 lib/loopaes/loopaes.c
 lib/tcrypt/tcrypt.c
 lib/bitlk/bitlk.c
+lib/fvault2/fvault2.c
 lib/verity/verity.c
 lib/verity/verity_hash.c
 lib/verity/verity_fec.c
@@ -37,16 +37,19 @@ lib/luks2/luks2_keyslot_luks2.c
 lib/luks2/luks2_keyslot_reenc.c
 lib/luks2/luks2_luks1_convert.c
 lib/luks2/luks2_reencrypt.c
+lib/luks2/luks2_reencrypt_digest.c
 lib/luks2/luks2_segment.c
 lib/luks2/luks2_token.c
 lib/luks2/luks2_token_keyring.c
 src/cryptsetup.c
 src/veritysetup.c
 src/integritysetup.c
-src/cryptsetup_reencrypt.c
 src/utils_tools.c
+src/utils_progress.c
 src/utils_password.c
-src/utils_luks2.c
+src/utils_luks.c
+src/utils_reencrypt.c
+src/utils_reencrypt_luks1.c
 src/utils_blockdev.c
 src/utils_args.c
 tokens/ssh/cryptsetup-ssh.c

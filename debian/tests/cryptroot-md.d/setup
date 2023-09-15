@@ -1,0 +1,84 @@
+# Rather convoluted LVM-on-MD-on-LUKS2 layout with 2 swap areas, /boot
+# on RAID1, SWAP0 on RAID0, LVM on RAID1 and 4 independently encrypted
+# partitions decrypt at early boot stage:
+
+#    NAME                 TYPE  MOUNTPOINTS
+#    vda                  disk
+#    ├─vda1               part
+#    ├─vda2               part
+#    │ └─md0              raid1 /boot
+#    ├─vda3               part
+#    │ └─vda3_crypt       crypt
+#    │   └─md1            raid0 [SWAP]
+#    └─vda4               part
+#      └─vda4_crypt       crypt
+#        └─md2            raid1
+#          ├─cryptvg-swap lvm   [SWAP]
+#          └─cryptvg-root lvm   /
+#    vdb                  disk
+#    ├─vdb1               part
+#    ├─vdb2               part
+#    │ └─md0              raid1 /boot
+#    ├─vdb3               part
+#    │ └─vdb3_crypt       crypt
+#    │   └─md1            raid0 [SWAP]
+#    └─vdb4               part
+#      └─vdb4_crypt       crypt
+#        └─md2            raid1
+#          ├─cryptvg-swap lvm   [SWAP]
+#          └─cryptvg-root lvm   /
+
+sfdisk --append /dev/vda <<-EOF
+	unit: sectors
+
+	start=$((64*1024*2)), size=$((128*1024*2)), type=${GUID_TYPE_Linux_FS}
+	start=$(((64+128)*1024*2)), size=$((64*1024*2)), type=${GUID_TYPE_LUKS}
+	start=$(((64+128+64)*1024*2)), type=${GUID_TYPE_LUKS}
+EOF
+udevadm settle
+
+# copy vda's partition table onto vdb
+sfdisk -d /dev/vda | sfdisk /dev/vdb
+udevadm settle
+
+for d in vda3 vda4 vdb3 vdb4; do
+  echo -n "${d}_crypt" >/keyfile
+    cryptsetup luksFormat --batch-mode \
+        --key-file=/keyfile \
+        --type=luks2 \
+        --pbkdf=argon2id \
+        --pbkdf-force-iterations=4 \
+        --pbkdf-memory=32 \
+        -- "/dev/$d"
+    cryptsetup luksOpen --key-file=/keyfile --allow-discards \
+        -- "/dev/$d" "${d}_crypt"
+    udevadm settle
+done
+
+mdadm --create /dev/md0 --metadata=default --level=1 --raid-devices=2 /dev/vda2 /dev/vdb2
+mdadm --create /dev/md1 --metadata=default --level=0 --raid-devices=2 /dev/mapper/vda3_crypt /dev/mapper/vdb3_crypt
+mdadm --create /dev/md2 --metadata=default --level=1 --raid-devices=2 /dev/mapper/vda4_crypt /dev/mapper/vdb4_crypt
+udevadm settle
+
+lvm pvcreate /dev/md2
+lvm vgcreate "cryptvg" /dev/md2
+lvm lvcreate -Zn --size 64m --name "swap" "cryptvg"
+lvm lvcreate -Zn -l100%FREE --name "root" "cryptvg"
+lvm vgchange -ay "cryptvg"
+lvm vgmknodes
+udevadm settle
+
+
+mke2fs -Ft ext4 /dev/cryptvg/root
+mount -t ext4 /dev/cryptvg/root "$ROOT"
+
+mkdir "$ROOT/boot"
+mke2fs -Ft ext2 -m0 /dev/md0
+mount -t ext2 /dev/md0 "$ROOT/boot"
+
+mkswap /dev/cryptvg/swap
+swapon /dev/cryptvg/swap
+mkswap /dev/md1
+swapon /dev/md1
+
+# vim: set filetype=sh :

@@ -1,8 +1,8 @@
 /*
  * Command line arguments helpers
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -39,6 +39,7 @@
 #define OPT_PANIC_ON_CORRUPTION_ACTIONS		{ OPEN_ACTION }
 #define OPT_ROOT_HASH_FILE_ACTIONS		{ FORMAT_ACTION, OPEN_ACTION, VERIFY_ACTION }
 #define OPT_ROOT_HASH_SIGNATURE_ACTIONS		{ OPEN_ACTION }
+#define OPT_USE_TASKLETS_ACTIONS		{ OPEN_ACTION }
 
 enum {
 OPT_UNUSED_ID = 0,

@@ -1,0 +1,14 @@
+PKGS_EXTRA+=( e2fsprogs ) # for fsck.ext4
+PKGS_EXTRA+=( lvm2 )
+PKGS_EXTRA+=( cryptsetup-initramfs )
+
+# disable AES and SHA instructions
+if [[ "$QEMU_CPU_MODEL" =~ ^(.*),\+aes(,.*)?$ ]]; then
+    QEMU_CPU_MODEL="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+fi
+if [[ "$QEMU_CPU_MODEL" =~ ^(.*),\+sha-ni(,.*)?$ ]]; then
+    QEMU_CPU_MODEL="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
+fi
+QEMU_CPU_MODEL="$QEMU_CPU_MODEL,-aes,-sha-ni"
+
+# vim: set filetype=bash :

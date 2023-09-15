@@ -1,7 +1,7 @@
 #!/bin/sh
 # this script depends on /sbin/blkid from the util-linux package
 
-# usage: un_blkid <device> <fs_type> <offset>
+# usage: un_blkid <device> <fs_type> [<offset>]
 # <device> may be any device that should be checked.
 # if no <fs_type> is given, the check fails for any valid filesystem
 # if <fs_type> is given, the check fails when a filesystem type <fs_type>
@@ -14,9 +14,9 @@ fi
 
 dev="$1"
 fs="$2"
-offset="$3"
+offset="${3-}"
 
-blkid="$(/sbin/blkid -o value -s TYPE -p ${offset:+-O "$((offset*512))"} -- "$dev")"
+blkid="$(/sbin/blkid -o value -s TYPE -p ${offset:+-O "$offset"} -- "$dev")"
 
 # blkid output is empty if $dev has an unknown filesystem
 if [ -n "$blkid" ] && [ -z "$fs" ]; then

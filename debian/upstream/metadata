@@ -1,4 +1,6 @@
-Bug-Database: https://gitlab.com/cryptsetup/cryptsetup/issues
-Bug-Submit: https://gitlab.com/cryptsetup/cryptsetup/issues/new
+Bug-Database: https://gitlab.com/cryptsetup/cryptsetup/-/issues
+Bug-Submit: https://gitlab.com/cryptsetup/cryptsetup/-/issues/new
 Repository: https://gitlab.com/cryptsetup/cryptsetup.git
 Repository-Browse: https://gitlab.com/cryptsetup/cryptsetup
+FAQ: https://gitlab.com/cryptsetup/cryptsetup/-/wikis/FrequentlyAskedQuestions
+Security-Contact: https://gitlab.com/cryptsetup/cryptsetup/-/blob/HEAD/SECURITY.md

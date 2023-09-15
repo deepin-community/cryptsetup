@@ -1,7 +1,7 @@
 /*
  * blkid probe utilities
  *
- * Copyright (C) 2018-2021 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Red Hat, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -41,9 +41,12 @@ void blk_set_chains_for_wipes(struct blkid_handle *h);
 
 void blk_set_chains_for_full_print(struct blkid_handle *h);
 
+void blk_set_chains_for_superblocks(struct blkid_handle *h);
+
 void blk_set_chains_for_fast_detection(struct blkid_handle *h);
 
 int blk_superblocks_filter_luks(struct blkid_handle *h);
+int blk_superblocks_only_luks(struct blkid_handle *h);
 
 blk_probe_status blk_safeprobe(struct blkid_handle *h);
 
@@ -61,6 +64,6 @@ int blk_do_wipe(struct blkid_handle *h);
 
 int blk_supported(void);
 
-off_t blk_get_offset(struct blkid_handle *h);
+unsigned blk_get_block_size(struct blkid_handle *h);
 
 #endif

@@ -6,9 +6,13 @@
 CRYPTSETUP=$CRYPTSETUP_PATH/cryptsetup
 DEV_NAME=dmi_test
 DEV=mode-test.img
+HEADER_IMG=mode-test-detached.img
 PWD1=nHjJHjI23JK
 KEY_FILE=key.img
 FAST_PBKDF_OPT="--pbkdf pbkdf2 --pbkdf-force-iterations 1000"
+
+CRYPTSETUP_VALGRIND=../.libs/cryptsetup
+CRYPTSETUP_LIB_VALGRIND=../.libs
 
 dmremove() { # device
 	udevadm settle >/dev/null 2>&1
@@ -18,7 +22,7 @@ dmremove() { # device
 cleanup() {
 	[ -b /dev/mapper/$DEV_NAME ] && dmremove $DEV_NAME
 	[ -b /dev/mapper/"$DEV_NAME"_dif ] && dmremove "$DEV_NAME"_dif
-	rm -f $DEV $KEY_FILE >/dev/null 2>&1
+	rm -f $DEV $KEY_FILE $HEADER_IMG >/dev/null 2>&1
 }
 
 fail()
@@ -37,6 +41,18 @@ skip()
 	exit 77
 }
 
+function valgrind_setup()
+{
+	command -v valgrind >/dev/null || fail "Cannot find valgrind."
+	[ ! -f $CRYPTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
+	export LD_LIBRARY_PATH="$CRYPTSETUP_LIB_VALGRIND:$LD_LIBRARY_PATH"
+}
+
+function valgrind_run()
+{
+	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${CRYPTSETUP_VALGRIND} "$@"
+}
+
 add_device() {
 	cleanup
 	dd if=/dev/urandom of=$KEY_FILE bs=1 count=512 >/dev/null 2>&1
@@ -44,10 +60,14 @@ add_device() {
 	sync
 }
 
-status_check() # name value
+status_check() # name value [detached]
 {
-	#$CRYPTSETUP status $DEV_NAME
-	X=$($CRYPTSETUP status $DEV_NAME | grep -m1 "$1" | sed -e 's/.*:[ \t]\+//' | cut -d' ' -f1)
+	if [ -n "$3" ]; then
+		PARAMS="$DEV_NAME --header $HEADER_IMG"
+	else
+		PARAMS="$DEV_NAME"
+	fi
+	X=$($CRYPTSETUP status $PARAMS | grep -m1 "$1" | sed -e 's/.*:[ \t]\+//' | cut -d' ' -f1)
 	if [ "$X" != "$2" ] ; then
 		echo "[status FAIL]"
 		echo " Expecting $1:$2 got \"$X\"."
@@ -57,7 +77,6 @@ status_check() # name value
 
 dump_check() # name value
 {
-	#$CRYPTSETUP luksDump $DEV
 	X=$($CRYPTSETUP luksDump $DEV | grep -m1 "$1" | sed -e 's/.*:[ \t]\+//' | cut -d' ' -f1)
 	if [ "$X" != "$2" ] ; then
 		echo "[dump FAIL]"
@@ -80,7 +99,6 @@ int_check_sum() # alg checksum
 
 int_error_detection() # alg int sector_size
 {
-	# FIXME: this is just a trivial failure
 	echo -n "[DETECT_CORRUPTION]"
 	echo -n "XXXXX" | dd of=$DEV bs=1M seek=28 count=1 conv=notrunc >/dev/null 2>&1 || fail "Cannot write to device."
 	$CRYPTSETUP open -d $KEY_FILE $DEV $DEV_NAME || fail "Cannot activate device."
@@ -88,7 +106,7 @@ int_error_detection() # alg int sector_size
 	$CRYPTSETUP close $DEV_NAME || fail "Cannot deactivate device."
 }
 
-intformat() # alg integrity integrity_out key_size int_key_size sector_size csum
+intformat() # alg integrity integrity_out key_size int_key_size sector_size csum [test_hdr]
 {
 	echo -n "[$1:$2:$4:$6]"
 	echo -n "[FORMAT]"
@@ -112,20 +130,39 @@ intformat() # alg integrity integrity_out key_size int_key_size sector_size csum
 	int_check_sum $1 $7
 	echo -n "[REMOVE]"
 	$CRYPTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+
+	# check detached header activation
+	if [ -n "$8" ] ; then
+		echo -n "[DETACHED_HDR]"
+		$CRYPTSETUP luksHeaderBackup -q --header-backup-file $HEADER_IMG $DEV || fail
+		wipefs -a $DEV >/dev/null 2>&1  || fail
+		$CRYPTSETUP open --header $HEADER_IMG -d $KEY_FILE $DEV $DEV_NAME || fail "Cannot activate device."
+		status_check "cipher" $1 1
+		status_check "sector size" $6 1
+		status_check "integrity:" $3 1
+		status_check "keysize:" $(($4 + $5)) 1
+		[ $5 -gt 0 ] && status_check "integrity keysize:" $5 1
+		int_check_sum $1 $7
+		$CRYPTSETUP close $DEV_NAME || fail "Cannot deactivate device."
+		$CRYPTSETUP luksHeaderRestore -q --header-backup-file $HEADER_IMG $DEV || fail
+		rm -f $HEADER_IMG
+	fi
+
 	int_error_detection
 	echo "[OK]"
 }
 
-
 [ $(id -u) != 0 ] && skip "WARNING: You must be root to run this test, test skipped."
 [ ! -x "$CRYPTSETUP" ] && skip "Cannot find $CRYPTSETUP, test skipped."
+[ -n "$VALG" ] && valgrind_setup && CRYPTSETUP=valgrind_run
 modprobe dm-integrity >/dev/null 2>&1
 dmsetup targets | grep integrity >/dev/null 2>&1 || skip "Cannot find dm-integrity target, test skipped."
+command -v wipefs >/dev/null ||  skip "Cannot find wipefs, test skipped."
 
 add_device
 
-intformat aes-cbc-essiv:sha256 hmac-sha256 hmac\(sha256\) 128 256  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c
-intformat aes-xts-plain64      hmac-sha256 hmac\(sha256\) 256 256  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c
+intformat aes-cbc-essiv:sha256 hmac-sha256 hmac\(sha256\) 128 256  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c 1
+intformat aes-xts-plain64      hmac-sha256 hmac\(sha256\) 256 256  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c 1
 intformat aes-xts-random       hmac-sha256 hmac\(sha256\) 256 256  512 492c2d1cc9e222a850c399bfef4ed5a86bf5afc59e54f0f0c7ba8e2a64548323
 intformat aes-cbc-essiv:sha256 hmac-sha256 hmac\(sha256\) 256 256  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c
 intformat aes-xts-plain64      hmac-sha256 hmac\(sha256\) 512 256  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c
@@ -160,7 +197,7 @@ intformat chacha20-random  poly1305 poly1305 256 0  512 5f6f3f6be03c74d9aaaeaf40
 intformat chacha20-plain64 poly1305 poly1305 256 0 4096 7370c66a92708fb71b186931468be6aa9b26f4f88373b00b1c57360b9ee1304e
 intformat chacha20-random  poly1305 poly1305 256 0 4096 358d6beceddf593aff6b22c31684e0df9c226330aff5812e060950215217d21b
 
-intformat aegis128-random  aead aead 128 0  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c
-intformat aegis128-random  aead aead 128 0 4096 358d6beceddf593aff6b22c31684e0df9c226330aff5812e060950215217d21b
+intformat aegis128-random  aead aead 128 0  512 ee501705a084cd0ab6f4a28014bcf62b8bfa3434de00b82743c50b3abf06232c 1
+intformat aegis128-random  aead aead 128 0 4096 358d6beceddf593aff6b22c31684e0df9c226330aff5812e060950215217d21b 1
 
 cleanup

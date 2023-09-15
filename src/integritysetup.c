@@ -1,8 +1,8 @@
 /*
  * integritysetup - setup integrity protected volumes for dm-integrity
  *
- * Copyright (C) 2017-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2017-2021 Milan Broz
+ * Copyright (C) 2017-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2017-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -43,14 +43,14 @@ static int _read_keys(char **integrity_key, struct crypt_params_integrity *param
 	int r;
 
 	if (integrity_key && ARG_SET(OPT_INTEGRITY_KEY_FILE_ID)) {
-		r = tools_read_mk(ARG_STR(OPT_INTEGRITY_KEY_FILE_ID), &int_key, ARG_UINT32(OPT_INTEGRITY_KEY_SIZE_ID));
+		r = tools_read_vk(ARG_STR(OPT_INTEGRITY_KEY_FILE_ID), &int_key, ARG_UINT32(OPT_INTEGRITY_KEY_SIZE_ID));
 		if (r < 0)
 			return r;
 		params->integrity_key_size = ARG_UINT32(OPT_INTEGRITY_KEY_SIZE_ID);
 	}
 
 	if (ARG_SET(OPT_JOURNAL_INTEGRITY_KEY_FILE_ID)) {
-		r = tools_read_mk(ARG_STR(OPT_JOURNAL_INTEGRITY_KEY_FILE_ID), &journal_integrity_key, ARG_UINT32(OPT_JOURNAL_INTEGRITY_KEY_SIZE_ID));
+		r = tools_read_vk(ARG_STR(OPT_JOURNAL_INTEGRITY_KEY_FILE_ID), &journal_integrity_key, ARG_UINT32(OPT_JOURNAL_INTEGRITY_KEY_SIZE_ID));
 		if (r < 0) {
 			crypt_safe_free(int_key);
 			return r;
@@ -60,7 +60,7 @@ static int _read_keys(char **integrity_key, struct crypt_params_integrity *param
 	}
 
 	if (ARG_SET(OPT_JOURNAL_CRYPT_KEY_FILE_ID)) {
-		r = tools_read_mk(ARG_STR(OPT_JOURNAL_CRYPT_KEY_FILE_ID), &journal_crypt_key, ARG_UINT32(OPT_JOURNAL_CRYPT_KEY_SIZE_ID));
+		r = tools_read_vk(ARG_STR(OPT_JOURNAL_CRYPT_KEY_FILE_ID), &journal_crypt_key, ARG_UINT32(OPT_JOURNAL_CRYPT_KEY_SIZE_ID));
 		if (r < 0) {
 			crypt_safe_free(int_key);
 			crypt_safe_free(journal_integrity_key);
@@ -80,10 +80,14 @@ static int _wipe_data_device(struct crypt_device *cd, const char *integrity_key)
 {
 	char tmp_name[64], tmp_path[128], tmp_uuid[40];
 	uuid_t tmp_uuid_bin;
-	int r;
+	int r = -EINVAL;
+	char *backing_file = NULL;
 	struct tools_progress_params prog_parms = {
 		.frequency = ARG_UINT32(OPT_PROGRESS_FREQUENCY_ID),
-		.batch_mode = ARG_SET(OPT_BATCH_MODE_ID)
+		.batch_mode = ARG_SET(OPT_BATCH_MODE_ID),
+		.json_output = ARG_SET(OPT_PROGRESS_JSON_ID),
+		.interrupt_message = _("\nWipe interrupted."),
+		.device = tools_get_device_name(crypt_get_device_name(cd), &backing_file)
 	};
 
 	if (!ARG_SET(OPT_BATCH_MODE_ID))
@@ -95,23 +99,25 @@ static int _wipe_data_device(struct crypt_device *cd, const char *integrity_key)
 	uuid_generate(tmp_uuid_bin);
 	uuid_unparse(tmp_uuid_bin, tmp_uuid);
 	if (snprintf(tmp_name, sizeof(tmp_name), "temporary-cryptsetup-%s", tmp_uuid) < 0)
-		return -EINVAL;
+		goto out;
 	if (snprintf(tmp_path, sizeof(tmp_path), "%s/%s", crypt_get_dir(), tmp_name) < 0)
-		return -EINVAL;
+		goto out;
 
 	r = crypt_activate_by_volume_key(cd, tmp_name, integrity_key,
 		ARG_UINT32(OPT_INTEGRITY_KEY_SIZE_ID), CRYPT_ACTIVATE_PRIVATE | CRYPT_ACTIVATE_NO_JOURNAL);
 	if (r < 0)
-		return r;
+		goto out;
 
 	/* Wipe the device */
 	set_int_handler(0);
 	r = crypt_wipe(cd, tmp_path, CRYPT_WIPE_ZERO, 0, 0, DEFAULT_WIPE_BLOCK,
-		       0, &tools_wipe_progress, &prog_parms);
+		       0, &tools_progress, &prog_parms);
 	if (crypt_deactivate(cd, tmp_name))
 		log_err(_("Cannot deactivate temporary device %s."), tmp_path);
 	set_int_block(0);
 
+out:
+	free(backing_file);
 	return r;
 }
 
@@ -167,7 +173,12 @@ static int action_format(void)
 		goto out;
 
 	if (!ARG_SET(OPT_BATCH_MODE_ID)) {
-		r = asprintf(&msg, _("This will overwrite data on %s irrevocably."), action_argv[0]);
+		if (ARG_SET(OPT_DATA_DEVICE_ID) && !ARG_SET(OPT_NO_WIPE_ID))
+			r = asprintf(&msg, _("This will overwrite data on %s and %s irrevocably.\n"
+			"To preserve data device use --no-wipe option (and then activate with --integrity-recalculate)."),
+			action_argv[0], ARG_STR(OPT_DATA_DEVICE_ID));
+		else
+			r = asprintf(&msg, _("This will overwrite data on %s irrevocably."), action_argv[0]);
 		if (r == -1) {
 			r = -ENOMEM;
 			goto out;
@@ -179,12 +190,12 @@ static int action_format(void)
 			goto out;
 	}
 
-	r = tools_detect_signatures(action_argv[0], 0, &signatures, ARG_SET(OPT_BATCH_MODE_ID));
+	r = tools_detect_signatures(action_argv[0], PRB_FILTER_NONE, &signatures, ARG_SET(OPT_BATCH_MODE_ID));
 	if (r < 0)
 		goto out;
 
 	/* Signature candidates found */
-	if (signatures && ((r =	tools_wipe_all_signatures(action_argv[0])) < 0))
+	if (signatures && ((r = tools_wipe_all_signatures(action_argv[0], true, false)) < 0))
 		goto out;
 
 	if (ARG_SET(OPT_INTEGRITY_LEGACY_PADDING_ID))
@@ -207,6 +218,80 @@ out:
 	crypt_safe_free(integrity_key);
 	crypt_safe_free(CONST_CAST(void*)params.journal_integrity_key);
 	crypt_safe_free(CONST_CAST(void*)params.journal_crypt_key);
+	crypt_free(cd);
+	return r;
+}
+
+static int action_resize(void)
+{
+	int r;
+	struct crypt_device *cd = NULL;
+	struct crypt_active_device cad;
+	uint64_t new_dev_size = 0;
+	uint64_t old_dev_size;
+	char path[PATH_MAX];
+	char *backing_file = NULL;
+	struct tools_progress_params prog_parms = {
+		.frequency = ARG_UINT32(OPT_PROGRESS_FREQUENCY_ID),
+		.batch_mode = ARG_SET(OPT_BATCH_MODE_ID),
+		.json_output = ARG_SET(OPT_PROGRESS_JSON_ID),
+		.interrupt_message = _("\nWipe interrupted."),
+		.device = tools_get_device_name(crypt_get_device_name(cd), &backing_file)
+	};
+
+	if (ARG_SET(OPT_DEVICE_SIZE_ID))
+		new_dev_size = ARG_UINT64(OPT_DEVICE_SIZE_ID) / SECTOR_SIZE;
+	else if (ARG_SET(OPT_SIZE_ID))
+		new_dev_size = ARG_UINT64(OPT_SIZE_ID);
+
+	r = crypt_init_by_name_and_header(&cd, action_argv[0], NULL);
+	if (r)
+		goto out;
+
+	r = crypt_get_active_device(cd, action_argv[0], &cad);
+	if (r)
+		goto out;
+	old_dev_size = cad.size;
+
+	r = snprintf(path, sizeof(path), "%s/%s", crypt_get_dir(), action_argv[0]);
+	if (r < 0)
+		goto out;
+	r = crypt_resize(cd, action_argv[0], new_dev_size);
+	if (r)
+		goto out;
+
+	if (!new_dev_size) {
+		r = crypt_get_active_device(cd, action_argv[0], &cad);
+		if (r)
+			goto out;
+		new_dev_size = cad.size;
+	}
+
+	if (new_dev_size > old_dev_size) {
+		if (ARG_SET(OPT_WIPE_ID)) {
+			if (ARG_SET(OPT_BATCH_MODE_ID))
+				log_dbg("Wiping the end of the resized device");
+			else
+				log_std(_("Wiping device to initialize integrity checksum.\n"
+					"You can interrupt this by pressing CTRL+c "
+					"(rest of not wiped device will contain invalid checksum).\n"));
+
+			set_int_handler(0);
+			r = crypt_wipe(cd, path, CRYPT_WIPE_ZERO, old_dev_size * SECTOR_SIZE,
+				      (new_dev_size - old_dev_size) * SECTOR_SIZE, DEFAULT_WIPE_BLOCK,
+				      0, &tools_progress, &prog_parms);
+			set_int_block(0);
+		} else {
+			log_dbg("Setting recalculate flag");
+			r = crypt_activate_by_volume_key(cd, action_argv[0], NULL, 0, CRYPT_ACTIVATE_REFRESH | CRYPT_ACTIVATE_RECALCULATE);
+
+			if (r == -ENOTSUP)
+				log_err(_("Setting recalculate flag is not supported, you may consider using --wipe instead."));
+		}
+	}
+out:
+	if (backing_file)
+		free(backing_file);
 	crypt_free(cd);
 	return r;
 }
@@ -275,8 +360,10 @@ static int action_open(void)
 		goto out;
 
 	r = crypt_load(cd, CRYPT_INTEGRITY, &params);
-	if (r)
+	if (r) {
+		log_err(_("Device %s is not a valid INTEGRITY device."), action_argv[0]);
 		goto out;
+	}
 
 	if (ARG_SET(OPT_INTEGRITY_LEGACY_RECALC_ID))
 		crypt_set_compatibility(cd, CRYPT_COMPAT_LEGACY_INTEGRITY_RECALC);
@@ -430,6 +517,8 @@ static int action_dump(void)
 	r = crypt_load(cd, CRYPT_INTEGRITY, &params);
 	if (!r)
 		crypt_dump(cd);
+	else
+		log_err(_("Device %s is not a valid INTEGRITY device."), action_argv[0]);
 
 	crypt_free(cd);
 	return r;
@@ -447,6 +536,7 @@ static struct action_type {
 	{ CLOSE_ACTION,	action_close,  1, N_("<name>"),N_("close device (remove mapping)") },
 	{ STATUS_ACTION,action_status, 1, N_("<name>"),N_("show active device status") },
 	{ DUMP_ACTION,	action_dump,   1, N_("<integrity_device>"),N_("show on-disk information") },
+	{ RESIZE_ACTION,action_resize, 1, N_("<name>"), N_("resize active device") },
 	{}
 };
 
@@ -459,7 +549,7 @@ static void help(poptContext popt_context,
 	struct action_type *action;
 
 	if (key->shortName == '?') {
-		log_std("%s %s\n", PACKAGE_INTEGRITY, PACKAGE_VERSION);
+		tools_package_version(PACKAGE_INTEGRITY, false);
 		poptPrintHelp(popt_context, stdout, 0);
 		log_std(_("\n"
 			 "<action> is one of:\n"));
@@ -478,7 +568,7 @@ static void help(poptContext popt_context,
 		poptFreeContext(popt_context);
 		exit(EXIT_SUCCESS);
 	} else if (key->shortName == 'V') {
-		log_std("%s %s\n", PACKAGE_INTEGRITY, PACKAGE_VERSION);
+		tools_package_version(PACKAGE_INTEGRITY, false);
 		tools_cleanup();
 		poptFreeContext(popt_context);
 		exit(EXIT_SUCCESS);
@@ -500,7 +590,7 @@ static int run_action(struct action_type *action)
 
 static bool needs_size_conversion(unsigned int arg_id)
 {
-	return arg_id == OPT_JOURNAL_SIZE_ID;
+	return (arg_id == OPT_JOURNAL_SIZE_ID || arg_id == OPT_DEVICE_SIZE_ID);
 }
 
 static void basic_options_cb(poptContext popt_context,
@@ -527,8 +617,9 @@ static void basic_options_cb(poptContext popt_context,
 		/* fall through */
 	case OPT_JOURNAL_CRYPT_KEY_SIZE_ID:
 		if (ARG_UINT32(key->val) > (DEFAULT_INTEGRITY_KEYFILE_SIZE_MAXKB * 1024)) {
-			snprintf(msg, sizeof(msg), _("Invalid --%s size. Maximum is %u bytes."),
-				 key->longName, DEFAULT_INTEGRITY_KEYFILE_SIZE_MAXKB * 1024);
+			if (snprintf(msg, sizeof(msg), _("Invalid --%s size. Maximum is %u bytes."),
+			    key->longName, DEFAULT_INTEGRITY_KEYFILE_SIZE_MAXKB * 1024) < 0)
+				msg[0] = '\0';
 			usage(popt_context, EXIT_FAILURE, msg,
 			      poptGetInvocationName(popt_context));
 		}
@@ -549,7 +640,7 @@ int main(int argc, const char **argv)
 		{ NULL,    '\0', POPT_ARG_CALLBACK, basic_options_cb, 0, NULL, NULL },
 #define ARG(A, B, C, D, E, F, G, H) { A, B, C, NULL, A ## _ID, D, E },
 #include "integritysetup_arg_list.h"
-#undef arg
+#undef ARG
 		POPT_TABLEEND
 	};
 	static struct poptOption popt_options[] = {
@@ -617,7 +708,8 @@ int main(int argc, const char **argv)
 
 	if (action_argc < action->required_action_argc) {
 		char buf[128];
-		snprintf(buf, 128,_("%s: requires %s as arguments"), action->type, action->arg_desc);
+		if (snprintf(buf, 128,_("%s: requires %s as arguments"), action->type, action->arg_desc) < 0)
+			buf[0] ='\0';
 		usage(popt_context, EXIT_FAILURE, buf,
 		      poptGetInvocationName(popt_context));
 	}

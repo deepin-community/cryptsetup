@@ -1,7 +1,7 @@
 /*
  * dm-verity volume handling
  *
- * Copyright (C) 2012-2021 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
  *
  * This file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -214,7 +214,7 @@ static int create_or_verify(struct crypt_device *cd, FILE *rd, FILE *wr,
 					r = -EIO;
 					goto out;
 				}
-				if (memcmp(read_digest, calculated_digest, digest_size)) {
+				if (crypt_backend_memeq(read_digest, calculated_digest, digest_size)) {
 					log_err(cd, _("Verification failed at position %" PRIu64 "."),
 						ftello(rd) - data_block_size);
 					r = -EPERM;
@@ -380,7 +380,7 @@ out:
 			log_err(cd, _("Verification of data area failed."));
 		else {
 			log_dbg(cd, "Verification of data area succeeded.");
-			r = memcmp(root_hash, calculated_digest, digest_size) ? -EFAULT : 0;
+			r = crypt_backend_memeq(root_hash, calculated_digest, digest_size) ? -EFAULT : 0;
 			if (r)
 				log_err(cd, _("Verification of root hash failed."));
 			else

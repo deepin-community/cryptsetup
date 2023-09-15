@@ -1,0 +1,15 @@
+umount "$ROOT/boot"
+umount "$ROOT"
+
+swapoff /dev/md1
+mdadm --stop /dev/md1
+cryptsetup close "vda3_crypt"
+cryptsetup close "vdb3_crypt"
+
+swapoff /dev/cryptvg/swap
+lvm vgchange -an "cryptvg"
+mdadm --stop /dev/md2
+cryptsetup close "vda4_crypt"
+cryptsetup close "vdb4_crypt"
+
+# vim: set filetype=sh :

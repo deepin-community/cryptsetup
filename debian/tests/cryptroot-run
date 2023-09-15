@@ -1,0 +1,135 @@
+#!/bin/bash
+
+# Wrapper for cryptroot-* DEP-8 tests (outside autopkgtest harness)
+# This is mostly useful for local tests on the maintainers' machine,
+# such as expensive tests we don't want to overload debci with.
+#
+#   Usage: d/t/cryptroot-run [TESTNAME ..]
+#
+# Copyright © 2022 Guilhem Moulin <guilhem@debian.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -ue
+PATH="/usr/bin:/bin"
+export PATH
+
+if [ -n "${AUTOPKGTEST_TMP+x}" ]; then
+    echo "ERROR: This script is a test wrapper not an autopkgtest" >&2
+    exit 1
+fi
+
+# git-buildpackages's 'export-dir' option (XXX hardcoding this is not ideal)
+EXPORT_DIR="${XDG_CACHE_HOME:-"$HOME/.cache"}/build-area"
+
+RV=0
+TESTDIR="$(dirname -- "$0")"
+declare -a TESTNAMES=() TIME=() CODE=()
+
+# determine path to the .changes file and extract .deb file list from it
+DEB_VERSION="$(dpkg-parsechangelog -SVersion)"
+DEB_SOURCE="$(dpkg-parsechangelog -SSource)"
+DEB_BUILD_ARCHITECTURE="$(dpkg-architecture -qDEB_BUILD_ARCH)"
+if [[ "$DEB_VERSION" =~ ^[0-9]+:(.+)$ ]]; then
+    DEB_VERSION_NOEPOCH="${BASH_REMATCH[1]}"
+else
+    DEB_VERSION_NOEPOCH="$DEB_VERSION"
+fi
+
+CHANGES_FILE="${DEB_SOURCE}_${DEB_VERSION_NOEPOCH}_${DEB_BUILD_ARCHITECTURE}.changes"
+PKG_DIR="$(mktemp --tmpdir --directory "$DEB_SOURCE.XXXXXXXXXX")"
+trap "rm -rf -- \"$PKG_DIR\"" EXIT INT TERM
+
+if [ ! -f "$EXPORT_DIR/$CHANGES_FILE" ]; then
+    echo "ERROR: $EXPORT_DIR/$CHANGES_FILE: No such file" >&2
+    exit 1
+elif grep -qFxe "-----BEGIN PGP SIGNED MESSAGE-----" <"$EXPORT_DIR/$CHANGES_FILE"; then
+    gpgv --keyring=/dev/null --output="$PKG_DIR/$CHANGES_FILE" <"$EXPORT_DIR/$CHANGES_FILE" 2>/dev/null || true
+else
+    cp -T -- "$EXPORT_DIR/$CHANGES_FILE" "$PKG_DIR/$CHANGES_FILE"
+fi
+
+declare -a EXTRA_PKGS
+EXTRA_PKGS=( $(sed -nr '/^Files:/I {:l;n; /^\S/q; s/^\s.*\s(\S+\.deb)$/\1/p; b l }' "$PKG_DIR/$CHANGES_FILE") )
+if [ ${#EXTRA_PKGS[@]} -eq 0 ]; then
+    echo "ERROR: Couldn't extract .deb list from $CHANGES_FILE" >&2
+    exit 1
+fi
+
+# create temporary repository to expose locally-built .deb to cryptroot-* tests
+for deb in "${EXTRA_PKGS[@]}"; do
+    ln -st "$PKG_DIR" -- "$EXPORT_DIR/$deb" || exit 1
+done
+
+( cd "$PKG_DIR" && apt-ftparchive packages . >./Packages && apt-ftparchive release . >./Release )
+EXTRA_REPO="deb file:$PKG_DIR /"
+
+runtest() {
+    local rv=0 ts_start ts_stop
+    if [ -f "$t" ] && [ -d "$t.d" ]; then
+        t="${t#"$TESTDIR/"}"
+        echo ">>> Running $t..."
+        ts_start="$(printf "%(%s)T")"
+        "$TESTDIR/$t" "$EXTRA_REPO" </dev/null || rv=$?
+        ts_stop="$(printf "%(%s)T")"
+
+        if [ $rv -ne 0 ] && [ $RV -eq 0 -o $rv -lt $RV ]; then
+            RV=$rv
+        fi
+
+        TESTNAMES+=( "$t" )
+        TIME+=( $((ts_stop - ts_start)) )
+        CODE+=( $rv )
+    fi
+}
+
+
+if [ $# -eq 0 ]; then
+    for t in "$TESTDIR"/cryptroot-*; do
+        runtest "$t"
+    done
+else
+    for t in "$@"; do
+        if [ "${t#*/}" = "$t" ]; then
+            t="$TESTDIR/cryptroot-${t#cryptroot-}"
+        fi
+        runtest "$t"
+    done
+fi
+
+# show summary with test exit codes and elapsed time
+echo ==============================================================================
+print_sgr() {
+    local n="$1" msg="$2" fmt
+    [ -t 1 ] && fmt="\\x1B[${n}m%s\\x1B[0m" || fmt="%s"
+    printf " $fmt" "$msg"
+}
+for (( i = 0; i < ${#TESTNAMES[@]}; i++ )); do
+    printf "%s" "${TESTNAMES[i]}"
+    if [ ${CODE[i]} -eq 0 ]; then
+        print_sgr "1;32" "PASSED"
+    elif [ ${CODE[i]} -eq 77 ]; then
+        print_sgr "1;36" "SKIPPED"
+    elif [ ${CODE[i]} -eq 124 ]; then
+        print_sgr "1;31" "FAILED"
+        printf " (timeout)"
+    else
+        print_sgr "1;31" "FAILED"
+        printf " (with status %d)" ${CODE[i]}
+    fi
+    printf " after %d seconds\\n" ${TIME[i]}
+done
+echo ==============================================================================
+
+exit $RV

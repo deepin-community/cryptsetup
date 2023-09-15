@@ -109,13 +109,19 @@ setup_mapping() {
     fi
     device_msg "starting"
 
+    local offset_bytes=""
+    if [ -n "${CRYPTTAB_OPTION_offset+x}" ] && [ ${#CRYPTTAB_OPTION_offset} -le 7 ] && [ $CRYPTTAB_OPTION_offset -lt 4194304 ]; then
+        # silently ignore large offset values which might cause the multiplication to overflow...
+        offset_bytes=$((CRYPTTAB_OPTION_offset * 512))
+    fi
+
     local out tmpdev
     if [ "$CRYPTTAB_TYPE" != "luks" ] && [ "$CRYPTTAB_TYPE" != "bitlk" ]; then
         # fail if the device has a filesystem and the disk encryption format doesn't
         # verify the key digest (unlike LUKS); unless it's swap, otherwise people can't
         # easily convert an existing plainttext swap partition to an encrypted one
-        if ! out="$(/lib/cryptsetup/checks/un_blkid "$CRYPTTAB_SOURCE" "" "${CRYPTTAB_OPTION_offset-}" 2>/dev/null)" &&
-                ! /lib/cryptsetup/checks/blkid "$CRYPTTAB_SOURCE" swap "${CRYPTTAB_OPTION_offset-}" >/dev/null; then
+        if ! out="$(/lib/cryptsetup/checks/un_blkid "$CRYPTTAB_SOURCE" "" ${CRYPTTAB_OPTION_offset+"$offset_bytes"} 2>/dev/null)" &&
+                ! /lib/cryptsetup/checks/blkid "$CRYPTTAB_SOURCE" swap ${CRYPTTAB_OPTION_offset+"$offset_bytes"} >/dev/null; then
             log_warning_msg "$CRYPTTAB_NAME: the precheck for '$CRYPTTAB_SOURCE' failed: $out"
             return 1
         fi
@@ -145,8 +151,8 @@ setup_mapping() {
             continue
         fi
         if [ "${CRYPTTAB_OPTION_swap+x}" ]; then
-            if out="$(/lib/cryptsetup/checks/un_blkid "$tmpdev" "" "${CRYPTTAB_OPTION_offset-}" 2>/dev/null)" ||
-                    /lib/cryptsetup/checks/blkid "$tmpdev" swap "${CRYPTTAB_OPTION_offset-}" >/dev/null 2>&1; then
+            if out="$(/lib/cryptsetup/checks/un_blkid "$tmpdev" "" ${CRYPTTAB_OPTION_offset+"$offset_bytes"} 2>/dev/null)" ||
+                    /lib/cryptsetup/checks/blkid "$tmpdev" swap ${CRYPTTAB_OPTION_offset+"$offset_bytes"} >/dev/null 2>&1; then
                 mkswap "$tmpdev" >/dev/null 2>&1
             else
                 log_warning_msg "$target: the check for '$CRYPTTAB_NAME' failed. $CRYPTTAB_NAME contains data: $out"
@@ -189,30 +195,37 @@ do_stop() {
     log_action_end_msg 0
 }
 _do_stop_callback() {
-    local i rv=0 skip="n"
+    local skip="n" devno rv=0
 
-    # traverse the device tree for each crypttab(5) entry, that's
-    # suboptimal but we can't use mapped device names as they might
-    # contain any character other than NUL.  shouldn't be much overhead
-    # anyway as the device tree is likely not that long
+    # traverse the device tree for each crypttab(5) entry and mark / and
+    # /usr holders as skipped.  that's suboptimal but we can't use
+    # mapped device names as they might contain any character other than
+    # NUL.  shouldn't be much overhead anyway as the device tree is
+    # likely not that long
     foreach_cryptdev _do_stop_skipped $devno_rootfs $devno_usr
+    [ "$skip" = "n" ] || return $rv
 
-    if [ "$skip" = "n" ]; then
-        for i in 1 2 4 8 16 32; do
-            remove_mapping "$CRYPTTAB_NAME" 3<&- && break || rv=$?
-            if [ $rv -eq 1 ] || [ $rv -eq 2 -a $i -gt 16 ]; then
-                log_action_end_msg $rv
-                break
-            fi
-            log_action_cont_msg "$CRYPTTAB_NAME busy..."
-            sleep $i
-        done
+    if devno="$(dmsetup info -c --noheadings -o devno -- "$CRYPTTAB_NAME" 2>/dev/null)" && [ -n "$devno" ]; then
+        foreach_cryptdev --reverse _do_stop_remove "$devno" || rv=$? # try to remove slave devices first
     fi
+    return $rv
 }
 _do_stop_skipped() {
     if [ "$1" = "$CRYPTTAB_NAME" ]; then
         skip="y"
     fi
+}
+_do_stop_remove() {
+    local name="$1" i rv=0
+    for i in 1 2 4 8 16 32; do
+        remove_mapping "$name" 3<&- && break || rv=$?
+        if [ $rv -eq 1 ] || [ $rv -eq 2 -a $i -gt 16 ]; then
+            log_action_end_msg $rv
+            break
+        fi
+        log_action_cont_msg "$name busy..."
+        sleep $i
+    done
 }
 
 # device_msg([$name], $message)

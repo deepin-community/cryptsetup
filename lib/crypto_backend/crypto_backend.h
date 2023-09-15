@@ -1,8 +1,8 @@
 /*
  * crypto backend implementation
  *
- * Copyright (C) 2010-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2021 Milan Broz
+ * Copyright (C) 2010-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2023 Milan Broz
  *
  * This file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -21,10 +21,17 @@
 #ifndef _CRYPTO_BACKEND_H
 #define _CRYPTO_BACKEND_H
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
+#ifdef HAVE_UCHAR_H
+#include <uchar.h>
+#else
+#define char32_t uint32_t
+#define char16_t uint16_t
+#endif
 
 struct crypt_hash;
 struct crypt_hmac;
@@ -34,7 +41,8 @@ struct crypt_storage;
 int crypt_backend_init(bool fips);
 void crypt_backend_destroy(void);
 
-#define CRYPT_BACKEND_KERNEL (1 << 0)	/* Crypto uses kernel part, for benchmark */
+#define CRYPT_BACKEND_KERNEL     (1 << 0) /* Crypto uses kernel part, for benchmark */
+#define CRYPT_BACKEND_PBKDF2_INT (1 << 1) /* Iteration in PBKDF2 is signed int and can overflow */
 
 uint32_t crypt_backend_flags(void);
 const char *crypt_backend_version(void);
@@ -82,6 +90,15 @@ int crypt_pbkdf_perf(const char *kdf, const char *hash,
 
 /* CRC32 */
 uint32_t crypt_crc32(uint32_t seed, const unsigned char *buf, size_t len);
+uint32_t crypt_crc32c(uint32_t seed, const unsigned char *buf, size_t len);
+
+/* Base64 */
+int crypt_base64_encode(char **out, size_t *out_length, const char *in, size_t in_length);
+int crypt_base64_decode(char **out, size_t *out_length, const char *in, size_t in_length);
+
+/* UTF8/16 */
+int crypt_utf16_to_utf8(char **out, const char16_t *s, size_t length /* bytes! */);
+int crypt_utf8_to_utf16(char16_t **out, const char *s, size_t length);
 
 /* Block ciphers */
 int crypt_cipher_ivsize(const char *name, const char *mode);
@@ -134,5 +151,11 @@ static inline void crypt_backend_memzero(void *s, size_t n)
 	while(n--) *p++ = 0;
 #endif
 }
+
+/* Memcmp helper (memcmp in constant time) */
+int crypt_backend_memeq(const void *m1, const void *m2, size_t n);
+
+/* crypto backend running in FIPS mode */
+bool crypt_fips_mode(void);
 
 #endif /* _CRYPTO_BACKEND_H */

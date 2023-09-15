@@ -66,11 +66,6 @@ wait_for_source() {
     while [ $slumber -gt 0 ]; do
         sleep 1
 
-        if [ -x /scripts/local-block/lvm2 ]; then
-            # activate any VG that might hold $CRYPTTAB_SOURCE
-            /scripts/local-block/lvm2 "$CRYPTTAB_SOURCE"
-        fi
-
         if crypttab_resolve_source; then
             wait_for_udev 10
             return 0
@@ -182,14 +177,6 @@ setup_mapping() {
                 /sbin/cryptsetup remove -- "$CRYPTTAB_NAME"
                 sleep 1
                 continue
-            fi
-        elif [ "$fstype" = lvm2 ]; then
-            if [ ! -x /sbin/lvm ]; then
-                cryptsetup_message "WARNING: $CRYPTTAB_NAME: lvm is not available"
-                return 1
-            elif vg="$(lvm pvs --noheadings -o vg_name --config 'log{prefix=""}' -- "$dev")"; then
-                # activate the VG held by the PV we just unlocked
-                lvm lvchange -a ay --sysinit -- "$vg"
             fi
         fi
 

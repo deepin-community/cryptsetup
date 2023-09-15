@@ -1,0 +1,20 @@
+# intentionally mix UUID= and /dev
+cat >/etc/crypttab <<-EOF
+	vda3_crypt UUID=$(blkid -s UUID -o value /dev/vda3) none discard
+	vda4_crypt UUID=$(blkid -s UUID -o value /dev/vda4) none discard
+	vdb3_crypt /dev/vdb3 none discard
+	vdb4_crypt /dev/vdb4 none discard
+EOF
+
+cat >/etc/fstab <<-EOF
+	/dev/cryptvg/root /    auto errors=remount-ro 0 1
+	/dev/cryptvg/swap none swap sw                0 0
+	/dev/md1          none swap sw                0 0
+	UUID=$(blkid -s UUID -o value /dev/md0) /boot auto defaults 0 2
+EOF
+
+# force unlocking /dev/md1 holders (/dev/vd[ab]3) at initramfs stage
+mkdir -p /etc/initramfs-tools/conf.d
+echo "RESUME=/dev/md1" >/etc/initramfs-tools/conf.d/resume
+
+# vim: set filetype=sh :

@@ -1,8 +1,8 @@
 /*
  * ssh plugin utilities
  *
- * Copyright (C) 2016-2021 Milan Broz <gmazyland@gmail.com>
- * Copyright (C) 2020-2021 Vojtech Trefny
+ * Copyright (C) 2016-2023 Milan Broz
+ * Copyright (C) 2020-2023 Vojtech Trefny
  *
  * This file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -56,7 +56,7 @@ int sshplugin_download_password(struct crypt_device *cd, ssh_session ssh,
 
 	file = sftp_open(sftp, path, O_RDONLY, 0);
 	if (!file) {
-		crypt_log(cd, CRYPT_LOG_ERROR, _("Cannot create sftp session: "));
+		crypt_log(cd, CRYPT_LOG_ERROR, _("Cannot open sftp session: "));
 		r = SSH_FX_FAILURE;
 		goto out;
 	}

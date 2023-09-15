@@ -1,0 +1,17 @@
+umount "$ROOT/boot"
+umount "$ROOT/home"
+umount "$ROOT/usr"
+umount "$ROOT/var"
+umount "$ROOT"
+
+swapoff /dev/mapper/testvg-lv0_crypt
+cryptsetup close "testvg-lv0_crypt"
+cryptsetup close "vdd_crypt"
+
+cryptsetup close "md0_crypt"
+mdadm --stop /dev/md0
+
+cryptsetup close "testvg-lv1_crypt"
+lvm vgchange -an "testvg"
+
+# vim: set filetype=sh :

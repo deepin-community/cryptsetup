@@ -3,8 +3,8 @@
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2021 Milan Broz
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -70,13 +70,15 @@ static inline uint32_t act2dmflags(uint32_t act_flags)
 #define DM_BITLK_ELEPHANT_SUPPORTED (1 << 21) /* Elephant diffuser for BITLK supported */
 #define DM_VERITY_SIGNATURE_SUPPORTED (1 << 22) /* Verity option root_hash_sig_key_desc supported */
 #define DM_INTEGRITY_DISCARDS_SUPPORTED (1 << 23) /* dm-integrity discards/TRIM option is supported */
+#define DM_INTEGRITY_RESIZE_SUPPORTED (1 << 23) /* dm-integrity resize of the integrity device supported (introduced in the same version as discards)*/
 #define DM_VERITY_PANIC_CORRUPTION_SUPPORTED (1 << 24) /* dm-verity panic on corruption  */
 #define DM_CRYPT_NO_WORKQUEUE_SUPPORTED (1 << 25) /* dm-crypt suppot for bypassing workqueues  */
 #define DM_INTEGRITY_FIX_HMAC_SUPPORTED (1 << 26) /* hmac covers also superblock */
 #define DM_INTEGRITY_RESET_RECALC_SUPPORTED (1 << 27) /* dm-integrity automatic recalculation supported */
+#define DM_VERITY_TASKLETS_SUPPORTED (1 << 28) /* dm-verity tasklets supported */
 
 typedef enum { DM_CRYPT = 0, DM_VERITY, DM_INTEGRITY, DM_LINEAR, DM_ERROR, DM_ZERO, DM_UNKNOWN } dm_target_type;
-enum tdirection { TARGET_SET = 1, TARGET_QUERY };
+enum tdirection { TARGET_EMPTY = 0, TARGET_SET, TARGET_QUERY };
 
 int dm_flags(struct crypt_device *cd, dm_target_type target, uint32_t *flags);
 
@@ -93,6 +95,12 @@ int dm_flags(struct crypt_device *cd, dm_target_type target, uint32_t *flags);
 #define DM_ACTIVE_VERITY_PARAMS		(1 << 8)
 
 #define DM_ACTIVE_INTEGRITY_PARAMS	(1 << 9)
+
+#define DM_ACTIVE_JOURNAL_CRYPT_KEY	(1 << 10)
+#define DM_ACTIVE_JOURNAL_CRYPT_KEYSIZE	(1 << 11)
+
+#define DM_ACTIVE_JOURNAL_MAC_KEY	(1 << 12)
+#define DM_ACTIVE_JOURNAL_MAC_KEYSIZE	(1 << 13)
 
 struct dm_target {
 	dm_target_type type;

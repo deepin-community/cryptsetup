@@ -1,0 +1,56 @@
+.debian-prep:
+  extends:
+    - .dump_kernel_log
+  before_script:
+    - >
+      [ -z "$RUN_SYSTEMD_PLUGIN_TEST" ] ||
+      sudo apt-get -y install -y -qq swtpm meson ninja-build python3-jinja2
+      gperf libcap-dev tpm2-tss-engine-dev libmount-dev swtpm-tools
+    - >
+      sudo apt-get -y install -y -qq git gcc make autoconf automake autopoint
+      pkgconf libtool libtool-bin gettext libssl-dev libdevmapper-dev
+      libpopt-dev uuid-dev libsepol-dev libjson-c-dev libssh-dev libblkid-dev
+      tar libargon2-0-dev libpwquality-dev sharutils dmsetup jq xxd expect
+      keyutils netcat passwd openssh-client sshpass asciidoctor
+    - sudo apt-get -y build-dep cryptsetup
+    - sudo -E git clean -xdf
+    - ./autogen.sh
+    - ./configure --enable-libargon2 --enable-asciidoc
+
+test-mergerq-job-debian:
+  extends:
+    - .debian-prep
+  tags:
+    - libvirt
+    - debian11
+  stage: test
+  interruptible: true
+  variables:
+    RUN_SSH_PLUGIN_TEST: "1"
+  rules:
+    - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - make -j
+    - make -j -C tests check-programs
+    - sudo -E make check
+
+test-main-commit-job-debian:
+  extends:
+    - .debian-prep
+  tags:
+    - libvirt
+    - debian11
+  stage: test
+  interruptible: true
+  variables:
+    RUN_SSH_PLUGIN_TEST: "1"
+  rules:
+    - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /v2\..\.x$/
+  script:
+    - make -j
+    - make -j -C tests check-programs
+    - sudo -E make check

@@ -1,0 +1,44 @@
+# We don't use a glob here since we want to exclude cryptsetup-ssh.8
+# which we ship in the 'cryptsetup-ssh' binary package.
+# Explicitely listing all manual pages here isn't as brittle as it might
+# sound since in compat >=13 dh_listing(1) fails if upstream installs
+# files which aren't part of any binary package.
+usr/share/man/man8/cryptsetup-benchmark.8
+usr/share/man/man8/cryptsetup-bitlkDump.8
+usr/share/man/man8/cryptsetup-bitlkOpen.8
+usr/share/man/man8/cryptsetup-close.8
+usr/share/man/man8/cryptsetup-config.8
+usr/share/man/man8/cryptsetup-convert.8
+usr/share/man/man8/cryptsetup-create.8
+usr/share/man/man8/cryptsetup-erase.8
+usr/share/man/man8/cryptsetup-fvault2Dump.8
+usr/share/man/man8/cryptsetup-fvault2Open.8
+usr/share/man/man8/cryptsetup-isLuks.8
+usr/share/man/man8/cryptsetup-loopaesOpen.8
+usr/share/man/man8/cryptsetup-luksAddKey.8
+usr/share/man/man8/cryptsetup-luksChangeKey.8
+usr/share/man/man8/cryptsetup-luksConvertKey.8
+usr/share/man/man8/cryptsetup-luksDump.8
+usr/share/man/man8/cryptsetup-luksErase.8
+usr/share/man/man8/cryptsetup-luksFormat.8
+usr/share/man/man8/cryptsetup-luksHeaderBackup.8
+usr/share/man/man8/cryptsetup-luksHeaderRestore.8
+usr/share/man/man8/cryptsetup-luksKillSlot.8
+usr/share/man/man8/cryptsetup-luksOpen.8
+usr/share/man/man8/cryptsetup-luksRemoveKey.8
+usr/share/man/man8/cryptsetup-luksResume.8
+usr/share/man/man8/cryptsetup-luksSuspend.8
+usr/share/man/man8/cryptsetup-luksUUID.8
+usr/share/man/man8/cryptsetup-open.8
+usr/share/man/man8/cryptsetup-plainOpen.8
+usr/share/man/man8/cryptsetup-reencrypt.8
+usr/share/man/man8/cryptsetup-refresh.8
+usr/share/man/man8/cryptsetup-repair.8
+usr/share/man/man8/cryptsetup-resize.8
+usr/share/man/man8/cryptsetup-status.8
+usr/share/man/man8/cryptsetup-tcryptDump.8
+usr/share/man/man8/cryptsetup-tcryptOpen.8
+usr/share/man/man8/cryptsetup-token.8
+usr/share/man/man8/cryptsetup.8
+usr/share/man/man8/integritysetup.8
+usr/share/man/man8/veritysetup.8

@@ -1,0 +1,31 @@
+#!/usr/bin/perl -T
+
+BEGIN {
+    require "./debian/tests/utils/mock.pm";
+    CryptrootTest::Mock::->import();
+}
+
+unlock_disk("topsecret");
+login("root");
+
+# make sure the root FS, swap, and /home are help by dm-crypt devices
+shell(q{cryptsetup luksOpen --test-passphrase /dev/vda5 <<<topsecret}, rv => 0);
+my $out = shell(q{lsblk -in -oNAME,TYPE,MOUNTPOINT /dev/vda3});
+die unless $out =~ m#\Avda3\s.*\r?\n^`-vda3_crypt\s+crypt\s+/home\s*\r?\n\z#m;
+
+$out = shell(q{lsblk -in -oNAME,TYPE,MOUNTPOINT /dev/vda4});
+die unless $out =~ m#\Avda4\s.*\r?\n^`-vda4_crypt\s+crypt\s+\[SWAP\]\s*\r?\n\z#m;
+
+$out = shell(q{lsblk -in -oNAME,TYPE,MOUNTPOINT /dev/vda5});
+die unless $out =~ m#\Avda5\s.*\r?\n^`-vda5_crypt\s+crypt\s+/\s*\r?\n\z#m;
+
+# make sure only vda5 is processed at initramfs stage
+# XXX unmkinitramfs doesn't work on /initrd.img with COMPRESS=zstd, cf. #1015954
+shell(q{unmkinitramfs /boot/initrd.img-`uname -r` /tmp/initramfs});
+shell(q{grep -E '^vd\S+_crypt\s' </tmp/initramfs/cryptroot/crypttab >/tmp/out});
+shell(q{grep -E  '^vda5_crypt\s' </tmp/out}, rv => 0);
+shell(q{grep -Ev '^vda5_crypt\s' </tmp/out}, rv => 1);
+
+# don't use QMP::quit() here since we want to run our init scripts in
+# shutdown phase
+poweroff();

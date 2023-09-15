@@ -1,5 +1,5 @@
-EXTRA_DIST = README.md COPYING.LGPL FAQ docs misc autogen.sh
-SUBDIRS = po tests
+EXTRA_DIST = README.md COPYING.LGPL FAQ.md docs misc autogen.sh
+SUBDIRS = po tests tests/fuzz
 CLEANFILES =
 DISTCLEAN_TARGETS =
 
@@ -14,9 +14,15 @@ AM_CPPFLAGS = \
         -DVERSION=\""$(VERSION)"\"              \
         -DEXTERNAL_LUKS2_TOKENS_PATH=\"${EXTERNAL_LUKS2_TOKENS_PATH}\"
 AM_CFLAGS = -Wall
+AM_CXXFLAGS = -Wall
 AM_LDFLAGS =
 
-LDADD = $(LTLIBINTL) -lm
+if ENABLE_FUZZ_TARGETS
+AM_CFLAGS += -fsanitize=fuzzer-no-link
+AM_CXXFLAGS += -fsanitize=fuzzer-no-link
+endif
+
+LDADD = $(LTLIBINTL)
 
 tmpfilesddir = @DEFAULT_TMPFILESDIR@
 
@@ -27,6 +33,7 @@ sbin_PROGRAMS =
 man8_MANS =
 tmpfilesd_DATA =
 pkgconfig_DATA =
+dist_noinst_DATA =
 
 include man/Makemodule.am
 
@@ -46,7 +53,7 @@ ACLOCAL_AMFLAGS = -I m4
 DISTCHECK_CONFIGURE_FLAGS = 	\
 	--with-tmpfilesdir=$$dc_install_base/usr/lib/tmpfiles.d \
 	--enable-internal-argon2 --enable-internal-sse-argon2 \
-	--enable-external-tokens --enable-ssh-token
+	--enable-external-tokens --enable-ssh-token --enable-asciidoc
 
 distclean-local:
 	-find . -name \*~ -o -name \*.orig -o -name \*.rej | xargs rm -f
@@ -60,3 +67,11 @@ install-data-local:
 
 uninstall-local:
 	rmdir $(DESTDIR)/${EXTERNAL_LUKS2_TOKENS_PATH} 2>/dev/null || :
+
+check-programs: libcryptsetup.la
+	$(MAKE) -C tests $@
+
+if ENABLE_FUZZ_TARGETS
+fuzz-targets: libcryptsetup.la libcrypto_backend.la
+	$(MAKE) -C tests/fuzz $@
+endif

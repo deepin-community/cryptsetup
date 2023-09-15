@@ -1,3 +1,133 @@
-Tests: cryptdisks
-Depends: cryptsetup
+# Run the installed binaries and libraries through the full upstream test suite.
+Features: test-name=upstream-testsuite
+Test-Command: make -C ./tests -f Makefile.localtest -j tests CRYPTSETUP_PATH=/sbin TESTSUITE_NOSKIP=y
+Depends: cryptsetup-bin,
+# to compile tests/*.c
+  gcc,
+  libcryptsetup-dev,
+  libdevmapper-dev,
+#
+# for hexdump(1)
+  bsdextrautils,
+# for dmsetup(8)
+  dmsetup,
+# for expect(1)
+  expect,
+# for jq(1)
+  jq,
+# for keyctl(1)
+  keyutils,
+# for modprobe(8) and rmmod(8)
+  kmod,
+# for free(1)
+  procps,
+# for uuencode(1)
+  sharutils,
+# for xxd(1)
+  xxd
+#
+# Use machine-level isolation since some extra tests want to interact
+# with the kernel, load modules, and create/remove loop devices
+Restrictions: allow-stderr, needs-root, isolation-machine, rw-build-tree
+
+# Run ./tests/ssh-test-plugin on its own since it has its own dependency set.
+Features: test-name=ssh-test-plugin
+Test-Command: cd ./tests && CRYPTSETUP_PATH=/sbin TESTSUITE_NOSKIP=y RUN_SSH_PLUGIN_TEST=y ./ssh-test-plugin
+Depends: cryptsetup-bin,
+         cryptsetup-ssh,
+         netcat-openbsd,
+         openssh-client,
+         openssh-server,
+         openssl,
+         sshpass
+Restrictions: needs-root, isolation-machine
+
+
+Tests: cryptdisks, cryptdisks.init
+Depends: cryptsetup, xxd
 Restrictions: allow-stderr, needs-root, isolation-machine
+
+# This test doesn't replace the cryptroot-* tests below which mock a
+# complete system incl. unlocking at initramfs stage, but it's also
+# significantly faster so we use it for crude checks of our initramfs
+# hook and the initramfs image itself.
+Tests: initramfs-hook
+Depends: cryptsetup-initramfs, e2fsprogs, zstd
+Restrictions: allow-stderr, needs-root, isolation-machine
+
+Tests: cryptroot-lvm, cryptroot-legacy
+# Only dependencies required to set the VM here are listed here;
+# cryptsetup is not listed since we only install it in the VM.
+Depends: cryptsetup-bin,
+         dosfstools [arm64 armhf],
+         fdisk,
+         genext2fs,
+         initramfs-tools-core,
+         libjson-perl,
+         lvm2,
+         qemu-efi-aarch64 [arm64],
+         qemu-efi-arm [armhf],
+         qemu-system-arm [arm64 armhf] | qemu-system-x86 [amd64 i386] | qemu-system,
+         udev
+# We only need root to create /dev/kvm, really.  And while it works
+# locally and on debci, it doesn't work on salsa CI..
+Restrictions: allow-stderr, needs-root
+Architecture: amd64 i386
+
+Tests: cryptroot-md
+Depends: cryptsetup-bin,
+         dosfstools [arm64 armhf],
+         fdisk,
+         genext2fs,
+         initramfs-tools-core,
+         libjson-perl,
+         lvm2,
+         mdadm,
+         qemu-efi-aarch64 [arm64],
+         qemu-efi-arm [armhf],
+         qemu-system-arm [arm64 armhf] | qemu-system-x86 [amd64 i386] | qemu-system,
+         udev
+Restrictions: allow-stderr, needs-root
+Architecture: amd64 i386
+
+Tests: cryptroot-nested
+Depends: btrfs-progs,
+         cryptsetup-bin,
+         dosfstools [arm64 armhf],
+         fdisk,
+         genext2fs,
+         initramfs-tools-core,
+         libjson-perl,
+         lvm2,
+         mdadm,
+         qemu-efi-aarch64 [arm64],
+         qemu-efi-arm [armhf],
+         qemu-system-arm [arm64 armhf] | qemu-system-x86 [amd64 i386] | qemu-system,
+         udev
+Restrictions: allow-stderr, needs-root
+Architecture: amd64 i386
+
+Tests: cryptroot-sysvinit
+Depends: cryptsetup-bin,
+         dosfstools [arm64 armhf],
+         fdisk,
+         genext2fs,
+         initramfs-tools-core,
+         libjson-perl,
+         qemu-efi-aarch64 [arm64],
+         qemu-efi-arm [armhf],
+         qemu-system-arm [arm64 armhf] | qemu-system-x86 [amd64 i386] | qemu-system,
+         udev
+Restrictions: allow-stderr, needs-root
+Architecture: amd64 i386
+
+# Dummy test so that kernel updates trigger our other autopkgtests on debci
+Features: test-name=hint-testsuite-triggers
+Test-Command: false
+Depends: linux-image-generic,
+         linux-image-amd64 [amd64],
+         linux-image-arm64 [arm64],
+         linux-image-armmp-lpae [armhf],
+         linux-image-686-pae [i386]
+Restrictions: hint-testsuite-triggers
+Architecture: amd64 i386

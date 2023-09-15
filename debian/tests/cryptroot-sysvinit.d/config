@@ -1,0 +1,5 @@
+PKGS_EXTRA+=( e2fsprogs ) # for fsck.ext4
+PKGS_EXTRA+=( cryptsetup-initramfs cryptsetup )
+PKG_INIT="sysvinit-core"
+
+# vim: set filetype=bash :

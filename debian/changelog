@@ -1,14 +1,355 @@
-cryptsetup (2:2.4.1-2) UNRELEASED; urgency=medium
+cryptsetup (2:2.6.1-5) unstable; urgency=medium
 
-  * update
+  [ Guilhem Moulin ]
+  * d/control: Drop cryptsetup-run transitional binary package.
+    (Closes: #1038285)
 
- -- Debian Cryptsetup Team <pkg-cryptsetup-devel@alioth-lists.debian.net>  Wed, 29 Jun 2022 17:10:03 +0800
+  [ Michael Biebl ]
+  * cryptsetup-suspend-wrapper: Don't error out on missing
+    /lib/systemd/system-sleep directory, which was removed from the systemd
+    package. (Closes: #1050606)
 
-cryptsetup (2:2.4.1-2) experimental; urgency=medium
+ -- Guilhem Moulin <guilhem@debian.org>  Sun, 27 Aug 2023 12:24:57 +0200
 
-  * suggest depends cryptsetup-initramfs modify to depends.
+cryptsetup (2:2.6.1-4) unstable; urgency=medium
 
- -- zhangya <zhangya@uniontech.com>  Wed, 29 Jun 2022 17:07:32 +0800
+  * Backport upstream MR !498, see #1028250:
+    + 7893c33d: Check for physical memory available also in PBKDF benchmark.
+    + 6721d3a8: Use only half of detected free memory on systems without swap.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 20 Apr 2023 23:46:08 +0200
+
+cryptsetup (2:2.6.1-3) unstable; urgency=medium
+
+  [ Guilhem Moulin ]
+  * initramfs hook: Fix copy_libgcc_argon2() on non merged-/usr systems.
+    (Closes: #1032518)
+  * Backport upstream MR !490, see #1028250:
+    + 27f8e5c0: Try to avoid OOM killer on low-memory systems without swap
+    + 899bad8c: Print warning when keyslot requires more memory than available
+  * d/t/initramfs-hook: Pass `-xdev` to `find "$INITRD_DIR"` in order to solve
+    a race condition in that autopkgtest.
+
+  [ Remus-Gabriel Chelu ]
+  * Add Romanian debconf templates translation. (Closes: #1031497)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Mon, 13 Mar 2023 23:43:50 +0100
+
+cryptsetup (2:2.6.1-2) unstable; urgency=medium
+
+  * initramfs hook: Explicitly call copy_libgcc().  The recent libargon2-1
+    upgrade is built with glibc ≥2.34 hence no longer links libpthread.  This
+    in turns means that initramfs-tool's copy_exec() is no longer able to
+    detect pthread_*() need and thus doesn't copy libgcc_s.so anymore.  So we
+    need to do it manually instead.  Closes: #1032221
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 02 Mar 2023 05:01:53 +0100
+
+cryptsetup (2:2.6.1-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+  * d/README.Debian: Explicitly set cswap1's device type to 'plain'.
+    (Closes: #1025136)
+  * d/control: Update standards version to 4.6.2, no changes needed.
+  * d/clean: Add some gitignore(5)'d files. (Closes: #1026838)
+  * cryptgnupg-sc hook: Look terminfo file in /usr/share/terminfo in adition
+    to /lib/terminfo, see #1028202. (Closes: 1028234)
+  * d/copyright: Bump copyright years.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Fri, 10 Feb 2023 00:50:42 +0100
+
+cryptsetup (2:2.6.0-2) unstable; urgency=low
+
+  * libcryptsetup-dev: Add 'Depends: libargon2-dev, libblkid-dev,
+    libdevmapper-dev, libjson-c-dev, libssl-dev, uuid-dev' to account for
+    libcryptsetup.pc's Requires.private.  Closes: #1025054.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 29 Nov 2022 15:42:25 +0100
+
+cryptsetup (2:2.6.0-1) unstable; urgency=low
+
+  * New upstream release 2.6.0.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 29 Nov 2022 01:20:38 +0100
+
+cryptsetup (2:2.6.0~rc0-1) experimental; urgency=medium
+
+  * New upstream release candidate 2.6.0, introducing support for handling
+    macOS FileVault2 devices (FVAULT2).  The new version of FileVault based on
+    the APFS filesystem used in recent macOS versions is currently not
+    supported: only the (legacy) FileVault2 format based on Core Storage and
+    HFS+ filesystem (introduced in MacOS X 10.7 Lion) is supported.  Moreover
+    header formatting and changes are not supported; cryptsetup never changes
+    the metadata on the device.
+    Closes: #923513.
+  * Update d/copyright for 2:2.6.0~rc0-1.
+  * Ship cryptsetup-fvault2Dump(8) and cryptsetup-fvault2Open(8) to
+    cryptsetup-bin binary package.
+  * Update d/libcryptsetup12.symbols for 2:2.6.0~rc0-1.
+  * Add 'fvault2' flag to crypttab(5) to force detection of Apple's FileVault2
+    volumes.
+  * d/rules: Add new target execute_before_dh_auto_test so blhc ignores
+    compilations of tests/*.c.
+  * d/u/metadata: Set 'Security-Contact' upstream metadata field.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Sat, 19 Nov 2022 17:30:40 +0100
+
+cryptsetup (2:2.5.0-6) unstable; urgency=medium
+
+  * d/t/cryptroot-*: Mask systemd-firstboot.service.
+  * d/t/cryptroot-*: Use camel case for apt.conf(5) settings.
+  * d/t/cryptroot-*: _apt(): Sort apt.conf(5) settings.
+  * d/t/cryptroot-*: Honor apt_preferences(5) settings under autopkgtest.
+  * d/t/cryptroot-*: init: bind mount temporary filesystems to fix
+    autopkgtests with systemd 252. (Closes: #1022970)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Fri, 28 Oct 2022 19:30:14 +0200
+
+cryptsetup (2:2.5.0-5) unstable; urgency=medium
+
+  * d/t/cryptroot-*: Bump setup timeout to 3600s so autopkgtests don't fail on
+    debci runners lacking KVM support.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 04 Oct 2022 20:01:50 +0200
+
+cryptsetup (2:2.5.0-4) unstable; urgency=medium
+
+  * suspend.conf: Improve description and typofix.
+  * d/t/cryptroot-*: Fix race condition between creating new partition and
+    using them.
+  * d/t/cryptroot-*: Fail the test after a reasonable timeout.
+    (Closes: #1020714)
+  * d/t/cryptroot-*: setup_apt(): Add 'Identifier: Packages' to `apt-get
+    indextargets` filter.
+  * cryptsetup-suspend-wrapper: Explicitly disable udev support when resuming.
+    (Closes: #1020553)
+  * d/t/cryptroot-*: Pin versions for all packages in PKGS_EXTRA that are part
+    of src:cryptsetup.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 04 Oct 2022 01:14:30 +0200
+
+cryptsetup (2:2.5.0-3) unstable; urgency=low
+
+  * d/t/cryptroot-*: Disable VGA card on the guest.
+  * d/t/cryptroot-*: Communicate with guests on /dev/hvc0 and remove
+    console=hvc0 from the kernel command line to get a noise-free channel.
+  * d/t/cryptroot-*: poweroff(): Use poweroff(8) not `echo o
+    >/proc/sysrq-trigger`.
+  * d/t/cryptroot-*: hibernate(): Use systemctl(1) not `echo disk
+    >/sys/power/state`.
+  * d/t/cryptroot-*: Use a separate logfile for each communication channel.
+  * Refactor d/t/utils/mock.pm and add QMP support; this adds 'Depends:
+    libjson-perl' to cryptroot-* autopkgtests.
+  * d/t/cryptroot-*: Use the QMP "quit" command to destroy guests early.
+  * d/t/cryptroot-*: Start getty on /dev/hvc0 only (not /dev/ttyS0) in
+    non-interactive mode.
+  * d/t/cryptroot-*: Remove console=tty0 from the kernel command line.
+  * d/t/cryptroot-*: Mask all timer units to avoid cluttering test
+    environments with background jobs.
+  * d/t/cryptroot-lvm: Also test cryptsetup-suspend (enter to and resume from
+    S3 state).
+  * d/t/cryptroot-*: Simplify login prompt regex.
+  * d/t/cryptroot-*: Use $' when consuming input buffers.
+  * Salsa CI: Include recipes/debian.yml.
+  * Salsa CI: Remove redundant variable RELEASE=unstable.
+  * Salsa CI: Re-enable autopkgtest job with partial coverage.
+  * cryptsetup-suspend-wrapper: Improve quoting.
+  * cryptsetup-suspend-wrapper: Use crypttab_find_entry()'s return status.
+  * d/copyright: Improve wording.
+  * d/copyright: Fix license for d/scripts/suspend/cryptsetup-suspend.c .
+  * Add license headers for d/scripts/suspend/*.
+  * Relicense own code from GPLv2+ to GPLv3+.
+  * cryptsetup-suspend-wrapper: Don't bindmount temporary filesystems.
+  * cryptsetup-suspend-wrapper: Improve $INITRAMFS_DIR detection and cleanup.
+  * cryptsetup-suspend-wrapper: Improve TODO comment.
+  * d/t/cryptroot-*: Add a network device in interactive mode.
+  * d/t/cryptroot-lvm: Test I/O on the root FS after wakeup to make sure the
+    device is not suspended.
+  * cryptsetup-suspend-wrapper: Harden chroot environment: mount ramfs
+    read-only and with the 'nodev' option, make it unbindable, and use a
+    restrictive root mode.
+  * initramfs hook: Remove duplicate unmangling.
+  * initramfs hook: populate_CRYPTO_HASHES(): Add missing call to
+    crypttab_parse_options().
+  * d/functions: crypttab_parse_options(): Always reset $CRYPTTAB_TYPE.
+  * cryptsetup-suspend-wrapper: Ignore $KEEP_INITRAMFS if a newer initrd is
+    detected.
+  * d/functions: resume_device(): Fix resuming by keyscript.
+  * d/functions: Refactor resume_device() and freeze_cgroups().
+  * cryptsetup-suspend-wrapper: Don't copy /lib/firmware if it already exists
+    in the initrd.
+  * cryptsetup-suspend-wrapper: Don't treat udevd specially as luksResume now
+    appears to work when udevd is still frozen.
+  * cryptsetup-suspend-wrapper: Populate ACTIVE_DEVICES via callback.
+  * cryptsetup-suspend-wrapper: Use FD3 to list remaining devices.
+  * d/t/utils/debootstrap: Strip colon and suffix from package (Pre-)Depends.
+  * d/t/utils/debootstrap: Remove obsolete comment and Pre-Depends.
+  * d/t/cryptroot-*: Manually create merged-/usr layout and install
+    usr-is-merged.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Sun, 18 Sep 2022 23:01:46 +0200
+
+cryptsetup (2:2.5.0-2) unstable; urgency=low
+
+  [ Matthias Klose ]
+  * Add support for 'noudeb' build profile. (Closes: #983318)
+
+  [ Christoph Anton Mitterer ]
+  * initramfs hook: align busybox check on klibc-utils's hook.
+
+  [ Benjamin Drung ]
+  * initramfs hook: Fix broken compatibility with OpenSSL3 when cryptsetup
+    needs legacy hashes (currently ripemd160 and whirlpool). (LP: #1979159)
+
+  [ Guilhem Moulin ]
+  * New DEP-8 test for crude checks of the initramfs hook.
+  * Minor changes to the legacy.so inclusion logic.
+  * DEP-8: Add checks for OpenSSL's legacy.so inclusion.
+  * d/rules: Inspect DEB_BUILD_* with $(filter ,) not $(findstring ,).
+  * initramfs boot script: Remove custom LVM handling.  Since 2.03.15-1 lvm2
+    doesn't ship an initramfs boot script anymore and relies solely on udev
+    rules instead.  We therefore don't have to manually activate LVs/VGs
+    anymore, but cryptsetup-initramfs now conflicts with earlier lvm2
+    versions. (Closes: #928943)
+  * Override lintian tag 'conflicts-with-version' given the above.
+  * initramfs hook: Don't overwrite crypttab(5) source to /dev/mapper/$NAME
+    for mapped devices. (Closes: #1016455)
+  * initramfs hook: Preserve crypttab source specifications and devices
+    starting with /dev/disk/by- or /dev/mapper/.
+  * d/README.initramfs: Improve section about cryptopts= kernel parameter.
+  * d/Debian.README: Mention that systemd masks /etc/init.d/cryptdisks.
+    (Closes: #1010708)
+  * Rename systemd_cryptsetup-suspend.conf to systemd/cryptsetup-suspend.conf.
+  * cryptsetup-suspend-wrapper: Fix grep calls in some corner cases such as
+    template cgroups.
+  * cryptsetup-suspend-wrapper: Avoid double slash in cgroup paths.
+  * cryptsetup-suspend-wrapper: Consolidate style.
+  * d/t/cryptroot-*: Relax the kernel.deb regex to account for release
+    candidates.
+  * d/t/cryptroot-*: Add more partition type GUIDs.
+  * d/t/cryptroot-*: Improve sources.list(5) generation.
+  * d/t/cryptroot-*: Make APT repository Origin and URI configurable.
+  * d/t/cryptroot-*: Start udevd before setting up the guest.
+  * d/t/cryptroot-*: Use a separate /run partition when bootstrapping.
+  * Run `chmod +x d/t/cryptdisks d/t/utils/init` for consistency.
+  * d/t/cryptroot-*.d/config: Remove 'cryptsetup' from PKGS_EXTRA as it's only
+    needed for cryptroot-sysvinit.
+  * d/t/cryptroot-sysvinit: Rename 'rootfs.key' keyfile to 'homefs.key' which
+    better describes the purpose of the keyfile.
+  * d/t/cryptroot-*: Replace /target with '$ROOT'.
+  * d/t/cryptroot-*: Rename 'testvg' Volume Group to 'cryptvg'.
+  * d/t/cryptroot-*: Add note about testing cryptsetup-suspend.
+  * d/t: Add convenience wrapper script for local cryptroot-* test runs.
+  * New DEP-8 test for LVM-on-MD-on-LUKS2 layout backed by 4 independently
+    encrypted partitions (all unlocked at initramfs stage).
+  * New DEP-8 test for a complex nested block device stack.
+  * Salsa CI: Disable autopkgtest job for now.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 09 Aug 2022 01:40:50 +0200
+
+cryptsetup (2:2.5.0-1) unstable; urgency=medium
+
+  * New upstream release. (Closes: #1000634, #1011128)
+  * d/copyright: Fix licence for tokens/ssh/cryptsetup-ssh.c.
+  * Remove patches applied upstream.
+  * Rename 'ssh-plugin-test' to 'ssh-test-plugin'.
+  * Add DEP-8 tests for cryptroot unlocking at early boot stage.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Fri, 29 Jul 2022 16:31:23 +0200
+
+cryptsetup (2:2.5.0~rc1-3) experimental; urgency=medium
+
+  * DEP-8: Add 'Features: test-name=' in order to name inline tests.
+  * d/t/control: Add 'Restrictions: rw-build-tree' to upstream-testsuite.
+  * d/control: Remove cryptsetup-reencrypt from cryptsetup-bin package
+    description since the utility was removed upstream in v2.5.0-rc1.
+  * d/changelog: Retroactively correct 2:2.4.0~rc0-1+exp1 entry.
+  * Update d/patches with what's landed upstream since v2.5.0-rc1.
+  * d/patches, d/rules: Pass $(LDFLAGS) when building fake_token_path.so and
+    no longer silence blhc(1) for test files.
+  * Move SSH token plugin stuff into new binary package 'cryptsetup-ssh'.
+    That plugin is arguably not useful for everyone and we can save the
+    'Depends: libssh-4' on cryptsetup-bin by moving cryptsetup-ssh(8) and
+    libcryptsetup-token-ssh.so to a separate package.  Since LUKS2 SSH token
+    support was added after the Bullseye release, and since it is still in
+    experimental stage, we don't let cryptsetup-bin or cryptsetup depend on
+    the new binary package.  Users who need that feature will need to install
+    it manually.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 21 Jul 2022 20:41:20 +0200
+
+cryptsetup (2:2.5.0~rc1-2) experimental; urgency=medium
+
+  * localtest: Treat skipped tests as failure for full coverage.
+  * d/watch: Add uversionmangle option for release candidates.
+  * unit-wipe-test: Skip DIO tests when the file system doesn't support
+    O_DIRECT.  This is needed on the buildds where the source tree appears to
+    be on a tmpfs.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Fri, 15 Jul 2022 20:49:13 +0200
+
+cryptsetup (2:2.5.0~rc1-1) experimental; urgency=low
+
+  * New upstream release candidate 2.5.0.  Highlights include:
+    + Remove cryptsetup-reencrypt(8) executable, use `cryptsetup reencrypt`
+      instead (for both LUKS1 and LUKS2).
+    + Split manual pages into per-action pages, for instance cryptsetup-open.8
+      which can be consulted with `man cryptsetup open`.
+    + Add LUKS2 encryption removal support with `cryptsetup reencrypt
+      --decrypt`.
+    + Preserve unknown metadata option (features implemented in more recent
+      cryptsetup releases) during reencryption.
+  * Salsa CI's deploy stage: Use a Bullseye image.
+  * Salsa CI's deploy stage: Use apt-get(8) not apt(8).
+  * Salsa CI's deploy stage: Replace `cp` with `install`.
+  * Salsa CI's reprotest job: Remove '--no-diffoscope' flag.
+  * Salsa CI's reprotest job: Update reason for running under 'nocheck' build
+    profile.
+  * d/README.source: Update text to reflect current practices.
+  * DEP-8: Run installed binaries and libraries through the full upstream test
+    suite (needs machine-level isolation).
+  * Retroactivately add NEWS.Debian for #949336.
+  * d/t/control: Add 'Depends: xxd' for 'Tests: cryptdisks' stanza.
+  * foreach_cryptdev(): Process each device *after* its slaves.
+  * do_stop(): Remove device holders beforehand. (Closes: #1006802)
+  * Fix space damage.
+  * d/u/metadata: Add FAQ URL.
+  * Refresh lintian overrides to accommodate lintian v2.115.
+  * d/control: New Build-Depends: asciidoctor (unless under 'nodoc' build
+    profile).
+  * d/cryptsetup.docs: Fix FAQ filename.
+  * Move usr/share/man/*/* glob to debian/*.manpages where it belongs.
+  * Update d/libcryptsetup12.symbols.
+  * Bump Standards-Version to 4.6.1 (no changes needed).
+  * Update d/copyright.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Fri, 15 Jul 2022 01:49:59 +0200
+
+cryptsetup (2:2.4.3-1) unstable; urgency=high
+
+  [ Guilhem Moulin ]
+  * New upstream security release 2.4.3, with fix for CVE-2021-4122:
+    decryption through LUKS2 reencryption crash recovery. (Closes: #1003685,
+    #1003686)
+  * Remove cryptsetup-initramfs.preinst. (Closes: #1001063)
+
+  [ Christoph Anton Mitterer ]
+  * d/rules: don't expand here-document.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 13 Jan 2022 19:07:05 +0100
+
+cryptsetup (2:2.4.2-1) unstable; urgency=high
+
+  * New upstream bugfix release 2.4.2.
+  * d/control: Replace Build-Depends on removed package libsepol1-dev with
+    libsepol-dev. (Closes: #999815)
+  * blkid/un_blkid checks: Ignore large offsets when converting from sectors
+    to bytes.
+  * crypttab(5): Formatting fix.
+  * Refresh d/copyright.
+  * Refresh lintian overrides to accommodate lintian v2.112.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 18 Nov 2021 17:15:08 +0100
 
 cryptsetup (2:2.4.1-1) unstable; urgency=medium
 
@@ -95,9 +436,10 @@ cryptsetup (2:2.4.0~rc0-1+exp1) experimental; urgency=medium
   * New upstream release candidate 2.4.0.  Highlights include:
     + Support for external libraries (plugins) for handling LUKS2 token
       objects.
-    + Experimental SSH token handler and cryptsetup-ssh(8) utility (both
-      shipped in the 'cryptsetup' binary package) as a demonstration of the
-      external LUKS2 token interface.  This adds libssh-dev to build-depends.
+    + Experimental SSH token handler and cryptsetup-ssh(8) utility (resp.
+      shipped in the 'cryptsetup' and 'cryptsetup-bin' binary packages) as a
+      demonstration of the external LUKS2 token interface.  This adds
+      libssh-dev to build-depends.
     + Change default LUKS2 PBKDF to Argon2id from Argon2i.
     + Increase minimal memory cost for Argon2 benchmark to 64MiB (suggested
       value in Argon2 RFC).
@@ -1838,7 +2180,7 @@ cryptsetup (2:1.1.3-4) unstable; urgency=high
   * print out a warning at initramfs cryptroot hook in case that detection of
     canonical device failed. (closes: #594092)
   * add manpage fixes, thanks to Stephen Gildea for patch. (closes: #598237)
-  * fix depreciated ext2 wrapper checkscript to succeed for ext2, ext3, ext4
+  * fix deprecated ext2 wrapper checkscript to succeed for ext2, ext3, ext4
     and ext4dev filesystems. (closes: #595331)
   * again remove duplicates from debian/NEWS.
   * truncate trailing spaces for some variables at initramfs cryptroot hook.
@@ -1901,7 +2243,7 @@ cryptsetup (2:1.1.3-1) unstable; urgency=low
   * several improvements to (pre)check scripts, inspired by scripts from
     Christoph Anton Mitterer (closes: #585418, #585496)
     - checkscripts exit with error 1 if executables aren't available.
-    - ext2, swap and xfs scripts are depreciated and invoke blkid script.
+    - ext2, swap and xfs scripts are deprecated and invoke blkid script.
     - drop filtering of minix filesystem in blkid, util-linux 2.17.2 in debian
     - remove *vol_id check scripts, vol_id isn't available in debian any longer
     - don't use sed in *blkid check scripts any longer
@@ -2434,7 +2776,7 @@ cryptsetup (2:1.0.6-1) unstable; urgency=low
 
   [ Jonas Meurer ]
   * new upstream release
-    - reload option is depreciated and a warning is printed. (closes: #428288)
+    - reload option is deprecated and a warning is printed. (closes: #428288)
   * convert patch system from dpatch to quilt.
   * enhance the information regarding the default hash setting in NEWS.Debian.
     Thanks to Ross Boylan <ross@biostat.ucsf.edu>.

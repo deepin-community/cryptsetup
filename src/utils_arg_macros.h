@@ -1,8 +1,8 @@
 /*
  * Command line arguments parsing helpers
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -91,6 +91,13 @@ do { \
 	assert(tool_core_args[(X)].set == false && tool_core_args[(X)].type == CRYPT_ARG_UINT64); \
 	tool_core_args[(X)].u.u64_value = (Y); \
 	tool_core_args[(X)].set = true; \
+} while (0)
+
+
+#define ARG_INIT_ALIAS(X) \
+do { \
+	assert(tool_core_args[(X)].type == CRYPT_ARG_ALIAS); \
+	tool_core_args[(X)].u.o.ptr = &tool_core_args[tool_core_args[(X)].u.o.id]; \
 } while (0)
 
 #endif

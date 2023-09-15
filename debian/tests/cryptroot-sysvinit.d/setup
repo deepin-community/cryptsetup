@@ -1,0 +1,43 @@
+# Separate encrypted root FS and /home partitions, and transient swap --
+# the latter two are not unlocked at initramfs stage but later in the
+# boot process.  This environment also uses sysvinit as PID1 so we can
+# test our init scripts.
+
+sfdisk --append /dev/vda <<-EOF
+	unit: sectors
+
+	start=$((64*1024*2)), size=$((128*1024*2)), type=${GUID_TYPE_Linux_FS}
+	start=$(((64+128)*1024*2)), size=$((64*1024*2)), type=${GUID_TYPE_LUKS}
+	start=$(((64+128+64)*1024*2)), size=$((64*1024*2)), type=${GUID_TYPE_DMCRYPT}
+	start=$(((64+128+64+64)*1024*2)), type=${GUID_TYPE_LUKS}
+EOF
+udevadm settle
+
+# initialize a new LUKS partition and open it
+echo -n "topsecret" >/rootfs.key
+cryptsetup luksFormat --batch-mode \
+    --key-file=/rootfs.key \
+    --type=luks2 \
+    --pbkdf=argon2id \
+    --pbkdf-force-iterations=4 \
+    --pbkdf-memory=32 \
+    -- /dev/vda5
+cryptsetup luksOpen --key-file=/rootfs.key --allow-discards \
+    -- /dev/vda5 "vda5_crypt"
+udevadm settle
+
+cryptsetup open --type=plain --key-file=/dev/urandom --allow-discards \
+    -- /dev/vda4 "vda4_crypt"
+udevadm settle
+
+mke2fs -Ft ext4 /dev/mapper/vda5_crypt
+mount -t ext4 /dev/mapper/vda5_crypt "$ROOT"
+
+mkdir "$ROOT/boot"
+mke2fs -Ft ext2 -m0 /dev/vda2
+mount -t ext2 /dev/vda2 "$ROOT/boot"
+
+mkswap /dev/mapper/vda4_crypt
+swapon /dev/mapper/vda4_crypt
+
+# vim: set filetype=sh :

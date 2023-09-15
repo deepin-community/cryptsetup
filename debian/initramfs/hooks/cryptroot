@@ -40,9 +40,10 @@ crypttab_find_and_print_entry() {
 # crypttab_print_entry()
 #   Print an unmangled crypttab(5) entry to FD nr. 3, using CRYPTTAB_*
 #   and _CRYPTTAB_* values.
-#   _CRYPTTAB_SOURCE is replaced with /dev/mapper/$sourcename for mapped
-#   sources, otherwise by UUID=<uuid> if possible (eg, for LUKS).  If
-#   the entry uses the 'decrypt_derived' keyscript, the other
+#   _CRYPTTAB_SOURCE is replaced with UUID=<uuid> if possible (eg, for
+#   LUKS), unless the value starts with /dev/disk/by- or /dev/mapper/,
+#   or is already a device specification (such as LABEL= or PARTUUID=).
+#   If the entry uses the 'decrypt_derived' keyscript, the other
 #   crypttab(5) entries it depends on are (recursively) printed before
 #   hand.
 #   Various checks are performed on the key and crypttab options, but no
@@ -50,17 +51,14 @@ crypttab_find_and_print_entry() {
 #   crypttab_parse_options().
 #   Return 0 on success, 1 on error.
 crypttab_print_entry() {
-    local DEV MAJ MIN sourcename uuid keyfile
+    local DEV MAJ MIN uuid keyfile
     if _resolve_device "$CRYPTTAB_SOURCE"; then
         if [ "$(dmsetup info -c --noheadings -o devnos_used -- "$CRYPTTAB_NAME" 2>/dev/null)" != "$MAJ:$MIN" ]; then
             cryptsetup_message "ERROR: $CRYPTTAB_NAME: Source mismatch"
-        elif sourcename="$(dmsetup info -c --noheadings -o mangled_name -j "$MAJ" -m "$MIN" 2>/dev/null)" &&
-               [ -b "/dev/mapper/$sourcename" ]; then
-            # for mapped sources, use the dm name as the lvm
-            # local-block script doesn't work with UUIDs (#902943)
-            _CRYPTTAB_SOURCE="/dev/mapper/$sourcename"
-        elif uuid="$(_device_uuid "$DEV")"; then
-            # otherwise, use its UUID if possible (eg. for LUKS)
+        elif [ "${_CRYPTTAB_SOURCE#[A-Za-z]*=}" = "$_CRYPTTAB_SOURCE" ] && \
+                [ "${CRYPTTAB_SOURCE#/dev/disk/by-}" = "$CRYPTTAB_SOURCE" ] && \
+                [ "${CRYPTTAB_SOURCE#/dev/mapper/}" = "$CRYPTTAB_SOURCE" ] && \
+                uuid="$(_device_uuid "$DEV")"; then
             _CRYPTTAB_SOURCE="UUID=$uuid"
         fi
         # on failure _resolve_device() prints a warning and we try our
@@ -137,7 +135,6 @@ get_resume_devno() {
 
     # regular swsusp
     dev="$(sed -nr 's,^(.*\s)?resume=(\S+)(\s.*)?$,\2,p' /proc/cmdline)"
-    dev="$(printf '%b' "$dev")" # unmangle
     _print_devno "$(printf '%b' "$dev")" # unmangle
 
     # initramfs-tools >=0.129
@@ -198,6 +195,40 @@ generate_initrd_crypttab() {
         crypttab_foreach_entry crypttab_print_initramfs_entry
     } 3>"$DESTDIR/cryptroot/crypttab"
     rm -f "$DESTDIR/cryptroot/targets"
+}
+
+# populate_CRYPTO_HASHES()
+#   Find out which crypto hashes are required for a crypttab(5) entry,
+#   and append them to the CRYPTO_HASHES variable.
+populate_CRYPTO_HASHES() {
+    local hash source newline="
+"
+
+    if crypttab_parse_options --quiet && [ -n "${CRYPTTAB_OPTION_header+x}" ]; then
+        source="$CRYPTTAB_OPTION_header"
+    else
+        source="$(_resolve_device_spec "$CRYPTTAB_SOURCE")" || source=""
+    fi
+
+    if [ ! -e "$source" ]; then
+        # missing source device or detached header, can't determine hashing function(s)
+        hash="@@UNKNOWN@@"
+    elif [ "$CRYPTTAB_TYPE" = "luks" ]; then
+        # using --dump-json-metadata would be more robust for LUKS2 but
+        # we also have to support LUKS1 hence have to parse luksDump output
+        hash="$(/sbin/cryptsetup luksDump -- "$source" | sed -nr 's/^\s*(AF hash|Hash|Hash spec)\s*:\s*//Ip')"
+    elif [ "$CRYPTTAB_TYPE" = "plain" ]; then
+        # --hash is being ignored when opening via key file
+        if [ "$CRYPTTAB_KEY" = "none" ] && [ -z "${CRYPTTAB_OPTION_keyscript+x}" ]; then
+            hash="${CRYPTTAB_OPTION_hash-ripemd160}" # default password hashing as of cryptsetup 2.5
+        fi
+    else
+        hash="" # or hash="@@UNKNOWN@@"?
+    fi
+
+    if [ -n "$hash" ]; then
+        CRYPTO_HASHES="${CRYPTO_HASHES:+$CRYPTO_HASHES$newline}$hash"
+    fi
 }
 
 # populate_CRYPTO_MODULES()
@@ -263,6 +294,46 @@ add_crypto_modules() {
     done
 }
 
+# copy_libssl_legacy_library()
+#   Copy ossl-modules/legacy.so (from libssl library) to initramfs if needed.
+#   OpenSSL 3.0 moved support for some crypto hashes into legacy.so.
+#   See https://launchpad.net/bugs/1979159
+copy_libssl_legacy_library() {
+    local libcryptodir CRYPTO_HASHES=""
+
+    libcryptodir="$(env --unset=LD_PRELOAD ldd /sbin/cryptsetup | sed -nr '/.*=>\s*(\S+)\/libcrypto\.so\..*/ {s//\1/p;q}')"
+    [ -d "$libcryptodir" ] || return
+
+    crypttab_foreach_entry populate_CRYPTO_HASHES
+    # See https://www.openssl.org/docs/man3.0/man7/OSSL_PROVIDER-legacy.html#Hashing-Algorithms-Message-Digests
+    if printf '%s\n' "$CRYPTO_HASHES" | grep -Fxq -e @@UNKNOWN@@ -e ripemd160 -e whirlpool; then
+        # legacy hashes are used so legacy.so needs to be copied to the initramfs
+        # (assume ossl-modules/legacy.so is relative to the linked libcrypto.so)
+        copy_exec "$libcryptodir/ossl-modules/legacy.so" || true
+    fi
+}
+
+# See #1032221: newer libargon2 are built with glibc ≥2.34 hence no
+# longer links libpthread.  This in turns means that initramfs-tool's
+# copy_exec() is no longer able to detect pthread_*() need and thus
+# doesn't copy libgcc_s.so anymore.  So we need to do it manually
+# instead.
+copy_libgcc_argon2() {
+    local libdir rv=0
+    libdir="$(env --unset=LD_PRELOAD ldd /sbin/cryptsetup | sed -nr '/.*=>\s*(\S+)\/libargon2\.so\..*/ {s//\1/p;q}')"
+    copy_libgcc "$libdir" || rv=$?
+    if [ $rv -ne 0 ]; then
+        # merged-/usr mismatch, see #1032518
+        if [ "${libdir#/usr/}" != "$libdir" ]; then
+            libdir="${libdir#/usr}"
+        else
+            libdir="/usr/${libdir#/}"
+        fi
+        copy_libgcc "$libdir" && rv=0 || rv=$?
+    fi
+    return $rv
+}
+
 
 #######################################################################
 # Begin real processing
@@ -290,6 +361,7 @@ if [ -r "$TABFILE" ]; then
     generate_initrd_crypttab
     TABFILE="$DESTDIR/cryptroot/crypttab"
     crypttab_foreach_entry populate_CRYPTO_MODULES
+    copy_libssl_legacy_library
 fi
 
 # add required components
@@ -298,11 +370,12 @@ manual_add_modules dm_crypt
 
 copy_exec /sbin/cryptsetup
 copy_exec /sbin/dmsetup
+copy_libgcc_argon2
 
 [ "$ASKPASS" = n ] || copy_exec /lib/cryptsetup/askpass
 
 # We need sed. Either via busybox or as standalone binary.
-if [ "$BUSYBOX" = n ] || [ ! -e "$BUSYBOXDIR/busybox" ]; then
+if [ "$BUSYBOX" = n ] || [ -z "$BUSYBOXDIR" ]; then
     copy_exec /bin/sed
 fi
 

@@ -1,8 +1,8 @@
 /*
  * LUKS - Linux Unified Key Setup v2, kernel keyring token
  *
- * Copyright (C) 2016-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2021 Ondrej Kozina
+ * Copyright (C) 2016-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -18,8 +18,6 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
-
-#include <assert.h>
 
 #include "luks2_internal.h"
 
@@ -124,7 +122,7 @@ int LUKS2_token_keyring_json(char *buffer, size_t buffer_size,
 	return 0;
 }
 
-int LUKS2_token_keyring_get(struct crypt_device *cd __attribute__((unused)), struct luks2_hdr *hdr,
+int LUKS2_token_keyring_get(struct luks2_hdr *hdr,
 	int token, struct crypt_token_params_luks2_keyring *keyring_params)
 {
 	json_object *jobj_token, *jobj;
@@ -138,4 +136,9 @@ int LUKS2_token_keyring_get(struct crypt_device *cd __attribute__((unused)), str
 	keyring_params->key_description = json_object_get_string(jobj);
 
 	return token;
+}
+
+void keyring_buffer_free(void *buffer, size_t buffer_len __attribute__((unused)))
+{
+	crypt_safe_free(buffer);
 }

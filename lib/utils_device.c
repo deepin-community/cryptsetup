@@ -3,8 +3,8 @@
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2021 Milan Broz
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -21,7 +21,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -351,7 +350,7 @@ int device_open_excl(struct crypt_device *cd, struct device *device, int flags)
 		else {
 			/* open(2) with O_EXCL (w/o O_CREAT) on regular file is undefined behaviour according to man page */
 			/* coverity[toctou] */
-			device->dev_fd_excl = open(path, O_RDONLY | O_EXCL);
+			device->dev_fd_excl = open(path, O_RDONLY | O_EXCL); /* lgtm[cpp/toctou-race-condition] */
 			if (device->dev_fd_excl < 0)
 				return errno == EBUSY ? -EBUSY : device->dev_fd_excl;
 			if (fstat(device->dev_fd_excl, &st) || !S_ISBLK(st.st_mode)) {
@@ -623,7 +622,10 @@ size_t device_optimal_encryption_sector_size(struct crypt_device *cd, struct dev
 	phys_block_size = device_block_phys_size_fd(fd);
 	close(fd);
 
-	if (device->block_size >= phys_block_size || phys_block_size <= SECTOR_SIZE || phys_block_size > MAX_SECTOR_SIZE || MISALIGNED(phys_block_size, device->block_size))
+	if (device->block_size >= phys_block_size ||
+	    phys_block_size <= SECTOR_SIZE ||
+	    phys_block_size > MAX_SECTOR_SIZE ||
+	    MISALIGNED(phys_block_size, device->block_size))
 		return device->block_size;
 
 	return phys_block_size;

@@ -1,8 +1,8 @@
 /*
- * Definitions of common constant and generic macros fo libcryptsetup
+ * Definitions of common constant and generic macros of libcryptsetup
  *
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2021 Milan Broz
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,6 +24,9 @@
 
 /* to silent gcc -Wcast-qual for const cast */
 #define CONST_CAST(x) (x)(uintptr_t)
+
+/* to silent clang -Wcast-align when working with byte arrays */
+#define VOIDP_CAST(x) (x)(void*)
 
 #define UNUSED(x) (void)(x)
 

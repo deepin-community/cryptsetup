@@ -10,11 +10,21 @@ PWD1="93R4P4pIqAH8"
 PWD2="mymJeD8ivEhE"
 FAST_PBKDF="--pbkdf-force-iterations 1000"
 
+FIPS_MODE=$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)
+
+CRYPTSETUP_VALGRIND=../.libs/cryptsetup
+CRYPTSETUP_LIB_VALGRIND=../.libs
+
+function fips_mode()
+{
+	[ -n "$FIPS_MODE" ] && [ "$FIPS_MODE" -gt 0 ]
+}
+
 cleanup() {
 	udevadm settle >/dev/null 2>&1
 	if [ -d "$MNT_DIR" ] ; then
-	    umount -f $MNT_DIR 2>/dev/null
-	    rmdir $MNT_DIR 2>/dev/null
+		umount -f $MNT_DIR 2>/dev/null
+		rmdir $MNT_DIR 2>/dev/null
 	fi
 	[ -b /dev/mapper/$DEV_STACKED ] && dmsetup remove --retry $DEV_STACKED >/dev/null 2>&1
 	[ -b /dev/mapper/$DEV_NAME ] && dmsetup remove --retry $DEV_NAME >/dev/null 2>&1
@@ -38,6 +48,18 @@ skip()
 	echo "TEST SKIPPED: $1"
 	cleanup
 	exit 77
+}
+
+function valgrind_setup()
+{
+	command -v valgrind >/dev/null || fail "Cannot find valgrind."
+	[ ! -f $CRYPTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
+	export LD_LIBRARY_PATH="$CRYPTSETUP_LIB_VALGRIND:$LD_LIBRARY_PATH"
+}
+
+function valgrind_run()
+{
+	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${CRYPTSETUP_VALGRIND} "$@"
 }
 
 function dm_crypt_features()
@@ -104,7 +126,7 @@ format() # key_bits expected [forced]
 	[ $ALIGN -ne $2 ] && fail "Expected alignment differs: expected $2 != detected $ALIGN"
 
 	# test some operation, just in case
-	echo -e "$PWD1\n$PWD2" | $CRYPTSETUP luksAddKey $DEV $FAST_PBKDF --key-slot 1
+	echo -e "$PWD1\n$PWD2" | $CRYPTSETUP luksAddKey $DEV $FAST_PBKDF --new-key-slot 1
 	[ $? -ne 0 ] && fail "Keyslot add failed."
 
 	$CRYPTSETUP -q luksKillSlot $DEV 1
@@ -137,7 +159,7 @@ format_null()
 	[ $POFF != $2 ] && fail "Expected data offset differs: expected $2 != detected $POFF"
 	if [ -n "$4" ] ; then
 		for j in 1 2 3 4 5 6 7 ; do
-			echo -e "\n" | $CRYPTSETUP luksAddKey $DEV -q $FAST_PBKDF --key-slot $j -c null $PARAMS
+			echo -e "\n" | $CRYPTSETUP luksAddKey $DEV -q $FAST_PBKDF --new-key-slot $j -c null $PARAMS
 			echo -n $j
 			[ $? -ne 0 ] && fail
 		done
@@ -173,6 +195,8 @@ format_plain_fail() # sector size
 	fi
 }
 
+[ ! -x "$CRYPTSETUP" ] && skip "Cannot find $CRYPTSETUP, test skipped."
+[ -n "$VALG" ] && valgrind_setup && CRYPTSETUP=valgrind_run
 if [ $(id -u) != 0 ]; then
 	echo "WARNING: You must be root to run this test, test skipped."
 	exit 77
@@ -259,14 +283,11 @@ format_plain_fail 2048
 format_plain_fail 4096
 cleanup
 
+# skip tests using empty passphrase (LUKS1 cipher_null)
+if [ ! fips_mode ]; then
 echo "# Offset check: 512B sector drive"
 add_device dev_size_mb=16 sector_size=512 num_tgts=1
 #           |k| expO reqO expected slot offsets
-format_null  64 2048    0 8:72:136:200:264:328:392:456
-format_null  64  520    1
-format_null  64  520    8
-format_null  64  640  128
-format_null  64 2048 2048
 format_null 128 2048    0 8:136:264:392:520:648:776:904
 format_null 128 1032    1
 format_null 128 1032    8
@@ -286,11 +307,6 @@ cleanup
 
 echo "# Offset check: 4096B sector drive"
 add_device dev_size_mb=16 sector_size=4096 num_tgts=1 opt_blks=64
-format_null  64 2048    0 8:72:136:200:264:328:392:456
-format_null  64  520    1
-format_null  64  520    8
-format_null  64  640  128
-format_null  64 2048 2048
 format_null 128 2048    0 8:136:264:392:520:648:776:904
 format_null 128 1032    1
 format_null 128 1032    8
@@ -307,6 +323,7 @@ format_null 512 4040    8
 format_null 512 4096  128
 format_null 512 4096 2048
 cleanup
+fi
 
 echo "# Create enterprise-class 4K drive with fs and LUKS images."
 # loop device here presents 512 block but images have 4k block

@@ -1,0 +1,14 @@
+cat >/etc/crypttab <<-EOF
+	vda3_crypt UUID=$(blkid -s UUID -o value /dev/vda3) none luks,discard
+EOF
+
+cat >/etc/fstab <<-EOF
+	/dev/cryptvg/root /    auto errors=remount-ro 0 1
+	/dev/cryptvg/swap none swap sw                0 0
+	UUID=$(blkid -s UUID -o value /dev/vda2) /boot auto defaults 0 2
+EOF
+
+# explicitely set MODULES=dep (yes it's the default, but doesn't hurt)
+echo "MODULES=dep" >/etc/initramfs-tools/conf.d/modules
+
+# vim: set filetype=sh :

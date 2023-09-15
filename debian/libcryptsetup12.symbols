@@ -2,6 +2,8 @@ libcryptsetup.so.12 libcryptsetup12 #MINVER#
 * Build-Depends-Package: libcryptsetup-dev
  CRYPTSETUP_2.0@CRYPTSETUP_2.0 2:2.0
  CRYPTSETUP_2.4@CRYPTSETUP_2.4 2:2.4
+ CRYPTSETUP_2.5@CRYPTSETUP_2.5 2:2.5
+ CRYPTSETUP_2.6@CRYPTSETUP_2.6 2:2.6
  crypt_activate_by_keyfile@CRYPTSETUP_2.0 2:1.4
  crypt_activate_by_keyfile_offset@CRYPTSETUP_2.0 2:1.4.3
  crypt_activate_by_keyring@CRYPTSETUP_2.0 2:2.0
@@ -33,6 +35,7 @@ libcryptsetup.so.12 libcryptsetup12 #MINVER#
  crypt_get_dir@CRYPTSETUP_2.0 2:1.4
  crypt_get_integrity_info@CRYPTSETUP_2.0 2:2.0
  crypt_get_iv_offset@CRYPTSETUP_2.0 2:1.4
+ crypt_get_label@CRYPTSETUP_2.5 2:2.5
  crypt_get_metadata_device_name@CRYPTSETUP_2.0 2:2.1
  crypt_get_metadata_size@CRYPTSETUP_2.0 2:2.1
  crypt_get_pbkdf_default@CRYPTSETUP_2.0 2:2.0.3
@@ -40,6 +43,7 @@ libcryptsetup.so.12 libcryptsetup12 #MINVER#
  crypt_get_pbkdf_type_params@CRYPTSETUP_2.0 2:2.1
  crypt_get_rng_type@CRYPTSETUP_2.0 2:1.4
  crypt_get_sector_size@CRYPTSETUP_2.0 2:2.0
+ crypt_get_subsystem@CRYPTSETUP_2.5 2:2.5
  crypt_get_type@CRYPTSETUP_2.0 2:1.4
  crypt_get_uuid@CRYPTSETUP_2.0 2:1.4
  crypt_get_verity_info@CRYPTSETUP_2.0 2:1.5
@@ -56,10 +60,19 @@ libcryptsetup.so.12 libcryptsetup12 #MINVER#
  crypt_keyslot_add_by_key@CRYPTSETUP_2.0 2:2.0
  crypt_keyslot_add_by_keyfile@CRYPTSETUP_2.0 2:1.4
  crypt_keyslot_add_by_keyfile_offset@CRYPTSETUP_2.0 2:1.4.3
+ crypt_keyslot_add_by_keyslot_context@CRYPTSETUP_2.6 2:2.6
  crypt_keyslot_add_by_passphrase@CRYPTSETUP_2.0 2:1.4
  crypt_keyslot_add_by_volume_key@CRYPTSETUP_2.0 2:1.4
  crypt_keyslot_area@CRYPTSETUP_2.0 2:1.6
  crypt_keyslot_change_by_passphrase@CRYPTSETUP_2.0 2:1.6
+ crypt_keyslot_context_free@CRYPTSETUP_2.6 2:2.6
+ crypt_keyslot_context_get_error@CRYPTSETUP_2.6 2:2.6
+ crypt_keyslot_context_get_type@CRYPTSETUP_2.6 2:2.6
+ crypt_keyslot_context_init_by_keyfile@CRYPTSETUP_2.6 2:2.6
+ crypt_keyslot_context_init_by_passphrase@CRYPTSETUP_2.6 2:2.6
+ crypt_keyslot_context_init_by_token@CRYPTSETUP_2.6 2:2.6
+ crypt_keyslot_context_init_by_volume_key@CRYPTSETUP_2.6 2:2.6
+ crypt_keyslot_context_set_pin@CRYPTSETUP_2.6 2:2.6
  crypt_keyslot_destroy@CRYPTSETUP_2.0 2:1.4
  crypt_keyslot_get_encryption@CRYPTSETUP_2.0 2:2.1
  crypt_keyslot_get_key_size@CRYPTSETUP_2.0 2:2.0.3
@@ -87,6 +100,7 @@ libcryptsetup.so.12 libcryptsetup12 #MINVER#
  crypt_resume_by_keyfile_device_offset@CRYPTSETUP_2.0 2:2.0.1
  crypt_resume_by_keyfile_offset@CRYPTSETUP_2.0 2:1.4.3
  crypt_resume_by_passphrase@CRYPTSETUP_2.0 2:1.4
+ crypt_resume_by_token_pin@CRYPTSETUP_2.5 2:2.5
  crypt_resume_by_volume_key@CRYPTSETUP_2.0 2:2.3
  crypt_safe_alloc@CRYPTSETUP_2.0 2:2.3
  crypt_safe_free@CRYPTSETUP_2.0 2:2.3
@@ -119,6 +133,7 @@ libcryptsetup.so.12 libcryptsetup12 #MINVER#
  crypt_token_status@CRYPTSETUP_2.0 2:2.0
  crypt_token_unassign_keyslot@CRYPTSETUP_2.0 2:2.0
  crypt_volume_key_get@CRYPTSETUP_2.0 2:1.4
+ crypt_volume_key_get_by_keyslot_context@CRYPTSETUP_2.6 2:2.6
  crypt_volume_key_keyring@CRYPTSETUP_2.0 2:2.0
  crypt_volume_key_verify@CRYPTSETUP_2.0 2:1.4
  crypt_wipe@CRYPTSETUP_2.0 2:2.0

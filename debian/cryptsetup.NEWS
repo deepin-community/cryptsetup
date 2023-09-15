@@ -1,3 +1,15 @@
+cryptsetup (2:2.5.0~rc1-3) experimental; urgency=medium
+
+    The experimental SSH token handler and cryptsetup-ssh(8) utility are now
+    shipped in a separate binary package 'cryptsetup-ssh'.  (They were first
+    included in cryptsetup 2:2.4.0~rc0-1+exp1 so have never been part of a
+    stable Debian release.)  No pre-existing binary package in src:cryptsetup
+    declares any dependency on the new binary package so users who need
+    experimental SSH token support need to manually run `apt install
+    cryptsetup-ssh`.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 21 Jul 2022 20:41:20 +0200
+
 cryptsetup (2:2.1.0-7) unstable; urgency=low
 
     The 'cryptsetup' and 'cryptsetup-run' packages have been swapped:

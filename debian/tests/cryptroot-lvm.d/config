@@ -1,0 +1,10 @@
+PKGS_EXTRA+=( e2fsprogs ) # for fsck.ext4
+PKGS_EXTRA+=( dbus ) # for systemctl(1)
+PKGS_EXTRA+=( lvm2 )
+PKGS_EXTRA+=( cryptsetup-initramfs cryptsetup-suspend )
+
+QEMU_MEMORY="size=512M"
+GUEST_POWERCYCLE=1 # boot again after hibernation
+DRIVE_SIZES=( "3G" ) # need a big enough swap to accomodate the memory
+
+# vim: set filetype=bash :

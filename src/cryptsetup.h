@@ -3,8 +3,8 @@
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2021 Milan Broz
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -44,7 +44,6 @@
 #include "lib/bitops.h"
 #include "lib/utils_crypt.h"
 #include "lib/utils_loop.h"
-#include "lib/utils_fips.h"
 #include "lib/utils_io.h"
 #include "lib/utils_blkid.h"
 #include "lib/libcryptsetup_macros.h"
@@ -73,6 +72,7 @@ typedef enum { CREATED, UNLOCKED, REMOVED  } crypt_object_op;
 void tools_keyslot_msg(int keyslot, crypt_object_op op);
 void tools_token_msg(int token, crypt_object_op op);
 void tools_token_error_msg(int error, const char *type, int token, bool pin_provided);
+void tools_package_version(const char *name, bool use_pwlibs);
 
 extern volatile int quit;
 void set_int_block(int block);
@@ -96,22 +96,34 @@ struct tools_progress_params {
 	struct timeval end_time;
 	uint64_t start_offset;
 	bool batch_mode;
+	bool json_output;
+	const char *interrupt_message;
+	const char *device;
 };
 
-int tools_wipe_progress(uint64_t size, uint64_t offset, void *usrptr);
-int tools_reencrypt_progress(uint64_t size, uint64_t offset, void *usrptr);
+int tools_progress(uint64_t size, uint64_t offset, void *usrptr);
+const char *tools_get_device_name(const char *device, char **r_backing_file);
 
-int tools_read_mk(const char *file, char **key, int keysize);
+int tools_read_vk(const char *file, char **key, int keysize);
 int tools_write_mk(const char *file, const char *key, int keysize);
 
 int tools_read_json_file(const char *file, char **json, size_t *json_size, bool batch_mode);
 int tools_write_json_file(const char *file, const char *json);
 
-int tools_detect_signatures(const char *device, int ignore_luks, size_t *count, bool batch_mode);
-int tools_wipe_all_signatures(const char *path);
+typedef enum {
+	PRB_FILTER_NONE = 0,
+	PRB_FILTER_LUKS,
+	PRB_ONLY_LUKS
+} tools_probe_filter_info;
+
+int tools_detect_signatures(const char *device, tools_probe_filter_info filter, size_t *count, bool batch_mode);
+int tools_wipe_all_signatures(const char *path, bool exclusive, bool only_luks);
+int tools_superblock_block_size(const char *device, char *sb_name,
+				size_t sb_name_len, unsigned *r_block_size);
+bool tools_blkid_supported(void);
 
 int tools_lookup_crypt_device(struct crypt_device *cd, const char *type,
-		const char *data_device_path, char *name, size_t name_length);
+		const char *data_device_path, char **r_name);
 
 
 /* each utility is required to implement it */
@@ -129,7 +141,8 @@ typedef enum {
 	CRYPT_ARG_INT32,
 	CRYPT_ARG_UINT32,
 	CRYPT_ARG_INT64,
-	CRYPT_ARG_UINT64
+	CRYPT_ARG_UINT64,
+	CRYPT_ARG_ALIAS
 } crypt_arg_type_info;
 
 struct tools_arg {
@@ -142,6 +155,10 @@ struct tools_arg {
 		uint32_t u32_value;
 		int32_t i32_value;
 		int64_t i64_value;
+		union {
+			unsigned id;
+			struct tools_arg *ptr;
+		} o;
 	} u;
 	const char *actions_array[MAX_ACTIONS];
 };

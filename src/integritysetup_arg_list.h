@@ -1,8 +1,8 @@
 /*
  * Integritysetup command line arguments list
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -75,7 +75,11 @@ ARG(OPT_JOURNAL_WATERMARK, '\0', POPT_ARG_STRING, N_("Journal watermark"), N_("p
 
 ARG(OPT_NO_WIPE, '\0', POPT_ARG_NONE, N_("Do not wipe device after format"), NULL, CRYPT_ARG_BOOL, {}, OPT_NO_WIPE_ACTIONS)
 
+ARG(OPT_WIPE, '\0', POPT_ARG_NONE, N_("Wipe the end of the device after resize"), NULL, CRYPT_ARG_BOOL, {}, OPT_WIPE_ACTIONS)
+
 ARG(OPT_PROGRESS_FREQUENCY, '\0', POPT_ARG_STRING, N_("Progress line update (in seconds)"), N_("secs"), CRYPT_ARG_UINT32, {}, {})
+
+ARG(OPT_PROGRESS_JSON, '\0', POPT_ARG_NONE, N_("Print wipe progress data in json format (suitable for machine processing)"), NULL, CRYPT_ARG_BOOL, {}, OPT_PROGRESS_JSON_ACTIONS)
 
 ARG(OPT_INTEGRITY_BITMAP_MODE, 'B', POPT_ARG_NONE, N_("Use bitmap to track changes and disable journal for integrity device"), NULL, CRYPT_ARG_BOOL, {}, {})
 
@@ -90,3 +94,7 @@ ARG(OPT_SECTOR_SIZE, 's', POPT_ARG_STRING, N_("Sector size"), N_("bytes"), CRYPT
 ARG(OPT_TAG_SIZE, 't', POPT_ARG_STRING, N_("Tag size (per-sector)"), N_("bytes"), CRYPT_ARG_UINT32, {}, OPT_TAG_SIZE_ACTIONS)
 
 ARG(OPT_VERBOSE, 'v', POPT_ARG_NONE, N_("Shows more detailed error messages"), NULL, CRYPT_ARG_BOOL, {}, {})
+
+ARG(OPT_DEVICE_SIZE, '\0', POPT_ARG_STRING, N_("Use only specified device size (ignore rest of device). DANGEROUS!"), N_("bytes"), CRYPT_ARG_UINT64, {}, OPT_DEVICE_SIZE_ACTIONS)
+
+ARG(OPT_SIZE, 'b', POPT_ARG_STRING, N_("The size of the device"), N_("SECTORS"), CRYPT_ARG_UINT64, {}, OPT_SIZE_ACTIONS)

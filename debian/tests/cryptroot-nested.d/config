@@ -1,0 +1,7 @@
+PKGS_EXTRA+=( btrfs-progs lvm2 mdadm )
+PKGS_EXTRA+=( cryptsetup-initramfs )
+
+# /dev/mapper/testvg-lv1_crypt and /dev/vdc are both 1G and used in RAID1 mode
+DRIVE_SIZES=( "1G" "264M" "1G" "512M" )
+
+# vim: set filetype=bash :

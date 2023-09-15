@@ -1,4 +1,6 @@
 version=4
-options="mode=git,pgpmode=gittag,compression=gzip" \
+options="mode=git,pgpmode=gittag, \
+         uversionmangle=s/-(alpha|beta|rc)(\d*)$/~$1$2/, \
+         compression=gzip" \
   https://gitlab.com/cryptsetup/cryptsetup.git \
   refs/tags/v?@ANY_VERSION@

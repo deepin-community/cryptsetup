@@ -2,7 +2,7 @@
  * AFsplitter - Anti forensic information splitter
  *
  * Copyright (C) 2004 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
  *
  * AFsplitter diffuses information over a large stripe of data,
  * therefore supporting secure data destruction.
@@ -131,7 +131,7 @@ out:
 	return r;
 }
 
-int AF_merge(struct crypt_device *ctx __attribute__((unused)), const char *src, char *dst,
+int AF_merge(const char *src, char *dst,
 	     size_t blocksize, unsigned int blocknumbers, const char *hash)
 {
 	unsigned int i;
@@ -142,7 +142,7 @@ int AF_merge(struct crypt_device *ctx __attribute__((unused)), const char *src, 
 	if (!bufblock)
 		return -ENOMEM;
 
-	for(i = 0; i < blocknumbers - 1; i++) {
+	for (i = 0; i < blocknumbers - 1; i++) {
 		XORblock(src + blocksize * i, bufblock, bufblock, blocksize);
 		r = diffuse(bufblock, bufblock, blocksize, hash);
 		if (r < 0)

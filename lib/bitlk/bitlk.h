@@ -1,9 +1,9 @@
 /*
  * BITLK (BitLocker-compatible) header definition
  *
- * Copyright (C) 2019-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2019-2021 Milan Broz
- * Copyright (C) 2019-2021 Vojtech Trefny
+ * Copyright (C) 2019-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2019-2023 Milan Broz
+ * Copyright (C) 2019-2023 Vojtech Trefny
  *
  * This file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -61,6 +61,7 @@ typedef enum {
 	BITLK_ENTRY_TYPE_STARTUP_KEY = 0x0006,
 	BITLK_ENTRY_TYPE_DESCRIPTION = 0x0007,
 	BITLK_ENTRY_TYPE_VOLUME_HEADER = 0x000f,
+	BITLK_ENTRY_TYPE_VOLUME_GUID = 0x0019,
 } BITLKFVEEntryType;
 
 typedef enum {
@@ -76,6 +77,7 @@ typedef enum {
 	BITLK_ENTRY_VALUE_EXTERNAL_KEY = 0x0009,
 	BITLK_ENTRY_VALUE_OFFSET_SIZE = 0x000f,
 	BITLK_ENTRY_VALUE_RECOVERY_TIME = 0x015,
+	BITLK_ENTRY_VALUE_GUID = 0x0017,
 } BITLKFVEEntryValue;
 
 struct bitlk_vmk {
@@ -97,6 +99,7 @@ struct bitlk_fvek {
 
 struct bitlk_metadata {
 	uint16_t sector_size;
+	uint64_t volume_size;
 	bool togo;
 	bool state;
 	BITLKEncryptionType type;

@@ -1,0 +1,9 @@
+umount "$ROOT/boot"
+umount "$ROOT"
+
+swapoff /dev/mapper/vda4_crypt
+
+cryptsetup close "vda4_crypt"
+cryptsetup close "vda5_crypt"
+
+# vim: set filetype=sh :

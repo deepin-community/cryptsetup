@@ -1,7 +1,7 @@
 /*
  * cryptsetup crypto backend test vectors
  *
- * Copyright (C) 2018-2021 Milan Broz
+ * Copyright (C) 2018-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -123,6 +123,27 @@ static struct kdf_test_vector kdf_test_vectors[] = {
 //		"\x08\xc0\x37\xa3\x4a\x8b\x53\xc9"
 //		"\xd0\x1e\xf0\x45\x2d\x75\xb6\x5e"
 //		"\xb5\x25\x20\xe9\x6b\x01\xe6\x59", 32
+	},
+	/* empty password */
+	{
+		"argon2i", NULL, 0, 3, 128, 1,
+		"", 0,
+		"\x00\x01\x02\x03\x04\x05\x06\x07"
+		"\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f", 16,
+		"\xbb\x1f\xf2\xb9\x9f\xd4\x4a\xd9"
+		"\xdf\x7f\xb9\x54\x55\x9e\xb8\xeb"
+		"\xb5\x9d\xab\xce\x2e\x62\x9f\x9b"
+		"\x89\x09\xfe\xde\x57\xcc\x63\x86", 32
+	},
+	{
+		"argon2id", NULL, 0, 3, 128, 1,
+		"", 0,
+		"\x00\x01\x02\x03\x04\x05\x06\x07"
+		"\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f", 16,
+		"\x09\x2f\x38\x35\xac\xb2\x43\x92"
+		"\x93\xeb\xcd\xe8\x04\x16\x6a\x31"
+		"\xce\x14\xd4\x55\xdb\xd8\xf7\xe6"
+		"\xb4\xf5\x9d\x64\x8e\xd0\x3a\xdb", 32
 	},
 	/* RFC 3962 */
 	{
@@ -932,13 +953,80 @@ static struct cipher_iv_test_vector cipher_iv_test_vectors[] = {
 	},
 }}};
 
+/* Base64 test vectors */
+struct base64_test_vector {
+	size_t decoded_len;
+	const char *decoded;
+	const char *encoded;
+};
+
+static struct base64_test_vector base64_test_vectors[] = {
+	{  0, "", "" },
+	{  1, "\x00", "AA==" },
+	{  1, "f", "Zg==" },
+	{  2, "fo", "Zm8=" },
+	{  3, "foo", "Zm9v" },
+	{  4, "foob", "Zm9vYg==" },
+	{  5, "fooba", "Zm9vYmE=" },
+	{  6, "foobar", "Zm9vYmFy" },
+	{ 11, "Hello world", "SGVsbG8gd29ybGQ=" },
+	{ 22, "\x36\x03\x84\xdc\x4e\x03\x46\xa0\xb5\x2d\x03"
+	      "\x6e\xd0\x56\xed\xa0\x37\x02\xac\xc6\x65\xd1",
+	      "NgOE3E4DRqC1LQNu0FbtoDcCrMZl0Q==" },
+	{  3, "***", "Kioq" },
+	{  4, "\x01\x02\x03\x04", "AQIDBA==" },
+	{  5, "\xAD\xAD\xAD\xAD\xAD", "ra2tra0=" },
+	{  5, "\xFF\xFF\xFF\xFF\xFF", "//////8=" },
+	{ 32, "\x40\xC1\x3F\xBD\x05\x4C\x72\x2A\xA3\xC2\xF2"
+	      "\x11\x73\xC0\x69\xEA\x49\x7D\x35\x29\x6B\xCC"
+	      "\x24\x65\xF6\xF9\xD0\x41\x08\x7B\xD7\xA9",
+	      "QME/vQVMciqjwvIRc8Bp6kl9NSlrzCRl9vnQQQh716k=" },
+	{  7, "\x54\x0f\xdc\xf0\x0f\xaf\x4a", "VA/c8A+vSg==" },
+	{179, "blah blah blah blah blah blah blah blah blah "
+	      "blah blah blah blah blah blah blah blah blah "
+	      "blah blah blah blah blah blah blah blah blah "
+	      "blah blah blah blah blah blah blah blah blah",
+              "YmxhaCBibGFoIGJsYWggYmxhaCBibGFoIGJsYWggYmxh"
+              "aCBibGFoIGJsYWggYmxhaCBibGFoIGJsYWggYmxhaCBi"
+              "bGFoIGJsYWggYmxhaCBibGFoIGJsYWggYmxhaCBibGFo"
+              "IGJsYWggYmxhaCBibGFoIGJsYWggYmxhaCBibGFoIGJs"
+              "YWggYmxhaCBibGFoIGJsYWggYmxhaCBibGFoIGJsYWgg"
+              "YmxhaCBibGFoIGJsYWg=" },
+};
+
+/* UTF8 to UTF16LE test vectors */
+struct utf8_16_test_vector {
+	size_t len8;
+	size_t len16;
+	const char *utf8;
+	const char *utf16;
+};
+
+static struct utf8_16_test_vector utf8_16_test_vectors[] = {
+	{  1,  2, "a", "\x61\x00" },
+	{ 16, 32, "0123456789abcdef",
+	"\x30\x00\x31\x00\x32\x00\x33\x00\x34\x00\x35\x00\x36\x00\x37\x00"
+	"\x38\x00\x39\x00\x61\x00\x62\x00\x63\x00\x64\x00\x65\x00\x66\x00" },
+	{ 77, 78,
+	"\xf2\xa4\xa5\x94\x49\xf2\xa1\x98\x98\xd8\x8a\xe1\xb4\x88\xea\xa7"
+	"\xaa\xde\x95\xe2\x85\xb1\xe7\xb1\x9a\xf2\xb5\xa1\xae\x37\x2d\xd0"
+	"\xa9\xe1\x9a\x9c\xe8\xb0\xb7\xc8\x95\x0a\xf3\xaa\x92\xba\xf2\x83"
+	"\xb0\x99\xf0\x9b\xbe\x8f\x4f\xc8\x86\x30\xe7\xab\xa0\xda\xb9\xd8"
+	"\x89\xd8\xbc\xd7\x8a\xd9\xbc\xc3\x8f\x33\x62\xda\xb7",
+	"\x52\xda\x54\xdd\x49\x00\x45\xda\x18\xde\x0a\x06\x08\x1d\xea\xa9"
+	"\x95\x07\x71\x21\x5a\x7c\x96\xda\x6e\xdc\x37\x00\x2d\x00\x29\x04"
+	"\x9c\x16\x37\x8c\x15\x02\x0a\x00\x69\xdb\xba\xdc\xcf\xd9\x19\xdc"
+	"\x2f\xd8\x8f\xdf\x4f\x00\x06\x02\x30\x00\xe0\x7a\xb9\x06\x09\x06"
+	"\x3c\x06\xca\x05\x7c\x06\xcf\x00\x33\x00\x62\x00\xb7\x06" },
+};
+
 static int pbkdf_test_vectors(void)
 {
 	char result[256];
 	unsigned int i;
 	const struct kdf_test_vector *vec;
 
-	for (i = 0; i < (sizeof(kdf_test_vectors) / sizeof(*kdf_test_vectors)); i++) {
+	for (i = 0; i < ARRAY_SIZE(kdf_test_vectors); i++) {
 		crypt_backend_memzero(result, sizeof(result));
 		vec = &kdf_test_vectors[i];
 		printf("PBKDF vector %02d %s ", i, vec->type);
@@ -1032,17 +1120,37 @@ static int hash_test(void)
 			if (!r)
 				r = crypt_hash_final(h, result, vector->out[j].length);
 
-			crypt_hash_destroy(h);
 
-			if (r)
+			if (r) {
+				crypt_hash_destroy(h);
 				return EXIT_FAILURE;
+			}
 
 			if (memcmp(result, vector->out[j].out, vector->out[j].length)) {
 				printf("[FAILED]\n");
 				printhex(" got", result, vector->out[j].length);
 				printhex("want", vector->out[j].out, vector->out[j].length);
+				crypt_hash_destroy(h);
 				return EXIT_FAILURE;
 			}
+
+			/*
+			 * After crypt_hash_final() the context must be reset, repeat
+			 */
+			crypt_backend_memzero(result, sizeof(result));
+			r = crypt_hash_write(h, vector->data, vector->data_length);
+			if (!r)
+				r = crypt_hash_final(h, result, vector->out[j].length);
+
+			if (r || memcmp(result, vector->out[j].out, vector->out[j].length)) {
+				printf("[FAILED (RESET CONTEXT)]\n");
+				printhex(" got", result, vector->out[j].length);
+				printhex("want", vector->out[j].out, vector->out[j].length);
+				crypt_hash_destroy(h);
+				return EXIT_FAILURE;
+			}
+
+			crypt_hash_destroy(h);
 		}
 		printf("\n");
 	}
@@ -1085,17 +1193,36 @@ static int hmac_test(void)
 			if (!r)
 				r = crypt_hmac_final(hmac, result, vector->out[j].length);
 
-			crypt_hmac_destroy(hmac);
-
-			if (r)
+			if (r) {
+				crypt_hmac_destroy(hmac);
 				return EXIT_FAILURE;
+			}
 
 			if (memcmp(result, vector->out[j].out, vector->out[j].length)) {
 				printf("[FAILED]\n");
 				printhex(" got", result, vector->out[j].length);
 				printhex("want", vector->out[j].out, vector->out[j].length);
+				crypt_hmac_destroy(hmac);
 				return EXIT_FAILURE;
 			}
+
+			/*
+			 * After crypt_hmac_final() the context must be reset, repeat
+			 */
+			crypt_backend_memzero(result, sizeof(result));
+			r = crypt_hmac_write(hmac, vector->data, vector->data_length);
+			if (!r)
+				r = crypt_hmac_final(hmac, result, vector->out[j].length);
+
+			if (r || memcmp(result, vector->out[j].out, vector->out[j].length)) {
+				printf("[FAILED (RESET CONTEXT)]\n");
+				printhex(" got", result, vector->out[j].length);
+				printhex("want", vector->out[j].out, vector->out[j].length);
+				crypt_hmac_destroy(hmac);
+				return EXIT_FAILURE;
+			}
+
+			crypt_hmac_destroy(hmac);
 		}
 		printf("\n");
 	}
@@ -1202,7 +1329,9 @@ static int cipher_iv_test(void)
 			if (vector->data_length > sizeof(result))
 				return EXIT_FAILURE;
 
-			snprintf(mode_iv, sizeof(mode_iv)-2, "%s-%s", vector->cipher_mode, vector->iv_name);
+			if (snprintf(mode_iv, sizeof(mode_iv)-2, "%s-%s", vector->cipher_mode, vector->iv_name) < 0)
+				return EXIT_FAILURE;
+
 			r = crypt_storage_init(&storage, vector->out[j].sector_size, vector->cipher_name, mode_iv,
 					       vector->key, vector->key_length, vector->out[j].large_iv);
 			if (r == -ENOENT || r == -ENOTSUP) {
@@ -1265,6 +1394,83 @@ static int check_hash(const char *hash)
 	return EXIT_SUCCESS;
 }
 
+static int base64_test(void)
+{
+	unsigned int i;
+	char *s;
+	size_t s_len;
+
+	for (i = 0; i < ARRAY_SIZE(base64_test_vectors); i++) {
+		printf("BASE64 %02d ", i);
+		s = NULL;
+		s_len = 0;
+		if (crypt_base64_encode(&s, &s_len,
+			base64_test_vectors[i].decoded,
+			base64_test_vectors[i].decoded_len) < 0) {
+			printf("[ENCODE FAILED]\n");
+			return EXIT_FAILURE;
+		} else if (strcmp(s, base64_test_vectors[i].encoded)) {
+			printf("[ENCODE FAILED]\n");
+			free(s);
+			return EXIT_FAILURE;
+		}
+		printf("[encode]");
+		free(s);
+
+		s = NULL;
+		s_len = 0;
+		if (crypt_base64_decode(&s, &s_len,
+			base64_test_vectors[i].encoded,
+			strlen(base64_test_vectors[i].encoded)) < 0) {
+			printf("[DECODE FAILED]\n");
+			return EXIT_FAILURE;
+		} else if (s_len != base64_test_vectors[i].decoded_len ||
+			   memcmp(s, base64_test_vectors[i].decoded, s_len)) {
+			printf("[DECODE FAILED]\n");
+			return EXIT_FAILURE;
+		}
+		printf("[decode]\n");
+		free(s);
+	}
+
+	return EXIT_SUCCESS;
+}
+
+static int utf8_16_test(void)
+{
+	unsigned int i;
+	char s8[128], *s;
+	char16_t c16[256], s16[256], *su;
+
+	for (i = 0; i < ARRAY_SIZE(utf8_16_test_vectors); i++) {
+		printf("UTF8/16 %02d ", i);
+		crypt_backend_memzero(s16, sizeof(s16));
+		su = &s16[0];
+		if (crypt_utf8_to_utf16(&su, utf8_16_test_vectors[i].utf8,
+					utf8_16_test_vectors[i].len8) < 0 ||
+			memcmp(utf8_16_test_vectors[i].utf16, s16,
+			       utf8_16_test_vectors[i].len16)) {
+			printf("[UTF8_TO_UTF16 FAILED]\n");
+			return EXIT_FAILURE;
+		}
+		printf("[UTF8_TO_UTF16]");
+
+		crypt_backend_memzero(s8, sizeof(s8));
+		s = &s8[0];
+		memcpy(c16, utf8_16_test_vectors[i].utf16, utf8_16_test_vectors[i].len16);
+		if (crypt_utf16_to_utf8(&s, c16, utf8_16_test_vectors[i].len16) < 0 ||
+			utf8_16_test_vectors[i].len8 != strlen(s8) ||
+			memcmp(utf8_16_test_vectors[i].utf8, s8,
+			       utf8_16_test_vectors[i].len8)) {
+			printf("[UTF16_TO_UTF8 FAILED]\n");
+			return EXIT_FAILURE;
+		}
+		printf("[UTF16_TO_UTF8]\n");
+	}
+
+	return EXIT_SUCCESS;
+}
+
 static int default_alg_test(void)
 {
 	printf("Defaults: [LUKS1 hash %s] ", DEFAULT_LUKS1_HASH);
@@ -1279,6 +1485,18 @@ static int default_alg_test(void)
 	if (check_hash(DEFAULT_VERITY_HASH))
 		return EXIT_FAILURE;
 
+	printf("[OK]\n");
+
+	return EXIT_SUCCESS;
+}
+
+static int memcmp_test(void)
+{
+	printf("MEMEQ ");
+	if (!crypt_backend_memeq("aaaaaaaa", "bbbbbbbb", 8))
+		return EXIT_FAILURE;
+	if (crypt_backend_memeq("aaaaaaaa", "aaaaaaaa", 8))
+		return EXIT_FAILURE;
 	printf("[OK]\n");
 
 	return EXIT_SUCCESS;
@@ -1320,6 +1538,15 @@ int main(__attribute__ ((unused)) int argc, __attribute__ ((unused))char *argv[]
 
 	if (cipher_iv_test())
 		exit_test("IV test failed.", EXIT_FAILURE);
+
+	if (base64_test())
+		exit_test("BASE64 test failed.", EXIT_FAILURE);
+
+	if (memcmp_test())
+		exit_test("Memcmp test failed.", EXIT_FAILURE);
+
+	if (utf8_16_test())
+		exit_test("UTF8/16 test failed.", EXIT_FAILURE);
 
 	if (default_alg_test()) {
 		if (fips_mode())

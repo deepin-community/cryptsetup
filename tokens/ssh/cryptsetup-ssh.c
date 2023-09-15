@@ -1,8 +1,8 @@
 /*
  * Example of LUKS2 token storing third party metadata (EXPERIMENTAL EXAMPLE)
  *
- * Copyright (C) 2016-2021 Milan Broz <gmazyland@gmail.com>
- * Copyright (C) 2021 Vojtech Trefny
+ * Copyright (C) 2016-2023 Milan Broz
+ * Copyright (C) 2021-2023 Vojtech Trefny
  *
  * Use:
  *  - generate ssh example token
@@ -73,8 +73,10 @@ static int token_add(
 		return r;
 
 	r = crypt_load(cd, CRYPT_LUKS2, NULL);
-	if (r)
+	if (r) {
+		l_err(cd, _("Device %s is not a valid LUKS device."), device);
 		goto out;
+	}
 
 	r = -EINVAL;
 	jobj = json_object_new_object();

@@ -1,0 +1,45 @@
+# Simple LVM-on-LUKS2 layout -- more or less emulates what one gets out
+# of d-i with the "encrypted LVM" partioning method.
+
+# create two new partitions for /boot and LUKS respectively (the first
+# one is always used for BIOS/EFI and never exceeds sector 64*1024*2)
+sfdisk --append /dev/vda <<-EOF
+	unit: sectors
+
+	start=$((64*1024*2)), size=$((128*1024*2)), type=${GUID_TYPE_Linux_FS}
+	start=$(((64+128)*1024*2)), type=${GUID_TYPE_LUKS}
+EOF
+udevadm settle
+
+# initialize a new LUKS partition and open it
+echo -n "topsecret" >/rootfs.key
+cryptsetup luksFormat --batch-mode \
+    --key-file=/rootfs.key \
+    --type=luks2 \
+    --pbkdf=argon2id \
+    --pbkdf-force-iterations=4 \
+    --pbkdf-memory=32 \
+    -- /dev/vda3
+cryptsetup luksOpen --key-file=/rootfs.key --allow-discards \
+    -- /dev/vda3 "vda3_crypt"
+udevadm settle
+
+lvm pvcreate /dev/mapper/vda3_crypt
+lvm vgcreate "cryptvg" /dev/mapper/vda3_crypt
+lvm lvcreate -Zn --size 1024m --name "swap" "cryptvg"
+lvm lvcreate -Zn -l100%FREE --name "root" "cryptvg"
+lvm vgchange -ay "cryptvg"
+lvm vgmknodes
+udevadm settle
+
+mke2fs -Ft ext4 /dev/cryptvg/root
+mount -t ext4 /dev/cryptvg/root "$ROOT"
+
+mkdir "$ROOT/boot"
+mke2fs -Ft ext2 -m0 /dev/vda2
+mount -t ext2 /dev/vda2 "$ROOT/boot"
+
+mkswap /dev/cryptvg/swap
+swapon /dev/cryptvg/swap
+
+# vim: set filetype=sh :
