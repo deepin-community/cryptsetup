@@ -81,8 +81,9 @@
   <simpara>
    The fourth field, <emphasis>options</emphasis>, is an optional comma-separated
    list of options and/or flags describing the device type (<emphasis>luks</emphasis>,
-   <emphasis>tcrypt</emphasis>, <emphasis>bitlk</emphasis>, or <emphasis>plain</emphasis>
-   which is also the default) and cryptsetup options associated with the encryption process.
+   <emphasis>tcrypt</emphasis>, <emphasis>bitlk</emphasis>, <emphasis>fvault2</emphasis>,
+   or <emphasis>plain</emphasis> which is also the default) and cryptsetup options
+   associated with the encryption process.
    The supported options are described below.
    For plain dm-crypt devices the <emphasis>cipher</emphasis>, <emphasis>hash</emphasis>
    and <emphasis>size</emphasis> options are required.
@@ -293,6 +294,19 @@
      <simpara>
        Force BITLK (Windows BitLocker-compatible) mode.
        WARNING: <emphasis>crypttab</emphasis> support is currently experimental.
+     </simpara>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><emphasis>fvault2</emphasis></term>
+    <listitem>
+     <simpara>
+       Force Apple's FileVault2 mode.
+       Only the (legacy) FileVault2 format based on Core Storage and HFS+
+       filesystem (introduced in MacOS X 10.7 Lion) is currently supported;
+       the new version of FileVault based on the APFS filesystem used in
+       recent macOS versions is not supported.
      </simpara>
     </listitem>
    </varlistentry>
@@ -526,25 +540,25 @@
       <variablelist>
 
        <varlistentry>
-        <term>CRYPTTAB_NAME</term>, <term>_CRYPTTAB_NAME</term>
+        <term>CRYPTTAB_NAME, _CRYPTTAB_NAME</term>
         <listitem><para>
          The target name (after resp. before octal sequence decoding).
         </para></listitem>
        </varlistentry>
        <varlistentry>
-        <term>CRYPTTAB_SOURCE</term>, <term>_CRYPTTAB_SOURCE</term>
+        <term>CRYPTTAB_SOURCE, _CRYPTTAB_SOURCE</term>
         <listitem><para>
          The source device (after resp. before octal sequence decoding and device resolution).
         </para></listitem>
        </varlistentry>
        <varlistentry>
-        <term>CRYPTTAB_KEY</term>, <term>_CRYPTTAB_KEY</term>
+        <term>CRYPTTAB_KEY, _CRYPTTAB_KEY</term>
         <listitem><para>
          The value of the third field (after resp. before octal sequence decoding).
         </para></listitem>
        </varlistentry>
        <varlistentry>
-        <term>CRYPTTAB_OPTIONS</term>, <term>_CRYPTTAB_OPTIONS</term>
+        <term>CRYPTTAB_OPTIONS, _CRYPTTAB_OPTIONS</term>
         <listitem><para>
          A list of exported crypttab options (after resp. before octal sequence decoding).
         </para></listitem>

@@ -126,13 +126,12 @@ and stored in the initramfs image, you can use the "cryptopts" boot argument
 
 The format of cryptopts is:
 
-    cryptopts=<opt1>=<value1>,<opt2>=<value2>...
+    cryptopts=<opt1>[=<value1>],<opt2>[=<value2>]...
 
-Beside the `hash`, `size`, `cipher` and `lvm` options that correspond to the
-same options in the fourth field of /etc/crypttab, the options `target`,
-`source` and `key` are also supported. They correspond to the first, second
-and third field of /etc/crypttab, respectively. See the crypttab man page
-for further details.
+Beside options from the 4th field of /etc/crypttab, the options
+`target`, `source` and `key` are also supported: they respectively
+correspond to the first, second and third field of /etc/crypttab.
+Consult the crypttab manual page for further details.
 
 Several `cryptopts` boot arguments can also be specified in case more than
 one mapping needs to be setup in the initramfs stage of the boot.

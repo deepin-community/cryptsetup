@@ -1,6 +1,6 @@
 #!/bin/sh
 
-echo "WARNING: The check script $0 is depreciated. Please use check script blkid instead." >&2
+echo "WARNING: The check script $0 is deprecated. Please use check script blkid instead." >&2
 
 not_fs=""
 for fs in ext2 ext3 ext4 ext4dev; do

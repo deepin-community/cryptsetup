@@ -1,8 +1,8 @@
 /*
  * LUKS - Linux Unified Key Setup v2
  *
- * Copyright (C) 2015-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2021 Milan Broz
+ * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -62,8 +62,16 @@
 /* 1 GiB */
 #define LUKS2_REENCRYPT_MAX_HOTZONE_LENGTH 0x40000000
 
+/* supported reencryption requirement versions */
+#define LUKS2_REENCRYPT_REQ_VERSION         UINT8_C(2)
+#define LUKS2_DECRYPT_DATASHIFT_REQ_VERSION UINT8_C(3)
+
+/* see reencrypt_assembly_verification_data() in luks2_reencrypt_digest.c */
+/*	LUKS2_REENCRYPT_MAX_VERSION         UINT8_C(207) */
+
 struct device;
 struct luks2_reencrypt;
+struct reenc_protection;
 struct crypt_lock_handle;
 struct crypt_dm_active_device;
 struct luks_phdr; /* LUKS1 for conversion */
@@ -113,6 +121,7 @@ struct luks2_hdr {
 	uint8_t		salt2[LUKS2_SALT_L];
 	char		uuid[LUKS2_UUID_L];
 	void		*jobj;
+	void		*jobj_rollback;
 };
 
 struct luks2_keyslot_params {
@@ -159,6 +168,7 @@ int LUKS2_hdr_version_unlocked(struct crypt_device *cd,
 int LUKS2_hdr_read(struct crypt_device *cd, struct luks2_hdr *hdr, int repair);
 int LUKS2_hdr_write(struct crypt_device *cd, struct luks2_hdr *hdr);
 int LUKS2_hdr_write_force(struct crypt_device *cd, struct luks2_hdr *hdr);
+int LUKS2_hdr_rollback(struct crypt_device *cd, struct luks2_hdr *hdr);
 int LUKS2_hdr_dump(struct crypt_device *cd, struct luks2_hdr *hdr);
 int LUKS2_hdr_dump_json(struct crypt_device *cd, struct luks2_hdr *hdr,	const char **json);
 
@@ -217,9 +227,7 @@ int LUKS2_keyslot_wipe(struct crypt_device *cd,
 	int keyslot,
 	int wipe_area_only);
 
-crypt_keyslot_priority LUKS2_keyslot_priority_get(struct crypt_device *cd,
-	struct luks2_hdr *hdr,
-	int keyslot);
+crypt_keyslot_priority LUKS2_keyslot_priority_get(struct luks2_hdr *hdr, int keyslot);
 
 int LUKS2_keyslot_priority_set(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
@@ -235,8 +243,7 @@ int LUKS2_keyslot_swap(struct crypt_device *cd,
 /*
  * Generic LUKS2 token
  */
-int LUKS2_token_json_get(struct crypt_device *cd,
-	struct luks2_hdr *hdr,
+int LUKS2_token_json_get(struct luks2_hdr *hdr,
 	int token,
 	const char **json);
 
@@ -247,8 +254,7 @@ int LUKS2_token_assign(struct crypt_device *cd,
 	int assign,
 	int commit);
 
-int LUKS2_token_is_assigned(struct crypt_device *cd,
-	struct luks2_hdr *hdr,
+int LUKS2_token_is_assigned(struct luks2_hdr *hdr,
 	int keyslot,
 	int token);
 
@@ -279,13 +285,32 @@ int LUKS2_token_open_and_activate(struct crypt_device *cd,
 	uint32_t flags,
 	void *usrptr);
 
-int LUKS2_token_keyring_get(struct crypt_device *cd,
+int LUKS2_token_unlock_key(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
+	int token,
+	const char *type,
+	const char *pin,
+	size_t pin_size,
+	int segment,
+	void *usrptr,
+	struct volume_key **vk);
+
+int LUKS2_token_keyring_get(struct luks2_hdr *hdr,
 	int token,
 	struct crypt_token_params_luks2_keyring *keyring_params);
 
 int LUKS2_token_keyring_json(char *buffer, size_t buffer_size,
 	const struct crypt_token_params_luks2_keyring *keyring_params);
+
+int LUKS2_token_unlock_passphrase(struct crypt_device *cd,
+	struct luks2_hdr *hdr,
+	int token,
+	const char *type,
+	const char *pin,
+	size_t pin_size,
+	void *usrptr,
+	char **passphrase,
+	size_t *passphrase_size);
 
 void crypt_token_unload_external_all(struct crypt_device *cd);
 
@@ -372,7 +397,7 @@ int LUKS2_wipe_header_areas(struct crypt_device *cd,
 
 uint64_t LUKS2_get_data_offset(struct luks2_hdr *hdr);
 int LUKS2_get_data_size(struct luks2_hdr *hdr, uint64_t *size, bool *dynamic);
-int LUKS2_get_sector_size(struct luks2_hdr *hdr);
+uint32_t LUKS2_get_sector_size(struct luks2_hdr *hdr);
 const char *LUKS2_get_cipher(struct luks2_hdr *hdr, int segment);
 const char *LUKS2_get_integrity(struct luks2_hdr *hdr, int segment);
 int LUKS2_keyslot_params_default(struct crypt_device *cd, struct luks2_hdr *hdr,
@@ -400,6 +425,11 @@ int LUKS2_config_set_flags(struct crypt_device *cd, struct luks2_hdr *hdr, uint3
  */
 int LUKS2_config_get_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t *reqs);
 int LUKS2_config_set_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t reqs, bool commit);
+int LUKS2_config_set_requirement_version(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t req_id, uint8_t req_version, bool commit);
+
+int LUKS2_config_get_reencrypt_version(struct luks2_hdr *hdr, uint8_t *version);
+
+bool LUKS2_reencrypt_requirement_candidate(struct luks2_hdr *hdr);
 
 int LUKS2_unmet_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t reqs_mask, int quiet);
 
@@ -408,7 +438,7 @@ int LUKS2_key_description_by_segment(struct crypt_device *cd,
 int LUKS2_volume_key_load_in_keyring_by_keyslot(struct crypt_device *cd,
 		struct luks2_hdr *hdr, struct volume_key *vk, int keyslot);
 int LUKS2_volume_key_load_in_keyring_by_digest(struct crypt_device *cd,
-		struct luks2_hdr *hdr, struct volume_key *vk, int digest);
+		struct volume_key *vk, int digest);
 
 int LUKS2_luks1_to_luks2(struct crypt_device *cd,
 			 struct luks_phdr *hdr1,
@@ -425,7 +455,6 @@ int LUKS2_reencrypt_locked_recovery_by_passphrase(struct crypt_device *cd,
 	int keyslot_new,
 	const char *passphrase,
 	size_t passphrase_size,
-	uint32_t flags,
 	struct volume_key **vks);
 
 void LUKS2_reencrypt_free(struct crypt_device *cd,
@@ -452,5 +481,17 @@ int LUKS2_reencrypt_check_device_size(struct crypt_device *cd,
 	uint64_t *dev_size,
 	bool activation,
 	bool dynamic);
+
+int LUKS2_reencrypt_digest_verify(struct crypt_device *cd,
+	struct luks2_hdr *hdr,
+	struct volume_key *vks);
+
+int LUKS2_reencrypt_max_hotzone_size(struct crypt_device *cd,
+	struct luks2_hdr *hdr,
+	const struct reenc_protection *rp,
+	int reencrypt_keyslot,
+	uint64_t *r_length);
+
+void LUKS2_reencrypt_protection_erase(struct reenc_protection *rp);
 
 #endif

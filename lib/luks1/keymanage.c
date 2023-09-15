@@ -2,8 +2,8 @@
  * LUKS - Linux Unified Key Setup
  *
  * Copyright (C) 2004-2006 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2013-2021 Milan Broz
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2013-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -28,8 +28,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <assert.h>
 #include <uuid/uuid.h>
+#include <limits.h>
 
 #include "luks.h"
 #include "af.h"
@@ -232,11 +232,12 @@ int LUKS_hdr_backup(const char *backup_file, struct crypt_device *ctx)
 	hdr_size = LUKS_device_sectors(&hdr) << SECTOR_SHIFT;
 	buffer_size = size_round_up(hdr_size, crypt_getpagesize());
 
-	buffer = crypt_safe_alloc(buffer_size);
+	buffer = malloc(buffer_size);
 	if (!buffer || hdr_size < LUKS_ALIGN_KEYSLOTS || hdr_size > buffer_size) {
 		r = -ENOMEM;
 		goto out;
 	}
+	memset(buffer, 0, buffer_size);
 
 	log_dbg(ctx, "Storing backup of header (%zu bytes) and keyslot area (%zu bytes).",
 		sizeof(hdr), hdr_size - LUKS_ALIGN_KEYSLOTS);
@@ -280,7 +281,8 @@ int LUKS_hdr_backup(const char *backup_file, struct crypt_device *ctx)
 	r = 0;
 out:
 	crypt_safe_memzero(&hdr, sizeof(hdr));
-	crypt_safe_free(buffer);
+	crypt_safe_memzero(buffer, buffer_size);
+	free(buffer);
 	return r;
 }
 
@@ -308,7 +310,7 @@ int LUKS_hdr_restore(
 		goto out;
 	}
 
-	buffer = crypt_safe_alloc(buffer_size);
+	buffer = malloc(buffer_size);
 	if (!buffer) {
 		r = -ENOMEM;
 		goto out;
@@ -379,7 +381,8 @@ int LUKS_hdr_restore(
 	r = LUKS_read_phdr(hdr, 1, 0, ctx);
 out:
 	device_sync(ctx, device);
-	crypt_safe_free(buffer);
+	crypt_safe_memzero(buffer, buffer_size);
+	free(buffer);
 	return r;
 }
 
@@ -399,7 +402,7 @@ static int _keyslot_repair(struct luks_phdr *phdr, struct crypt_device *ctx)
 	/*
 	 * cryptsetup 1.0 did not align keyslots to 4k, cannot repair this one
 	 * Also we cannot trust possibly broken keyslots metadata here through LUKS_keyslots_offset().
-	 * Expect first keyslot is aligned, if not, then manual repair is neccessary.
+	 * Expect first keyslot is aligned, if not, then manual repair is necessary.
 	 */
 	if (phdr->keyblock[0].keyMaterialOffset < (LUKS_ALIGN_KEYSLOTS / SECTOR_SIZE)) {
 		log_err(ctx, _("Non standard keyslots alignment, manual repair required."));
@@ -817,7 +820,7 @@ int LUKS_generate_phdr(struct luks_phdr *header,
 		return r;
 	}
 
-	/* Compute master key digest */
+	/* Compute volume key digest */
 	pbkdf = crypt_get_pbkdf(ctx);
 	r = crypt_benchmark_pbkdf_internal(ctx, pbkdf, vk->keylength);
 	if (r < 0)
@@ -922,11 +925,15 @@ int LUKS_set_key(unsigned int keyIndex,
 			hdr->keyblock[keyIndex].passwordSalt, LUKS_SALTSIZE,
 			derived_key->key, hdr->keyBytes,
 			hdr->keyblock[keyIndex].passwordIterations, 0, 0);
-	if (r < 0)
+	if (r < 0) {
+		if ((crypt_backend_flags() & CRYPT_BACKEND_PBKDF2_INT) &&
+		     hdr->keyblock[keyIndex].passwordIterations > INT_MAX)
+			log_err(ctx, _("PBKDF2 iteration value overflow."));
 		goto out;
+	}
 
 	/*
-	 * AF splitting, the masterkey stored in vk->key is split to AfKey
+	 * AF splitting, the volume key stored in vk->key is split to AfKey
 	 */
 	assert(vk->keylength == hdr->keyBytes);
 	AFEKSize = AF_split_sectors(vk->keylength, hdr->keyblock[keyIndex].stripes) * SECTOR_SIZE;
@@ -982,7 +989,7 @@ int LUKS_verify_volume_key(const struct luks_phdr *hdr,
 			hdr->mkDigestIterations, 0, 0) < 0)
 		return -EINVAL;
 
-	if (memcmp(checkHashBuf, hdr->mkDigest, LUKS_DIGESTSIZE))
+	if (crypt_backend_memeq(checkHashBuf, hdr->mkDigest, LUKS_DIGESTSIZE))
 		return -EPERM;
 
 	return 0;
@@ -1044,7 +1051,7 @@ static int LUKS_open_key(unsigned int keyIndex,
 	if (r < 0)
 		goto out;
 
-	r = AF_merge(ctx, AfKey, (*vk)->key, (*vk)->keylength, hdr->keyblock[keyIndex].stripes, hdr->hashSpec);
+	r = AF_merge(AfKey, (*vk)->key, (*vk)->keylength, hdr->keyblock[keyIndex].stripes, hdr->hashSpec);
 	if (r < 0)
 		goto out;
 
@@ -1226,6 +1233,10 @@ int LUKS_wipe_header_areas(struct luks_phdr *hdr,
 	int i, r;
 	uint64_t offset, length;
 	size_t wipe_block;
+
+	r = LUKS_check_device_size(ctx, hdr, 1);
+	if (r)
+		return r;
 
 	/* Wipe complete header, keyslots and padding areas with zeroes. */
 	offset = 0;

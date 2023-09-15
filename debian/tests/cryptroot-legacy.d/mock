@@ -1,0 +1,32 @@
+#!/usr/bin/perl -T
+
+BEGIN {
+    require "./debian/tests/utils/mock.pm";
+    CryptrootTest::Mock::->import();
+}
+
+unlock_disk("topsecret");
+login("root");
+
+# make sure the root FS and swap are help by dm-crypt devices
+shell(q{cryptsetup luksOpen --test-passphrase /dev/vda3 <<<topsecret}, rv => 0);
+my $out = shell(q{lsblk -in -oNAME,TYPE,MOUNTPOINT /dev/vda3});
+die unless $out =~ m#^`-vda3_crypt\s+crypt\s*$#m;
+die unless $out =~ m#^\s{2}[`|]-cryptvg-root\s+lvm\s+/\s*$#m;
+die unless $out =~ m#^\s{2}[`|]-cryptvg-swap\s+lvm\s+\[SWAP\]\s*$#m;
+
+# assume MODULES=dep won't add too many modules
+# XXX lsinitramfs doesn't work on /initrd.img with COMPRESS=zstd, cf. #1015954
+$out = shell(q{lsinitramfs /boot/initrd.img-`uname -r` | grep -Ec "^(usr/)?lib/modules/.*\.ko$"});
+die "$out == 0 or $out > 50" unless $out =~ s/\r?\n\z// and $out =~ /\A([0-9]+)\z/ and $out > 0 and $out <= 50;
+
+# check cipher and key size
+$out = shell(q{dmsetup table --target crypt --showkeys vda3_crypt});
+die unless $out =~ m#\A0\s+\d+\s+crypt\s+aes-cbc-essiv:sha256\s+[0-9a-f]{64}\s#;
+
+# make sure hardware acceleration for AES isn't available
+$out = shell(q{cat /proc/crypto});
+die unless $out =~ m#^name\s*:.*\baes\b#mi;
+die if $out =~ m#^(?:name|driver)\s*:.*\b__(?:.*\b)?aes\b#mi;
+
+QMP::quit();

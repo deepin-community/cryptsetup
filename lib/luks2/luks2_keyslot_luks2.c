@@ -1,8 +1,8 @@
 /*
  * LUKS - Linux Unified Key Setup v2, LUKS2 type keyslot handler
  *
- * Copyright (C) 2015-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2021 Milan Broz
+ * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <limits.h>
 #include "luks2_internal.h"
 
 /* FIXME: move keyslot encryption to crypto backend */
@@ -31,6 +32,7 @@
 /* Serialize memory-hard keyslot access: optional workaround for parallel processing */
 #define MIN_MEMORY_FOR_SERIALIZE_LOCK_KB 32*1024 /* 32MB */
 
+/* coverity[ -taint_source : arg-0 ] */
 static int luks2_encrypt_to_storage(char *src, size_t srcLength,
 	const char *cipher, const char *cipher_mode,
 	struct volume_key *vk, unsigned int sector,
@@ -142,10 +144,11 @@ static int luks2_decrypt_from_storage(char *dst, size_t dstLength,
 }
 
 static int luks2_keyslot_get_pbkdf_params(json_object *jobj_keyslot,
-		                struct crypt_pbkdf_type *pbkdf, char *salt)
+		                struct crypt_pbkdf_type *pbkdf, char **salt)
 {
 	json_object *jobj_kdf, *jobj1, *jobj2;
 	size_t salt_len;
+	int r;
 
 	if (!jobj_keyslot || !pbkdf)
 		return -EINVAL;
@@ -181,13 +184,16 @@ static int luks2_keyslot_get_pbkdf_params(json_object *jobj_keyslot,
 
 	if (!json_object_object_get_ex(jobj_kdf, "salt", &jobj2))
 		return -EINVAL;
-	salt_len = LUKS_SALTSIZE;
-	if (!base64_decode(json_object_get_string(jobj2),
-			   json_object_get_string_len(jobj2),
-			   salt, &salt_len))
+
+	r = crypt_base64_decode(salt, &salt_len, json_object_get_string(jobj2),
+				json_object_get_string_len(jobj2));
+	if (r < 0)
+		return r;
+
+	if (salt_len != LUKS_SALTSIZE) {
+		free(*salt);
 		return -EINVAL;
-	if (salt_len != LUKS_SALTSIZE)
-		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -198,7 +204,7 @@ static int luks2_keyslot_set_key(struct crypt_device *cd,
 	const char *volume_key, size_t volume_key_len)
 {
 	struct volume_key *derived_key;
-	char salt[LUKS_SALTSIZE], cipher[MAX_CIPHER_LEN], cipher_mode[MAX_CIPHER_LEN];
+	char *salt = NULL, cipher[MAX_CIPHER_LEN], cipher_mode[MAX_CIPHER_LEN];
 	char *AfKey = NULL;
 	const char *af_hash = NULL;
 	size_t AFEKSize, keyslot_key_len;
@@ -236,24 +242,32 @@ static int luks2_keyslot_set_key(struct crypt_device *cd,
 		return -EINVAL;
 	af_hash = json_object_get_string(jobj2);
 
-	if (luks2_keyslot_get_pbkdf_params(jobj_keyslot, &pbkdf, salt))
-		return -EINVAL;
+	r = luks2_keyslot_get_pbkdf_params(jobj_keyslot, &pbkdf, &salt);
+	if (r < 0)
+		return r;
 
 	/*
 	 * Allocate derived key storage.
 	 */
 	derived_key = crypt_alloc_volume_key(keyslot_key_len, NULL);
-	if (!derived_key)
+	if (!derived_key) {
+		free(salt);
 		return -ENOMEM;
+	}
 	/*
 	 * Calculate keyslot content, split and store it to keyslot area.
 	 */
+	log_dbg(cd, "Running keyslot key derivation.");
 	r = crypt_pbkdf(pbkdf.type, pbkdf.hash, password, passwordLen,
 			salt, LUKS_SALTSIZE,
 			derived_key->key, derived_key->keylength,
 			pbkdf.iterations, pbkdf.max_memory_kb,
 			pbkdf.parallel_threads);
+	free(salt);
 	if (r < 0) {
+		if ((crypt_backend_flags() & CRYPT_BACKEND_PBKDF2_INT) &&
+		     pbkdf.iterations > INT_MAX)
+			log_err(cd, _("PBKDF2 iteration value overflow."));
 		crypt_free_volume_key(derived_key);
 		return r;
 	}
@@ -266,10 +280,14 @@ static int luks2_keyslot_set_key(struct crypt_device *cd,
 		return -ENOMEM;
 	}
 
-	r = AF_split(cd, volume_key, AfKey, volume_key_len, LUKS_STRIPES, af_hash);
+	r = crypt_hash_size(af_hash);
+	if (r < 0)
+		log_err(cd, _("Hash algorithm %s is not available."), af_hash);
+	else
+		r = AF_split(cd, volume_key, AfKey, volume_key_len, LUKS_STRIPES, af_hash);
 
 	if (r == 0) {
-		log_dbg(cd, "Updating keyslot area [0x%04x].", (unsigned)area_offset);
+		log_dbg(cd, "Updating keyslot area [0x%04" PRIx64 "].", area_offset);
 		/* FIXME: sector_offset should be size_t, fix LUKS_encrypt... accordingly */
 		r = luks2_encrypt_to_storage(AfKey, AFEKSize, cipher, cipher_mode,
 				    derived_key, (unsigned)(area_offset / SECTOR_SIZE), cd);
@@ -288,12 +306,12 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
 	const char *password, size_t passwordLen,
 	char *volume_key, size_t volume_key_len)
 {
-	struct volume_key *derived_key;
+	struct volume_key *derived_key = NULL;
 	struct crypt_pbkdf_type pbkdf;
-	char *AfKey;
+	char *AfKey = NULL;
 	size_t AFEKSize;
 	const char *af_hash = NULL;
-	char salt[LUKS_SALTSIZE], cipher[MAX_CIPHER_LEN], cipher_mode[MAX_CIPHER_LEN];
+	char *salt = NULL, cipher[MAX_CIPHER_LEN], cipher_mode[MAX_CIPHER_LEN];
 	json_object *jobj2, *jobj_af, *jobj_area;
 	uint64_t area_offset;
 	size_t keyslot_key_len;
@@ -302,9 +320,6 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
 
 	if (!json_object_object_get_ex(jobj_keyslot, "af", &jobj_af) ||
 	    !json_object_object_get_ex(jobj_keyslot, "area", &jobj_area))
-		return -EINVAL;
-
-	if (luks2_keyslot_get_pbkdf_params(jobj_keyslot, &pbkdf, salt))
 		return -EINVAL;
 
 	if (!json_object_object_get_ex(jobj_af, "hash", &jobj2))
@@ -325,12 +340,18 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
 		return -EINVAL;
 	keyslot_key_len = json_object_get_int(jobj2);
 
+	r = luks2_keyslot_get_pbkdf_params(jobj_keyslot, &pbkdf, &salt);
+	if (r < 0)
+		return r;
+
 	/*
 	 * Allocate derived key storage space.
 	 */
 	derived_key = crypt_alloc_volume_key(keyslot_key_len, NULL);
-	if (!derived_key)
-		return -ENOMEM;
+	if (!derived_key) {
+		r = -ENOMEM;
+		goto out;
+	}
 
 	AFEKSize = AF_split_sectors(volume_key_len, LUKS_STRIPES) * SECTOR_SIZE;
 	AfKey = crypt_safe_alloc(AFEKSize);
@@ -350,6 +371,7 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
 	/*
 	 * Calculate derived key, decrypt keyslot content and merge it.
 	 */
+	log_dbg(cd, "Running keyslot key derivation.");
 	r = crypt_pbkdf(pbkdf.type, pbkdf.hash, password, passwordLen,
 			salt, LUKS_SALTSIZE,
 			derived_key->key, derived_key->keylength,
@@ -360,16 +382,21 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
 		crypt_serialize_unlock(cd);
 
 	if (r == 0) {
-		log_dbg(cd, "Reading keyslot area [0x%04x].", (unsigned)area_offset);
+		log_dbg(cd, "Reading keyslot area [0x%04" PRIx64 "].", area_offset);
 		/* FIXME: sector_offset should be size_t, fix LUKS_decrypt... accordingly */
 		r = luks2_decrypt_from_storage(AfKey, AFEKSize, cipher, cipher_mode,
 				      derived_key, (unsigned)(area_offset / SECTOR_SIZE), cd);
 	}
 
-	if (r == 0)
-		r = AF_merge(cd, AfKey, volume_key, volume_key_len, LUKS_STRIPES, af_hash);
-
+	if (r == 0) {
+		r = crypt_hash_size(af_hash);
+		if (r < 0)
+			log_err(cd, _("Hash algorithm %s is not available."), af_hash);
+		else
+			r = AF_merge(AfKey, volume_key, volume_key_len, LUKS_STRIPES, af_hash);
+	}
 out:
+	free(salt);
 	crypt_free_volume_key(derived_key);
 	crypt_safe_free(AfKey);
 
@@ -430,9 +457,9 @@ static int luks2_keyslot_update_json(struct crypt_device *cd,
 	r = crypt_random_get(cd, salt, LUKS_SALTSIZE, CRYPT_RND_SALT);
 	if (r < 0)
 		return r;
-	base64_encode_alloc(salt, LUKS_SALTSIZE, &salt_base64);
-	if (!salt_base64)
-		return -ENOMEM;
+	r = crypt_base64_encode(&salt_base64, NULL, salt, LUKS_SALTSIZE);
+	if (r < 0)
+		return r;
 	json_object_object_add(jobj_kdf, "salt", json_object_new_string(salt_base64));
 	free(salt_base64);
 
@@ -660,50 +687,56 @@ static int luks2_keyslot_validate(struct crypt_device *cd, json_object *jobj_key
 	if (!jobj_keyslot)
 		return -EINVAL;
 
-	if (!json_object_object_get_ex(jobj_keyslot, "kdf", &jobj_kdf) ||
-	    !json_object_object_get_ex(jobj_keyslot, "af", &jobj_af) ||
-	    !json_object_object_get_ex(jobj_keyslot, "area", &jobj_area))
+	if (!(jobj_kdf = json_contains(cd, jobj_keyslot, "", "keyslot", "kdf", json_type_object)) ||
+	    !(jobj_af = json_contains(cd, jobj_keyslot, "", "keyslot", "af", json_type_object)) ||
+	    !(jobj_area = json_contains(cd, jobj_keyslot, "", "keyslot", "area", json_type_object)))
 		return -EINVAL;
 
 	count = json_object_object_length(jobj_kdf);
 
-	jobj1 = json_contains(cd, jobj_kdf, "", "kdf section", "type", json_type_string);
+	jobj1 = json_contains_string(cd, jobj_kdf, "", "kdf section", "type");
 	if (!jobj1)
 		return -EINVAL;
 	type = json_object_get_string(jobj1);
 
 	if (!strcmp(type, CRYPT_KDF_PBKDF2)) {
 		if (count != 4 || /* type, salt, hash, iterations only */
-		    !json_contains(cd, jobj_kdf, "kdf type", type, "hash", json_type_string) ||
+		    !json_contains_string(cd, jobj_kdf, "kdf type", type, "hash") ||
 		    !json_contains(cd, jobj_kdf, "kdf type", type, "iterations", json_type_int) ||
-		    !json_contains(cd, jobj_kdf, "kdf type", type, "salt", json_type_string))
+		    !json_contains_string(cd, jobj_kdf, "kdf type", type, "salt"))
 			return -EINVAL;
 	} else if (!strcmp(type, CRYPT_KDF_ARGON2I) || !strcmp(type, CRYPT_KDF_ARGON2ID)) {
 		if (count != 5 || /* type, salt, time, memory, cpus only */
 		    !json_contains(cd, jobj_kdf, "kdf type", type, "time", json_type_int) ||
 		    !json_contains(cd, jobj_kdf, "kdf type", type, "memory", json_type_int) ||
 		    !json_contains(cd, jobj_kdf, "kdf type", type, "cpus", json_type_int) ||
-		    !json_contains(cd, jobj_kdf, "kdf type", type, "salt", json_type_string))
+		    !json_contains_string(cd, jobj_kdf, "kdf type", type, "salt"))
 			return -EINVAL;
 	}
 
-	if (!json_object_object_get_ex(jobj_af, "type", &jobj1))
+	jobj1 = json_contains_string(cd, jobj_af, "", "af section", "type");
+	if (!jobj1)
 		return -EINVAL;
-	if (!strcmp(json_object_get_string(jobj1), "luks1")) {
-		if (!json_contains(cd, jobj_af, "", "luks1 af", "hash", json_type_string) ||
+	type = json_object_get_string(jobj1);
+
+	if (!strcmp(type, "luks1")) {
+		if (!json_contains_string(cd, jobj_af, "", "luks1 af", "hash") ||
 		    !json_contains(cd, jobj_af, "", "luks1 af", "stripes", json_type_int))
 			return -EINVAL;
 	} else
 		return -EINVAL;
 
 	// FIXME check numbered
-	if (!json_object_object_get_ex(jobj_area, "type", &jobj1))
+	jobj1 = json_contains_string(cd, jobj_area, "", "area section", "type");
+	if (!jobj1)
 		return -EINVAL;
-	if (!strcmp(json_object_get_string(jobj1), "raw")) {
-		if (!json_contains(cd, jobj_area, "area", "raw type", "encryption", json_type_string) ||
+	type = json_object_get_string(jobj1);
+
+	if (!strcmp(type, "raw")) {
+		if (!json_contains_string(cd, jobj_area, "area", "raw type", "encryption") ||
 		    !json_contains(cd, jobj_area, "area", "raw type", "key_size", json_type_int) ||
-		    !json_contains(cd, jobj_area, "area", "raw type", "offset", json_type_string) ||
-		    !json_contains(cd, jobj_area, "area", "raw type", "size", json_type_string))
+		    !json_contains_string(cd, jobj_area, "area", "raw type", "offset") ||
+		    !json_contains_string(cd, jobj_area, "area", "raw type", "size"))
 			return -EINVAL;
 	} else
 		return -EINVAL;
@@ -738,7 +771,7 @@ static int luks2_keyslot_update(struct crypt_device *cd,
 	return r;
 }
 
-static void luks2_keyslot_repair(struct crypt_device *cd __attribute__((unused)), json_object *jobj_keyslot)
+static void luks2_keyslot_repair(json_object *jobj_keyslot)
 {
 	const char *type;
 	json_object *jobj_kdf, *jobj_type;

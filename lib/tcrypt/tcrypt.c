@@ -1,8 +1,8 @@
 /*
  * TCRYPT (TrueCrypt-compatible) and VeraCrypt volume handling
  *
- * Copyright (C) 2012-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2021 Milan Broz
+ * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Milan Broz
  *
  * This file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 #include "libcryptsetup.h"
 #include "tcrypt.h"
@@ -264,8 +263,8 @@ static int TCRYPT_hdr_from_disk(struct crypt_device *cd,
  */
 static void TCRYPT_swab_le(char *buf)
 {
-	uint32_t *l = (uint32_t*)&buf[0];
-	uint32_t *r = (uint32_t*)&buf[4];
+	uint32_t *l = VOIDP_CAST(uint32_t*)&buf[0];
+	uint32_t *r = VOIDP_CAST(uint32_t*)&buf[4];
 	*l = swab32(*l);
 	*r = swab32(*r);
 }
@@ -588,7 +587,6 @@ static int TCRYPT_init_hdr(struct crypt_device *cd,
 				    (tcrypt_kdf[i].veracrypt_pim_mult * params->veracrypt_pim);
 		} else
 			iterations = tcrypt_kdf[i].iterations;
-
 		/* Derive header key */
 		log_dbg(cd, "TCRYPT: trying KDF: %s-%s-%d%s.",
 			tcrypt_kdf[i].name, tcrypt_kdf[i].hash, tcrypt_kdf[i].iterations,
@@ -601,6 +599,8 @@ static int TCRYPT_init_hdr(struct crypt_device *cd,
 		if (r < 0) {
 			log_verbose(cd, _("PBKDF2 hash algorithm %s not available, skipping."),
 				      tcrypt_kdf[i].hash);
+			skipped++;
+			r = -EPERM;
 			continue;
 		}
 
@@ -609,16 +609,18 @@ static int TCRYPT_init_hdr(struct crypt_device *cd,
 		if (r == -ENOENT) {
 			skipped++;
 			r = -EPERM;
+			continue;
 		}
 		if (r != -EPERM)
 			break;
 	}
 
-	if ((r < 0 && r != -EPERM && skipped && skipped == i) || r == -ENOTSUP) {
+	if ((r < 0 && skipped && skipped == i) || r == -ENOTSUP) {
 		log_err(cd, _("Required kernel crypto interface not available."));
 #ifdef ENABLE_AF_ALG
 		log_err(cd, _("Ensure you have algif_skcipher kernel module loaded."));
 #endif
+		r = -ENOTSUP;
 	}
 	if (r < 0)
 		goto out;
@@ -827,7 +829,10 @@ int TCRYPT_activate(struct crypt_device *cd,
 			strncpy(dm_name, name, sizeof(dm_name)-1);
 			dmd.flags = flags;
 		} else {
-			snprintf(dm_name, sizeof(dm_name), "%s_%d", name, i-1);
+			if (snprintf(dm_name, sizeof(dm_name), "%s_%d", name, i-1) < 0) {
+				r = -EINVAL;
+				break;
+			}
 			dmd.flags = flags | CRYPT_ACTIVATE_PRIVATE;
 		}
 
@@ -835,8 +840,10 @@ int TCRYPT_activate(struct crypt_device *cd,
 				vk->key, hdr->d.keys);
 
 		if (algs->chain_count != i) {
-			snprintf(dm_dev_name, sizeof(dm_dev_name), "%s/%s_%d",
-				 dm_get_dir(), name, i);
+			if (snprintf(dm_dev_name, sizeof(dm_dev_name), "%s/%s_%d", dm_get_dir(), name, i) < 0) {
+				r = -EINVAL;
+				break;
+			}
 			r = device_alloc(cd, &device, dm_dev_name);
 			if (r)
 				break;

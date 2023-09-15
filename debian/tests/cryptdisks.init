@@ -1,0 +1,84 @@
+#!/bin/bash
+
+set -eu
+PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH
+
+if [ -d /run/systemd/system ]; then
+    export SYSTEMCTL_SKIP_REDIRECT="y"
+    # systemd masks cryptdisks.service and we can't unmask it because /etc/init.d is the only source
+    rm -f -- $(systemctl show -p FragmentPath --value cryptdisks.service)
+    systemctl daemon-reload
+fi
+
+# create 64M zero devices
+dmsetup create disk0 --table "0 $(( 64 * 2*1024)) zero"
+dmsetup create disk1 --table "0 $(( 64 * 2*1024)) zero"
+dmsetup create disk2 --table "0 $(( 64 * 2*1024)) zero"
+dmsetup create disk3 --table "0 $((128 * 2*1024)) zero"
+
+# join disk #1 and #2
+dmsetup create disk12 <<-EOF
+	0 $((64 * 2*1024)) linear /dev/mapper/disk1 0
+	$((64 * 2*1024)) $((64 * 2*1024)) linear /dev/mapper/disk2 0
+EOF
+
+cipher="aes-cbc-essiv:sha256"
+size=32 # bytes
+cat >/etc/crypttab <<-EOF
+	crypt_disk0   /dev/mapper/disk0        /dev/urandom plain,cipher=$cipher,size=$((8*size))
+	crypt_disk0a  /dev/mapper/crypt_disk0  /dev/urandom plain,cipher=$cipher,size=$((8*size))
+	crypt_disk12  /dev/mapper/disk12       /dev/urandom plain,cipher=$cipher,size=$((8*size))
+	crypt_disk3   /dev/mapper/disk3        /dev/urandom plain,cipher=$cipher,size=$((8*size))
+	crypt_disk3b  /dev/mapper/crypt_disk3  /dev/urandom plain,cipher=$cipher,size=$((8*size)),offset=$(( 64 * 2*1024))
+	crypt_disk3b0 /dev/mapper/crypt_disk3b /dev/urandom plain,cipher=$cipher,size=$((8*size))
+EOF
+
+/etc/init.d/cryptdisks start
+
+# now add crypt_disk3a (preceeding crypt_disk3b) with a size limit (can't do that via crypttab but dmsetup allows it)
+dmsetup create crypt_disk3a --uuid "CRYPT-PLAIN-crypt_disk3a" --addnodeoncreate <<-EOF
+    0 $((64 * 2*1024)) crypt $cipher $(xxd -l$size -ps -c256 </dev/urandom) 0 /dev/mapper/crypt_disk3 0
+EOF
+
+lsblk
+# disk0               253:0    0   64M  0 dm
+# └─crypt_disk0       253:5    0   64M  0 crypt
+#   └─crypt_disk0a    253:6    0   64M  0 crypt
+# disk1               253:1    0   64M  0 dm
+# └─disk12            253:4    0  128M  0 dm
+#   └─crypt_disk12    253:7    0  128M  0 crypt
+# disk2               253:2    0   64M  0 dm
+# └─disk12            253:4    0  128M  0 dm
+#   └─crypt_disk12    253:7    0  128M  0 crypt
+#disk3               253:3    0  128M  0 dm
+#└─crypt_disk3       253:8    0  128M  0 crypt
+#  ├─crypt_disk3b    253:9    0   64M  0 crypt
+#  │ └─crypt_disk3b0 253:10   0   64M  0 crypt
+#  └─crypt_disk3a    253:11   0   64M  0 dm
+
+# check device-mapper table (crypt target only)
+# https://gitlab.com/cryptsetup/cryptsetup/-/wikis/DMCrypt
+# <start_sector> <size> "crypt" <target mapping table> <cipher> <key> <iv_offset> <device path> <offset> [<#opt_params> <opt_params>]
+dmsetup table --target="crypt" >"$AUTOPKGTEST_TMP/table"
+sed -ri "s/\\s+0{$((2*size))}(\\s+[0-9]+)\\s+[0-9]+:[0-9]+(\s|$)/\\1\\2/" -- "$AUTOPKGTEST_TMP/table"
+LC_ALL=C sort -t: -k1,1 <"$AUTOPKGTEST_TMP/table" >"$AUTOPKGTEST_TMP/table2"
+
+diff -u --color=auto --label="a/table" --label="b/table" -- - "$AUTOPKGTEST_TMP/table2" <<-EOF
+	crypt_disk0: 0 $((64 * 2*1024)) crypt $cipher 0 0
+	crypt_disk0a: 0 $((64 * 2*1024)) crypt $cipher 0 0
+	crypt_disk12: 0 $((2*64 * 2*1024)) crypt $cipher 0 0
+	crypt_disk3: 0 $((128 * 2*1024)) crypt $cipher 0 0
+	crypt_disk3a: 0 $((64 * 2*1024)) crypt $cipher 0 0
+	crypt_disk3b: 0 $((64 * 2*1024)) crypt $cipher 0 $((64 * 2*1024))
+	crypt_disk3b0: 0 $((64 * 2*1024)) crypt $cipher 0 0
+EOF
+
+# close disks and ensure there no leftover devices
+/etc/init.d/cryptdisks stop
+dmsetup table --target="crypt" >"$AUTOPKGTEST_TMP/table"
+if [ -s "$AUTOPKGTEST_TMP/table" ]; then
+    echo "ERROR: leftover crypt devices" >&2
+    cat <"$AUTOPKGTEST_TMP/table"
+    exit 1
+fi

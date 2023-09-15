@@ -1,0 +1,62 @@
+# Mesajele în limba română pentru pachetul cryptsetup.
+# Romanian translation of cryptsetup.
+# Copyright © 2023 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the cryptsetup package.
+#
+# Remus-Gabriel Chelu <remusgabriel.chelu@disroot.org>, 2023.
+#
+# Cronologia traducerii fișierului „cryptsetup”:
+# Traducerea inițială, făcută de R-GC, pentru versiunea cryptsetup 2:2.6.1-1.
+# Actualizare a traducerii pentru versiunea Y, făcută de X, Y(anul).
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: cryptsetup 2:2.6.1-1\n"
+"Report-Msgid-Bugs-To: cryptsetup@packages.debian.org\n"
+"POT-Creation-Date: 2018-06-18 01:42+0200\n"
+"PO-Revision-Date: 2023-02-13 10:03+0100\n"
+"Last-Translator: Remus-Gabriel Chelu <remusgabriel.chelu@disroot.org>\n"
+"Language-Team: Romanian <debian-l10n-romanian@lists.debian.org>\n"
+"Language: ro\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n==0 || (n!=1 && n%100>=1 && "
+"n%100<=19) ? 1 : 2);\n"
+"X-Bugs: Report translation errors to the Language-Team address.\n"
+"X-Generator: Poedit 3.2.2\n"
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid "Continue with cryptsetup removal?"
+msgstr "Continuați cu eliminarea programului «cryptsetup»?"
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid "This system has unlocked dm-crypt devices: ${cryptmap}"
+msgstr "Acest sistem are dispozitive dm-crypt deblocate: ${cryptmap}"
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid ""
+"If these devices are managed with cryptsetup, you might be unable to lock the "
+"devices after the package removal, though other tools can be used for managing "
+"dm-crypt devices. Any system shutdown or reboot will lock the devices."
+msgstr ""
+"Dacă aceste dispozitive sunt gestionate cu «cryptsetup», este posibil să nu "
+"puteți bloca dispozitivele după eliminarea pachetului, deși alte instrumente "
+"pot fi utilizate pentru gestionarea dispozitivelor dm-crypt. Orice oprire sau "
+"repornire a sistemului va bloca dispozitivele."
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid ""
+"Do not choose this option if you want to lock the dm-crypt devices before "
+"package removal."
+msgstr ""
+"Nu alegeți această opțiune dacă doriți să blocați dispozitivele dm-crypt "
+"înainte de a elimina pachetul."

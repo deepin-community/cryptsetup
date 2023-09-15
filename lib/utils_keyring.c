@@ -1,8 +1,8 @@
 /*
  * kernel keyring utilities
  *
- * Copyright (C) 2016-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2021 Ondrej Kozina
+ * Copyright (C) 2016-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -163,7 +163,7 @@ int keyring_get_passphrase(const char *key_desc,
 	ret = keyctl_read(kid, NULL, 0);
 	if (ret > 0) {
 		len = ret;
-		buf = malloc(len);
+		buf = crypt_safe_alloc(len);
 		if (!buf)
 			return -ENOMEM;
 
@@ -173,9 +173,7 @@ int keyring_get_passphrase(const char *key_desc,
 
 	if (ret < 0) {
 		err = errno;
-		if (buf)
-			crypt_safe_memzero(buf, len);
-		free(buf);
+		crypt_safe_free(buf);
 		return -err;
 	}
 

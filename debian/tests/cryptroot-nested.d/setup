@@ -1,0 +1,107 @@
+# Unrealistic (and frankly stupid) layout with a complex block device
+# stack involving multi-device btrfs and btrfs subvolumes, LUKS-on-MD,
+# MD-on-LUKS and LUKS-on-LVM incl. nested dm-crypt volumes:
+
+#    NAME                   TYPE  MOUNTPOINTS
+#    vda                    disk
+#    ├─vda1                 part
+#    ├─vda2                 part  /boot
+#    └─vda3                 part
+#      ├─testvg-lv0         lvm
+#      │ └─testvg-lv0_crypt crypt [SWAP]
+#      └─testvg-lv1         lvm
+#        └─testvg-lv1_crypt crypt
+#          └─md0            raid1
+#            └─md0_crypt    crypt /, /home, /usr, /var
+#    vdb                    disk
+#    └─testvg-lv1           lvm
+#      └─testvg-lv1_crypt   crypt
+#        └─md0              raid1
+#          └─md0_crypt      crypt /, /home, /usr, /var
+#    vdc                    disk
+#    └─md0                  raid1
+#      └─md0_crypt          crypt /, /home, /usr, /var
+#    vdd                    disk
+#    └─vdd_crypt            crypt /, /home, /usr, /var
+
+sfdisk --append /dev/vda <<-EOF
+	unit: sectors
+
+	start=$((64*1024*2)), size=$((128*1024*2)), type=${GUID_TYPE_Linux_FS}
+	start=$(((64+128)*1024*2)), type=${GUID_TYPE_LUKS}
+EOF
+udevadm settle
+
+lvm pvcreate /dev/vda3
+lvm pvcreate /dev/vdb
+lvm vgcreate "testvg" /dev/vda3 /dev/vdb
+lvm lvcreate -Zn --size 64m --name "lv0" "testvg"
+lvm lvcreate -Zn --size 1024m --name "lv1" "testvg"
+lvm vgchange -ay "testvg"
+lvm vgmknodes
+udevadm settle
+
+echo -n "testvg-lv0_crypt" >/keyfile
+cryptsetup open --batch-mode \
+    --type=plain \
+    --cipher="aes-cbc-essiv:sha256" \
+    --key-size=256 \
+    --hash="ripemd160" \
+    -- "/dev/testvg/lv0" "testvg-lv0_crypt" </keyfile
+udevadm settle
+
+echo -n "testvg-lv1_crypt" >/keyfile
+cryptsetup luksFormat --batch-mode \
+    --key-file=/keyfile \
+    --type=luks1 \
+    --pbkdf-force-iterations=1000 \
+    -- "/dev/testvg/lv1"
+cryptsetup luksOpen --key-file=/keyfile --allow-discards \
+    -- "/dev/testvg/lv1" "testvg-lv1_crypt"
+udevadm settle
+
+mdadm --create /dev/md0 --metadata=default --level=1 --raid-devices=2 \
+    /dev/mapper/testvg-lv1_crypt /dev/vdc
+udevadm settle
+
+for d in md0 vdd; do
+    echo -n "${d}_crypt" >/keyfile
+    cryptsetup luksFormat --batch-mode \
+        --key-file=/keyfile \
+        --type=luks2 \
+        --pbkdf=argon2id \
+        --pbkdf-force-iterations=4 \
+        --pbkdf-memory=32 \
+        -- "/dev/$d"
+    cryptsetup luksOpen --key-file=/keyfile --allow-discards \
+        -- "/dev/${d}" "${d}_crypt"
+    udevadm settle
+done
+
+# create multi-device btrfs filesystem for the root FS; we list /dev/mapper/vdd_crypt
+# first since it's smaller and we want data to span across both devices
+mkfs.btrfs -d single /dev/mapper/vdd_crypt /dev/mapper/md0_crypt
+
+# create subvolumes
+mount -t btrfs -o compress=lzo,device=/dev/mapper/md0_crypt /dev/mapper/vdd_crypt "$ROOT"
+btrfs subvol create "$ROOT/@"
+btrfs subvol create "$ROOT/@usr"
+btrfs subvol create "$ROOT/@var"
+btrfs subvol create "$ROOT/@home"
+umount "$ROOT"
+
+# now mount the subvolumes
+mount -t btrfs -o compress=lzo,device=/dev/mapper/md0_crypt,subvol="@" /dev/mapper/vdd_crypt "$ROOT"
+for s in home usr var; do
+    mkdir -m0755 "$ROOT/$s"
+    mount -t btrfs -o compress=lzo,device=/dev/mapper/md0_crypt,subvol="@$s" /dev/mapper/vdd_crypt "$ROOT/$s"
+done
+
+mkdir "$ROOT/boot"
+mke2fs -Ft ext2 -m0 /dev/vda2
+mount -t ext2 /dev/vda2 "$ROOT/boot"
+
+mkswap /dev/mapper/testvg-lv0_crypt
+swapon /dev/mapper/testvg-lv0_crypt
+
+# vim: set filetype=sh :

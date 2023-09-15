@@ -1,0 +1,46 @@
+# LVM-on-LUKS2 layout from an old system: pre-2013 cryptsetup defaults,
+# no AES hardware acceleration (and MODULES=dep)
+
+sfdisk --append /dev/vda <<-EOF
+	unit: sectors
+
+	start=$((64*1024*2)), size=$((128*1024*2)), type=${GUID_TYPE_Linux_FS}
+	start=$(((64+128)*1024*2)), type=${GUID_TYPE_LUKS}
+EOF
+udevadm settle
+
+# Use pre-2013 (<1.6.0) defaults: LUKS1, aes-cbc-essiv:sha256 cipher, 256bits key
+# <1.6.0 default hash was sha1 but we use legacy hash ripemd160 here to test OpenSSL's
+# legacy.so
+echo -n "topsecret" >/rootfs.key
+cryptsetup luksFormat --batch-mode \
+    --key-file=/rootfs.key \
+    --type=luks1 \
+    --pbkdf-force-iterations=1000 \
+    --cipher="aes-cbc-essiv:sha256" \
+    --hash="ripemd160" \
+    --key-size=256 \
+    -- /dev/vda3
+cryptsetup luksOpen --key-file=/rootfs.key --allow-discards \
+    -- /dev/vda3 "vda3_crypt"
+udevadm settle
+
+lvm pvcreate /dev/mapper/vda3_crypt
+lvm vgcreate "cryptvg" /dev/mapper/vda3_crypt
+lvm lvcreate -Zn --size 64m --name "swap" "cryptvg"
+lvm lvcreate -Zn -l100%FREE --name "root" "cryptvg"
+lvm vgchange -ay "cryptvg"
+lvm vgmknodes
+udevadm settle
+
+mke2fs -Ft ext4 /dev/cryptvg/root
+mount -t ext4 /dev/cryptvg/root "$ROOT"
+
+mkdir "$ROOT/boot"
+mke2fs -Ft ext2 -m0 /dev/vda2
+mount -t ext2 /dev/vda2 "$ROOT/boot"
+
+mkswap /dev/cryptvg/swap
+swapon /dev/cryptvg/swap
+
+# vim: set filetype=sh :

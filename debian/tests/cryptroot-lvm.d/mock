@@ -1,0 +1,49 @@
+#!/usr/bin/perl -T
+
+BEGIN {
+    require "./debian/tests/utils/mock.pm";
+    CryptrootTest::Mock::->import();
+}
+
+my $POWERCYCLE_COUNT = $ARGV[0];
+
+unlock_disk("topsecret");
+
+if ($POWERCYCLE_COUNT == 0) {
+    login("root");
+
+    # make sure the root FS and swap are help by dm-crypt devices
+    shell(q{cryptsetup luksOpen --test-passphrase /dev/vda3 <<<topsecret}, rv => 0);
+    my $out = shell(q{lsblk -in -oNAME,TYPE,MOUNTPOINT /dev/vda3});
+    die unless $out =~ m#^`-vda3_crypt\s+crypt\s*$#m;
+    die unless $out =~ m#^\s{2}[`|]-cryptvg-root\s+lvm\s+/\s*$#m;
+    die unless $out =~ m#^\s{2}[`|]-cryptvg-swap\s+lvm\s+\[SWAP\]\s*$#m;
+
+    # create a stamp in memory, hibernate (suspend on disk) and thaw
+    shell(q{echo hello >/dev/shm/foo.stamp});
+    hibernate();
+}
+else {
+    expect($SERIAL => qr/(?:^|\s)?PM: (?:hibernation: )?hibernation exit\r\n/m);
+    # no need to relogin, we get the shell as we left it
+    shell(q{grep -Fx hello </dev/shm/foo.stamp}, rv => 0);
+
+    # briefly suspend
+    suspend();
+
+    # make sure wakeup yields a cryptsetup prompt
+    wakeup();
+    expect($SERIAL => qr/(?:^|\s)?PM: suspend exit\r\n/m);
+    unlock_disk("topsecret");
+
+    # consume PS1 to make sure we're at a shell prompt
+    expect($CONSOLE => qr/\A $PS1 \z/aamsx);
+    my $out = shell(q{dmsetup info -c --noheadings -omangled_name,suspended --separator ' '});
+    die if grep !/[:[:blank:]]Active$/i, split(/\r?\n/, $out);
+
+    # test I/O on the root file system
+    shell(q{cp -vT /dev/shm/foo.stamp /cryptroot.stamp});
+    shell(q{grep -Fx hello </cryptroot.stamp}, rv => 0);
+
+    QMP::quit();
+}

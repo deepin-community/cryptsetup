@@ -1,8 +1,8 @@
 /*
  * cryptsetup library API test utilities
  *
- * Copyright (C) 2009-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2021 Milan Broz
+ * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -161,6 +162,20 @@ int t_device_size(const char *device, uint64_t *size)
 	return r;
 }
 
+int t_set_readahead(const char *device, unsigned value)
+{
+	int devfd, r = 0;
+
+	devfd = open(device, O_RDONLY);
+	if(devfd == -1)
+		return -EINVAL;
+
+	if (ioctl(devfd, BLKRASET, value) < 0)
+		r = -EINVAL;
+	close(devfd);
+	return r;
+}
+
 int fips_mode(void)
 {
 	int fd;
@@ -196,12 +211,149 @@ int create_dmdevice_over_loop(const char *dm_name, const uint64_t size)
 		printf("No enough space on backing loop device\n.");
 		return -2;
 	}
-	snprintf(cmd, sizeof(cmd),
-		 "dmsetup create %s --table \"0 %" PRIu64 " linear %s %" PRIu64 "\"",
-		 dm_name, size, THE_LOOP_DEV, t_dev_offset);
+	r = snprintf(cmd, sizeof(cmd),
+		     "dmsetup create %s --table \"0 %" PRIu64 " linear %s %" PRIu64 "\"",
+		     dm_name, size, THE_LOOP_DEV, t_dev_offset);
+	if (r < 0 || (size_t)r >= sizeof(cmd))
+		return -3;
+
 	if (!(r = _system(cmd, 1)))
 		t_dev_offset += size;
 	return r;
+}
+
+__attribute__((format(printf, 3, 4)))
+static int _snprintf(char **r_ptr, size_t *r_remains, const char *format, ...)
+{
+	int len, r = 0;
+	va_list argp;
+
+	assert(r_remains);
+	assert(r_ptr);
+
+	va_start(argp, format);
+
+	len = vsnprintf(*r_ptr, *r_remains, format, argp);
+	if (len < 0 || (size_t)len >= *r_remains) {
+		r = -EINVAL;
+	} else {
+		*r_ptr += len;
+		*r_remains -= len;
+	}
+
+	va_end(argp);
+
+	return r;
+}
+
+int dmdevice_error_io(const char *dm_name,
+	const char *dm_device,
+	const char *error_device,
+	uint64_t data_offset,
+	uint64_t offset,
+	uint64_t length,
+	error_io_info ei)
+{
+	char str[256], cmd[384];
+	int r;
+	uint64_t dev_size;
+	size_t remains;
+	char *ptr;
+
+	if (t_device_size(dm_device, &dev_size) < 0 || !length)
+		return -1;
+
+	dev_size >>= TST_SECTOR_SHIFT;
+
+	if (dev_size <= offset)
+		return -1;
+
+	if (ei == ERR_REMOVE) {
+		r = snprintf(cmd, sizeof(cmd),
+			     "dmsetup load %s --table \"0 %" PRIu64 " linear %s %" PRIu64 "\"",
+			     dm_name, dev_size, THE_LOOP_DEV, data_offset);
+		if (r < 0 || (size_t)r >= sizeof(str))
+			return -3;
+
+		if ((r = _system(cmd, 1)))
+			return r;
+
+		r = snprintf(cmd, sizeof(cmd), "dmsetup resume %s", dm_name);
+		if (r < 0 || (size_t)r >= sizeof(cmd))
+			return -3;
+
+		return _system(cmd, 1);
+	}
+
+	if ((dev_size - offset) < length) {
+		printf("Not enough space on target device\n.");
+		return -2;
+	}
+
+	remains = sizeof(str);
+	ptr = str;
+
+	if (offset) {
+		r = _snprintf(&ptr, &remains,
+			     "0 %" PRIu64 " linear %s %" PRIu64 "\n",
+			     offset, THE_LOOP_DEV, data_offset);
+		if (r < 0)
+			return r;
+	}
+	r = _snprintf(&ptr, &remains, "%" PRIu64 " %" PRIu64 " delay ",
+		      offset, length);
+	if (r < 0)
+		return r;
+
+	if (ei == ERR_RW || ei == ERR_RD) {
+		r = _snprintf(&ptr, &remains, "%s 0 0",
+			     error_device);
+		if (r < 0)
+			return r;
+		if (ei == ERR_RD) {
+			r = _snprintf(&ptr, &remains, " %s %" PRIu64 " 0",
+				     THE_LOOP_DEV, data_offset + offset);
+			if (r < 0)
+				return r;
+		}
+	} else if (ei == ERR_WR) {
+		r = _snprintf(&ptr, &remains, "%s %" PRIu64 " 0 %s 0 0",
+			     THE_LOOP_DEV, data_offset + offset, error_device);
+		if (r < 0)
+			return r;
+	}
+
+	if (dev_size > (offset + length)) {
+		r = _snprintf(&ptr, &remains,
+			     "\n%" PRIu64 " %" PRIu64 " linear %s %" PRIu64,
+			     offset + length, dev_size - offset - length, THE_LOOP_DEV,
+			     data_offset + offset + length);
+		if (r < 0)
+			return r;
+	}
+
+	/*
+	 * Hello darkness, my old friend...
+	 *
+	 * On few old distributions there's issue with
+	 * processing multiline tables via dmsetup load --table.
+	 * This workaround passes on all systems we run tests on.
+	 */
+	r = snprintf(cmd, sizeof(cmd), "dmsetup load %s <<EOF\n%s\nEOF", dm_name, str);
+	if (r < 0 || (size_t)r >= sizeof(cmd))
+		return -3;
+
+	if ((r = _system(cmd, 1)))
+		return r;
+
+	r = snprintf(cmd, sizeof(cmd), "dmsetup resume %s", dm_name);
+	if (r < 0 || (size_t)r >= sizeof(cmd))
+		return -3;
+
+	if ((r = _system(cmd, 1)))
+		return r;
+
+	return t_set_readahead(dm_device, 0);
 }
 
 // Get key from kernel dm mapping table using dm-ioctl
@@ -211,7 +363,6 @@ int get_key_dm(const char *name, char *buffer, unsigned int buffer_size)
 	struct dm_info dmi;
 	uint64_t start, length;
 	char *target_type, *key, *params;
-	void *next = NULL;
 	int r = -EINVAL;
 
 	if (!(dmt = dm_task_create(DM_DEVICE_TABLE)))
@@ -225,7 +376,7 @@ int get_key_dm(const char *name, char *buffer, unsigned int buffer_size)
 	if (!dmi.exists)
 		goto out;
 
-	next = dm_get_next_target(dmt, next, &start, &length, &target_type, &params);
+	dm_get_next_target(dmt, NULL, &start, &length, &target_type, &params);
 	if (!target_type || strcmp(target_type, "crypt") != 0)
 		goto out;
 
@@ -389,6 +540,20 @@ static void t_dm_set_crypt_compat(const char *dm_version, unsigned crypt_maj,
 
 	if (t_dm_satisfies_version(1, 18, 1, crypt_maj, crypt_min, crypt_patch) && _keyring_check())
 		t_dm_crypt_flags |= T_DM_KERNEL_KEYRING_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 17, 0, crypt_maj, crypt_min, crypt_patch)) {
+		t_dm_crypt_flags |= T_DM_SECTOR_SIZE_SUPPORTED;
+		t_dm_crypt_flags |= T_DM_CAPI_STRING_SUPPORTED;
+	}
+
+	if (t_dm_satisfies_version(1, 19, 0, crypt_maj, crypt_min, crypt_patch))
+		t_dm_crypt_flags |= T_DM_BITLK_EBOIV_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 20, 0, crypt_maj, crypt_min, crypt_patch))
+		t_dm_crypt_flags |= T_DM_BITLK_ELEPHANT_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 22, 0, crypt_maj, crypt_min, crypt_patch))
+		t_dm_crypt_flags |= T_DM_CRYPT_NO_WORKQUEUE_SUPPORTED;
 }
 
 static void t_dm_set_verity_compat(const char *dm_version __attribute__((unused)),
@@ -410,6 +575,15 @@ static void t_dm_set_verity_compat(const char *dm_version __attribute__((unused)
 		t_dm_crypt_flags |= T_DM_VERITY_ON_CORRUPTION_SUPPORTED;
 		t_dm_crypt_flags |= T_DM_VERITY_FEC_SUPPORTED;
 	}
+
+	if (t_dm_satisfies_version(1, 5, 0, verity_maj, verity_min, verity_patch))
+		t_dm_crypt_flags |= T_DM_VERITY_SIGNATURE_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 7, 0, verity_maj, verity_min, verity_patch))
+		t_dm_crypt_flags |= T_DM_VERITY_PANIC_CORRUPTION_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 9, 0, verity_maj, verity_min, verity_patch))
+		t_dm_crypt_flags |= T_DM_VERITY_TASKLETS_SUPPORTED;
 }
 
 static void t_dm_set_integrity_compat(const char *dm_version __attribute__((unused)),
@@ -419,6 +593,24 @@ static void t_dm_set_integrity_compat(const char *dm_version __attribute__((unus
 {
 	if (integrity_maj > 0)
 		t_dm_crypt_flags |= T_DM_INTEGRITY_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 2, 0, integrity_maj, integrity_min, integrity_patch))
+		t_dm_crypt_flags |= T_DM_INTEGRITY_RECALC_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 3, 0, integrity_maj, integrity_min, integrity_patch))
+		t_dm_crypt_flags |= T_DM_INTEGRITY_BITMAP_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 4, 0, integrity_maj, integrity_min, integrity_patch))
+		t_dm_crypt_flags |= T_DM_INTEGRITY_FIX_PADDING_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 6, 0, integrity_maj, integrity_min, integrity_patch))
+		t_dm_crypt_flags |= T_DM_INTEGRITY_DISCARDS_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 7, 0, integrity_maj, integrity_min, integrity_patch))
+		t_dm_crypt_flags |= T_DM_INTEGRITY_FIX_HMAC_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 8, 0, integrity_maj, integrity_min, integrity_patch))
+		t_dm_crypt_flags |= T_DM_INTEGRITY_RESET_RECALC_SUPPORTED;
 }
 
 int t_dm_check_versions(void)
@@ -456,7 +648,7 @@ int t_dm_check_versions(void)
 					     (unsigned)target->version[1],
 					     (unsigned)target->version[2]);
 		}
-		target = (struct dm_versions *)((char *) target + target->next);
+		target = VOIDP_CAST(struct dm_versions *)((char *) target + target->next);
 	} while (last_target != target);
 
 	r = 0;
@@ -481,6 +673,21 @@ int t_dm_crypt_cpu_switch_support(void)
 int t_dm_crypt_discard_support(void)
 {
 	return t_dm_crypt_flags & T_DM_DISCARDS_SUPPORTED;
+}
+
+int t_dm_integrity_resize_support(void)
+{
+	return t_dm_crypt_flags & T_DM_INTEGRITY_RESIZE_SUPPORTED;
+}
+
+int t_dm_integrity_recalculate_support(void)
+{
+	return t_dm_crypt_flags & T_DM_INTEGRITY_RECALC_SUPPORTED;
+}
+
+int t_dm_capi_string_supported(void)
+{
+	return t_dm_crypt_flags & T_DM_CAPI_STRING_SUPPORTED;
 }
 
 /* loop helpers */
@@ -515,7 +722,7 @@ int loop_device(const char *loop)
 
 static char *crypt_loop_get_device_old(void)
 {
-	char dev[20];
+	char dev[64];
 	int i, loop_fd;
 	struct loop_info64 lo64 = {0};
 

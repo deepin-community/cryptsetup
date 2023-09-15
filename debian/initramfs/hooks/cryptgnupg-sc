@@ -72,6 +72,16 @@ if [ ! -x "$DESTDIR/usr/bin/pinentry" ]; then
     copy_exec "$pinentry"
     ln -s "$pinentry" "$DESTDIR/usr/bin/pinentry"
 fi
-[ -f "$DESTDIR/lib/terminfo/l/linux" ] || copy_file terminfo /lib/terminfo/l/linux || RV=$?
+
+# #1028202: ncurses-base: move terminfo files from /lib/terminfo to
+# /usr/share/terminfo
+for d in "/usr/share/terminfo" "/lib/terminfo"; do
+    if [ -f "$d/l/linux" ]; then
+        if [ ! -f "$DESTDIR$d/l/linux" ]; then
+            copy_file terminfo "$d/l/linux" || RV=$?
+        fi
+        break
+    fi
+done
 
 exit $RV

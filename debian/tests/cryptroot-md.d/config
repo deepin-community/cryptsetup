@@ -1,0 +1,7 @@
+PKGS_EXTRA+=( e2fsprogs ) # for fsck.ext4
+PKGS_EXTRA+=( lvm2 mdadm )
+PKGS_EXTRA+=( cryptsetup-initramfs )
+
+DRIVE_SIZES=( "1536M" "1536M" )
+
+# vim: set filetype=bash :

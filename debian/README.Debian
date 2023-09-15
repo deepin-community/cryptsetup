@@ -32,6 +32,9 @@ and a configuration file `/etc/crypttab` for automatically configuring encrypted
 devices at boot time. The applications cryptdisks_start and cryptdisks_stop
 are provided to process crypttab configured devices manually. See the manpages
 of crypttab(5), cryptdisks_start(8) and cryptdisks_stop(8) for more information.
+The systemd init system masks our initscripts as it has native
+cryptsetup support; use cryptdisks_start(8) or systemd-cryptsetup@.service(8) to
+manually unlock devices on such systems.
 
  The luksformat script provides a simple interface for creating an encrypted
 device that follows the LUKS standard and for putting a file system onto the
@@ -60,7 +63,7 @@ that may be written to disk when memory is swapped to disk.
 sure to place the source device (here `/dev/sde9`) with your swap devices:
 
     # <target name> <source device> <key file>      <options>
-    cswap1          /dev/sde9       /dev/urandom    swap,cipher=aes-xts-plain64,size=256,hash=sha1
+    cswap1          /dev/sde9       /dev/urandom    plain,cipher=aes-xts-plain64,size=256,swap
 
  Now you need to change the swap devices in `/etc/fstab` to the encrypted swap
 device names (`/dev/mapper/cswap1` in this example).

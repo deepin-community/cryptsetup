@@ -1,7 +1,7 @@
 /*
  * simple unit test for utils_io.c (blockwise low level functions)
  *
- * Copyright (C) 2018-2021 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Red Hat, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -311,6 +311,12 @@ int main(int argc, char **argv)
 	long ps;
 	int r = EXIT_FAILURE;
 
+#ifndef NO_CRYPTSETUP_PATH
+	if (getenv("CRYPTSETUP_PATH")) {
+		printf("Cannot run this test with CRYPTSETUP_PATH set.\n");
+		exit(77);
+	}
+#endif
 	if (parse_input_params(argc, argv))
 		return r;
 

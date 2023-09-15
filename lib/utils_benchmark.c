@@ -1,8 +1,8 @@
 /*
  * libcryptsetup - cryptsetup library, cipher benchmark
  *
- * Copyright (C) 2012-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2021 Milan Broz
+ * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -47,6 +47,7 @@ int crypt_benchmark(struct crypt_device *cd,
 	r = -ENOMEM;
 	if (posix_memalign(&buffer, crypt_getpagesize(), buffer_size))
 		goto out;
+	memset(buffer, 0, buffer_size);
 
 	r = crypt_cipher_ivsize(cipher, cipher_mode);
 	if (r >= 0 && iv_size != (size_t)r) {
@@ -98,7 +99,7 @@ int crypt_benchmark_pbkdf(struct crypt_device *cd,
 	int (*progress)(uint32_t time_ms, void *usrptr),
 	void *usrptr)
 {
-	int r;
+	int r, priority;
 	const char *kdf_opt;
 
 	if (!pbkdf || (!password && password_size))
@@ -112,10 +113,12 @@ int crypt_benchmark_pbkdf(struct crypt_device *cd,
 
 	log_dbg(cd, "Running %s(%s) benchmark.", pbkdf->type, kdf_opt);
 
+	crypt_process_priority(cd, &priority, true);
 	r = crypt_pbkdf_perf(pbkdf->type, pbkdf->hash, password, password_size,
 			     salt, salt_size, volume_key_size, pbkdf->time_ms,
 			     pbkdf->max_memory_kb, pbkdf->parallel_threads,
 			     &pbkdf->iterations, &pbkdf->max_memory_kb, progress, usrptr);
+	crypt_process_priority(cd, &priority, false);
 
 	if (!r)
 		log_dbg(cd, "Benchmark returns %s(%s) %u iterations, %u memory, %u threads (for %zu-bits key).",
@@ -184,7 +187,7 @@ int crypt_benchmark_pbkdf_internal(struct crypt_device *cd,
 		pbkdf->parallel_threads = 0; /* N/A in PBKDF2 */
 		pbkdf->max_memory_kb = 0; /* N/A in PBKDF2 */
 
-		r = crypt_benchmark_pbkdf(cd, pbkdf, "foo", 3, "bar", 3,
+		r = crypt_benchmark_pbkdf(cd, pbkdf, "foobarfo", 8, "01234567890abcdef", 16,
 					volume_key_size, &benchmark_callback, &u);
 		pbkdf->time_ms = ms_tmp;
 		if (r < 0) {
@@ -204,7 +207,7 @@ int crypt_benchmark_pbkdf_internal(struct crypt_device *cd,
 			return 0;
 		}
 
-		r = crypt_benchmark_pbkdf(cd, pbkdf, "foo", 3,
+		r = crypt_benchmark_pbkdf(cd, pbkdf, "foobarfo", 8,
 			"0123456789abcdef0123456789abcdef", 32,
 			volume_key_size, &benchmark_callback, &u);
 		if (r < 0)

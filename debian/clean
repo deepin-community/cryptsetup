@@ -3,3 +3,8 @@ debian/doc/*.[0-9]
 debian/doc/variables.xml
 debian/scripts/passdev
 debian/scripts/suspend/cryptsetup-suspend
+# `make clean` doesn't remove all gitignore(5)'d files, instead
+# .gitlab/ci/debian.yml runs `git clean -xdf`
+man/*.8
+po/*.gmo
+po/stamp-po

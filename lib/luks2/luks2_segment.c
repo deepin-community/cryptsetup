@@ -1,8 +1,8 @@
 /*
  * LUKS - Linux Unified Key Setup v2, internal segment handling
  *
- * Copyright (C) 2018-2021, Red Hat, Inc. All rights reserved.
- * Copyright (C) 2018-2021, Ondrej Kozina
+ * Copyright (C) 2018-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -103,15 +103,17 @@ const char *json_segment_get_cipher(json_object *jobj_segment)
 	return json_object_get_string(jobj);
 }
 
-int json_segment_get_sector_size(json_object *jobj_segment)
+uint32_t json_segment_get_sector_size(json_object *jobj_segment)
 {
 	json_object *jobj;
+	int i;
 
 	if (!jobj_segment ||
             !json_object_object_get_ex(jobj_segment, "sector_size", &jobj))
-		return -1;
+		return SECTOR_SIZE;
 
-	return json_object_get_int(jobj);
+	i = json_object_get_int(jobj);
+	return i < 0 ? SECTOR_SIZE : i;
 }
 
 static json_object *json_segment_get_flags(json_object *jobj_segment)
@@ -123,7 +125,7 @@ static json_object *json_segment_get_flags(json_object *jobj_segment)
 	return jobj;
 }
 
-static bool json_segment_contains_flag(json_object *jobj_segment, const char *flag_str, size_t len)
+bool json_segment_contains_flag(json_object *jobj_segment, const char *flag_str, size_t len)
 {
 	int r, i;
 	json_object *jobj, *jobj_flags = json_segment_get_flags(jobj_segment);
@@ -344,19 +346,11 @@ int LUKS2_segment_by_type(struct luks2_hdr *hdr, const char *type)
 int LUKS2_segment_first_unused_id(struct luks2_hdr *hdr)
 {
 	json_object *jobj_segments;
-	int id, last_id = -1;
 
 	if (!json_object_object_get_ex(hdr->jobj, "segments", &jobj_segments))
 		return -EINVAL;
 
-	json_object_object_foreach(jobj_segments, slot, val) {
-		UNUSED(val);
-		id = atoi(slot);
-		if (id > last_id)
-			last_id = id;
-	}
-
-	return last_id + 1;
+	return json_object_object_length(jobj_segments);
 }
 
 int LUKS2_segment_set_flag(json_object *jobj_segment, const char *flag)
@@ -409,4 +403,24 @@ json_object *LUKS2_get_segment_by_flag(struct luks2_hdr *hdr, const char *flag)
 		_get_segment_or_id_by_flag(jobj_segments, flag, 0, &jobj_segment);
 
 	return jobj_segment;
+}
+
+/* compares key characteristics of both segments */
+bool json_segment_cmp(json_object *jobj_segment_1, json_object *jobj_segment_2)
+{
+	const char *type = json_segment_type(jobj_segment_1);
+	const char *type2 = json_segment_type(jobj_segment_2);
+
+	if (!type || !type2)
+		return false;
+
+	if (strcmp(type, type2))
+		return false;
+
+	if (!strcmp(type, "crypt"))
+		return (json_segment_get_sector_size(jobj_segment_1) == json_segment_get_sector_size(jobj_segment_2) &&
+			!strcmp(json_segment_get_cipher(jobj_segment_1),
+			        json_segment_get_cipher(jobj_segment_2)));
+
+	return true;
 }

@@ -1,0 +1,125 @@
+#!/bin/sh
+
+# Debootstrap a target system
+#
+# Copyright © 2021-2022 Guilhem Moulin <guilhem@debian.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -eu
+PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH
+
+ESSENTIAL="/media/__essential__"
+TEMPDIR="$(mktemp --tmpdir --directory "debootstrap.XXXXXXXXXX")"
+trap "rm -rf -- \"$TEMPDIR\"" EXIT INT TERM
+
+sed -rn "/^Package:\\s*/I {s///;s/$/ install/p}" "$ESSENTIAL/Packages" >"$TEMPDIR/Packages.sel"
+
+install -m0644 /dev/null "/var/lib/dpkg/status"
+dpkg --update-avail "$ESSENTIAL/Packages"
+dpkg --set-selections <"$TEMPDIR/Packages.sel"
+
+mkdir -- "$TEMPDIR/dpkg"
+mkdir -- "$TEMPDIR/dpkg/files" "$TEMPDIR/dpkg/depends" "$TEMPDIR/dpkg/pre-depends"
+
+# extract metadata (package names, file names, Depends and Pre-Depends
+# for easier processing)
+for deb in "$ESSENTIAL"/*.deb; do
+    pkg=$(dpkg-deb --show --showformat="\${Package}" "$deb")
+    case "$pkg" in
+        # special case: base-files Pre-Depends on awk but we only have mawk (or gawk)
+        mawk|gawk) pkg="awk";;
+    esac
+    printf "%s\\n" "$pkg" >>"$TEMPDIR/dpkg/avail"
+    printf "%s\\n" "$deb" >"$TEMPDIR/dpkg/files/$pkg"
+    dpkg-deb --show --showformat="\${Pre-Depends}\\n" "$deb" >"$TEMPDIR/predeps"
+    dpkg-deb --show --showformat="\${Depends}\\n" "$deb" >"$TEMPDIR/deps"
+    sed -ri "s/,\\s*/\\n/g" -- "$TEMPDIR/predeps" "$TEMPDIR/deps"
+    sed -i "s/[[:blank:]:].*//; /^[[:blank:]]*$/d" -- "$TEMPDIR/predeps" "$TEMPDIR/deps"
+    mv -T -- "$TEMPDIR/predeps" "$TEMPDIR/dpkg/pre-depends/$pkg"
+    mv -T -- "$TEMPDIR/deps" "$TEMPDIR/dpkg/depends/$pkg"
+done
+
+if [ -L /bin ] && [ -L /sbin ] && [ -L /lib ]; then
+    # TODO remove this once Bookworm is released, assuming
+    # init-system-helpers no longer has "Depends: usrmerge | usr-is-merged"
+    sed -i "s/^usrmerge$/usr-is-merged/" -- "$TEMPDIR/dpkg/depends/init-system-helpers"
+fi
+
+# recursively append dependencies to $OUT; abort and return 1 if one of
+# the (recursive) dependency has an unsatisfied Pre-Depends
+resolve_deps() {
+    local pkg="$1" dep
+    while read -r dep; do
+        if grep -Fxq -e "$dep" <"$TEMPDIR/dpkg/avail"; then
+            # $pkg has an unsatisfied Pre-Depends, can't proceed further
+            return 1
+        fi
+    done <"$TEMPDIR/dpkg/pre-depends/$pkg"
+    while read -r dep; do
+        if grep -Fxq -e "$dep" <"$TEMPDIR/dpkg/avail" && ! grep -Fxq -e "$dep" <"$OUT"; then # break cycles
+            printf "%s\\n" "$dep" >>"$OUT"
+            resolve_deps "$dep" || return $?
+        fi
+    done <"$TEMPDIR/dpkg/depends/$pkg"
+    return 0
+}
+
+# dump to $OUT a list of packages that can be installed (only packages
+# without unsatisfied pre-dependencies, and typically packages that are
+# pre-dependencies of other packages) -- using `dpkg --predep-package`
+# would be convenient but it doesn't work with recursive dependencies,
+# cf. #539133
+can_install_next() {
+    local pkg
+    while read -r pkg; do
+        printf "%s\\n" "$pkg" >"$OUT"
+        if resolve_deps "$pkg"; then
+            return 0
+        fi
+    done <"$TEMPDIR/dpkg/avail"
+
+    echo "PANIC: No remaining dependencies are satisfiable!" >&2
+    cat <"$TEMPDIR/dpkg/avail" >&2
+    exit 1
+}
+
+# keep going until all available packages are installed
+OUT="$TEMPDIR/pkg.list"
+XARGS_IN="$TEMPDIR/deb.list"
+while [ -s "$TEMPDIR/dpkg/avail" ]; do
+    can_install_next || exit 1
+
+    echo -n ">>> Installing: " >&2
+    paste -sd" " <"$OUT" >&2
+
+    while read -r pkg; do
+        cat "$TEMPDIR/dpkg/files/$pkg"
+    done <"$OUT" >"$XARGS_IN"
+    xargs -a"$XARGS_IN" -d"\\n" dpkg -i
+
+    grep -Fx -vf "$OUT" <"$TEMPDIR/dpkg/avail" >"$TEMPDIR/dpkg/avail.new" || true
+    mv -T -- "$TEMPDIR/dpkg/avail.new" "$TEMPDIR/dpkg/avail"
+done
+
+echo apt apt >/var/lib/dpkg/cmethopt
+echo "deb [trusted=yes] file:/media/dists /" >/etc/apt/sources.list
+cat >/etc/apt/apt.conf.d/99debootstrap <<-EOF
+	Acquire::Languages "none";
+	APT::Install-Recommends "false";
+	APT::Install-Suggests "false";
+EOF
+
+apt-get -oAcquire::Languages="none" -oAPT::Sandbox::User="root" -qq update

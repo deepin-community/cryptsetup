@@ -1,3 +1,18 @@
+cryptsetup (2:2.3.6-1+exp1) bullseye-security; urgency=high
+
+  This release fixes a key truncation issue for standalone dm-integrity
+  devices using HMAC integrity protection.  For existing such devices
+  with extra long HMAC keys (typically >106 bytes of length, see
+  https://bugs.debian.org/949336#78 for the various corner cases), one
+  might need to manually truncate the key using integritysetup(8)'s
+  `--integrity-key-size` option in order to properly map the device
+  under 2:2.3.6-1+exp1 and later.
+
+  Only standalone dm-integrity devices are affected.  dm-crypt devices,
+  including those using authenticated disk encryption, are unaffected.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Fri, 28 May 2021 22:54:20 +0200
+
 cryptsetup (2:1.6.6-1) unstable; urgency=medium
 
   The whirlpool hash implementation has been broken in gcrypt until version

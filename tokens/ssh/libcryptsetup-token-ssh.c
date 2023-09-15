@@ -1,8 +1,8 @@
 /*
  * Example of LUKS2 ssh token handler (EXPERIMENTAL)
  *
- * Copyright (C) 2016-2021 Milan Broz <gmazyland@gmail.com>
- * Copyright (C) 2020-2021 Vojtech Trefny
+ * Copyright (C) 2016-2023 Milan Broz
+ * Copyright (C) 2020-2023 Vojtech Trefny
  *
  * Use:
  *  - generate LUKS device
@@ -80,6 +80,9 @@ int cryptsetup_token_open_pin(struct crypt_device *cd, int token, const char *pi
 	ssh_session ssh;
 
 	jobj_token = get_token_jobj(cd, token);
+	if (!jobj_token)
+		return -ENOMEM;
+
 	json_object_object_get_ex(jobj_token, "ssh_server", &jobj_server);
 	json_object_object_get_ex(jobj_token, "ssh_user",   &jobj_user);
 	json_object_object_get_ex(jobj_token, "ssh_path",   &jobj_path);
@@ -87,6 +90,7 @@ int cryptsetup_token_open_pin(struct crypt_device *cd, int token, const char *pi
 
 	r = ssh_pki_import_privkey_file(json_object_get_string(jobj_keypath), pin, NULL, NULL, &pkey);
 	if (r != SSH_OK) {
+		json_object_put(jobj_token);
 		if (r == SSH_EOF) {
 			crypt_log(cd, CRYPT_LOG_ERROR, "Failed to open and import private key.\n");
 			return -EINVAL;
@@ -98,6 +102,7 @@ int cryptsetup_token_open_pin(struct crypt_device *cd, int token, const char *pi
 	ssh = sshplugin_session_init(cd, json_object_get_string(jobj_server),
 				   json_object_get_string(jobj_user));
 	if (!ssh) {
+		json_object_put(jobj_token);
 		ssh_key_free(pkey);
 		return -EINVAL;
 	}
@@ -111,6 +116,7 @@ int cryptsetup_token_open_pin(struct crypt_device *cd, int token, const char *pi
 
 	ssh_disconnect(ssh);
 	ssh_free(ssh);
+	json_object_put(jobj_token);
 
 	return r ? -EINVAL : r;
 }
@@ -135,14 +141,14 @@ void cryptsetup_token_dump(struct crypt_device *cd, const char *json)
 	json_object_object_get_ex(jobj_token, "ssh_path",   &jobj_path);
 	json_object_object_get_ex(jobj_token, "ssh_keypath",&jobj_keypath);
 
-	snprintf(buf, sizeof(buf) - 1, "\tssh_server: %s\n\tssh_user: %s\n"
-		"\tssh_path: %s\n\tssh_key_path: %s\n",
-		json_object_get_string(jobj_server),
-		json_object_get_string(jobj_user),
-		json_object_get_string(jobj_path),
-		json_object_get_string(jobj_keypath));
+	if (snprintf(buf, sizeof(buf) - 1, "\tssh_server: %s\n\tssh_user: %s\n"
+	    "\tssh_path: %s\n\tssh_key_path: %s\n",
+	    json_object_get_string(jobj_server),
+	    json_object_get_string(jobj_user),
+	    json_object_get_string(jobj_path),
+	    json_object_get_string(jobj_keypath)) > 0)
+		crypt_log(cd, CRYPT_LOG_NORMAL, buf);
 
-	crypt_log(cd, CRYPT_LOG_NORMAL, buf);
 	json_object_put(jobj_token);
 }
 

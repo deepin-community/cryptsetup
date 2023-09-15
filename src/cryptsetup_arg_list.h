@@ -1,8 +1,8 @@
 /*
  * Cryptsetup command line arguments list
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -39,7 +39,7 @@ ARG(OPT_DEBUG_JSON, '\0', POPT_ARG_NONE, N_("Show debug messages including JSON 
 
 ARG(OPT_DEFERRED, '\0', POPT_ARG_NONE, N_("Device removal is deferred until the last user closes it"), NULL, CRYPT_ARG_BOOL, {}, OPT_DEFERRED_ACTIONS)
 
-ARG(OPT_DEVICE_SIZE, '\0', POPT_ARG_STRING, N_("Use only specified device size (ignore rest of device). DANGEROUS!"), N_("bytes"), CRYPT_ARG_UINT64, {}, {})
+ARG(OPT_DEVICE_SIZE, '\0', POPT_ARG_STRING, N_("Use only specified device size (ignore rest of device). DANGEROUS!"), N_("bytes"), CRYPT_ARG_UINT64, {}, OPT_DEVICE_SIZE_ACTIONS)
 
 ARG(OPT_DECRYPT, '\0', POPT_ARG_NONE, N_("Decrypt LUKS2 device (remove encryption)."), NULL, CRYPT_ARG_BOOL, {}, {})
 
@@ -49,15 +49,17 @@ ARG(OPT_DISABLE_KEYRING, '\0', POPT_ARG_NONE, N_("Disable loading volume keys vi
 
 ARG(OPT_DISABLE_LOCKS, '\0', POPT_ARG_NONE, N_("Disable locking of on-disk metadata"), NULL, CRYPT_ARG_BOOL, {}, {})
 
-ARG(OPT_DISABLE_VERACRYPT, '\0', POPT_ARG_NONE, N_("Do not scan for VeraCrypt compatible device"), NULL, CRYPT_ARG_BOOL, {}, {})
+ARG(OPT_DISABLE_VERACRYPT, '\0', POPT_ARG_NONE, N_("Do not scan for VeraCrypt compatible device"), NULL, CRYPT_ARG_BOOL, {}, OPT_DISABLE_VERACRYPT_ACTIONS)
 
 ARG(OPT_DUMP_JSON, '\0', POPT_ARG_NONE, N_("Dump info in JSON format (LUKS2 only)"), NULL, CRYPT_ARG_BOOL, {}, {})
 
-ARG(OPT_DUMP_MASTER_KEY, '\0', POPT_ARG_NONE, N_("Dump volume (master) key instead of keyslots info"), NULL, CRYPT_ARG_BOOL, {}, {})
+ARG(OPT_DUMP_VOLUME_KEY, '\0', POPT_ARG_NONE, N_("Dump volume key instead of keyslots info"), NULL, CRYPT_ARG_BOOL, {}, {})
 
 ARG(OPT_ENCRYPT, '\0', POPT_ARG_NONE, N_("Encrypt LUKS2 device (in-place encryption)."), NULL, CRYPT_ARG_BOOL, {}, {})
 
 ARG(OPT_FORCE_PASSWORD, '\0', POPT_ARG_NONE, N_("Disable password quality check (if enabled)"), NULL, CRYPT_ARG_BOOL, {}, {})
+
+ARG(OPT_FORCE_OFFLINE_REENCRYPT, '\0', POPT_ARG_NONE, N_("Force offline LUKS2 reencryption and bypass active device detection."), NULL, CRYPT_ARG_BOOL, {}, OPT_FORCE_OFFLINE_REENCRYPT_ACTIONS)
 
 ARG(OPT_HASH, 'h', POPT_ARG_STRING, N_("The hash used to create the encryption key from the passphrase"), NULL, CRYPT_ARG_STRING, {}, {})
 
@@ -75,13 +77,15 @@ ARG(OPT_INTEGRITY_LEGACY_PADDING,'\0', POPT_ARG_NONE, N_("Use inefficient legacy
 
 ARG(OPT_INTEGRITY_NO_JOURNAL, '\0', POPT_ARG_NONE, N_("Disable journal for integrity device"), NULL, CRYPT_ARG_BOOL, {}, {})
 
-ARG(OPT_INTEGRITY_NO_WIPE, '\0', POPT_ARG_NONE, N_("Do not wipe device after format"), NULL, CRYPT_ARG_BOOL, {}, {})
+ARG(OPT_INTEGRITY_NO_WIPE, '\0', POPT_ARG_NONE, N_("Do not wipe device after format"), NULL, CRYPT_ARG_BOOL, {}, OPT_INTEGRITY_NO_WIPE_ACTIONS)
 
-ARG(OPT_ITER_TIME, 'i', POPT_ARG_STRING, N_("PBKDF iteration time for LUKS (in ms)"), N_("msecs"), CRYPT_ARG_UINT32, {}, {})
+ARG(OPT_ITER_TIME, 'i', POPT_ARG_STRING, N_("PBKDF iteration time for LUKS (in ms)"), N_("msecs"), CRYPT_ARG_UINT32, {}, OPT_ITER_TIME_ACTIONS)
 
-ARG(OPT_IV_LARGE_SECTORS, '\0', POPT_ARG_NONE, N_("Use IV counted in sector size (not in 512 bytes)"), NULL , CRYPT_ARG_BOOL, {}, {})
+ARG(OPT_IV_LARGE_SECTORS, '\0', POPT_ARG_NONE, N_("Use IV counted in sector size (not in 512 bytes)"), NULL , CRYPT_ARG_BOOL, {}, OPT_IV_LARGE_SECTORS_ACTIONS)
 
 ARG(OPT_JSON_FILE, '\0', POPT_ARG_STRING, N_("Read or write the json from or to a file"), NULL, CRYPT_ARG_STRING, {}, {})
+
+ARG(OPT_KEEP_KEY, '\0', POPT_ARG_NONE, N_("Do not change volume key."), NULL, CRYPT_ARG_BOOL, {}, OPT_KEEP_KEY_ACTIONS)
 
 ARG(OPT_KEY_DESCRIPTION, '\0', POPT_ARG_STRING, N_("Key description"), NULL, CRYPT_ARG_STRING, {}, {})
 
@@ -95,9 +99,9 @@ ARG(OPT_KEYFILE_OFFSET, '\0', POPT_ARG_STRING, N_("Number of bytes to skip in ke
 
 ARG(OPT_KEYFILE_SIZE, 'l', POPT_ARG_STRING, N_("Limits the read from keyfile"), N_("bytes"), CRYPT_ARG_UINT32, {}, {})
 
-ARG(OPT_KEYSLOT_CIPHER, '\0', POPT_ARG_STRING, N_("LUKS2 keyslot: The cipher used for keyslot encryption"), NULL, CRYPT_ARG_STRING, {}, {})
+ARG(OPT_KEYSLOT_CIPHER, '\0', POPT_ARG_STRING, N_("LUKS2 keyslot: The cipher used for keyslot encryption"), NULL, CRYPT_ARG_STRING, {}, OPT_KEYSLOT_CIPHER_ACTIONS)
 
-ARG(OPT_KEYSLOT_KEY_SIZE, '\0', POPT_ARG_STRING, N_("LUKS2 keyslot: The size of the encryption key"), N_("BITS"), CRYPT_ARG_UINT32, {}, {})
+ARG(OPT_KEYSLOT_KEY_SIZE, '\0', POPT_ARG_STRING, N_("LUKS2 keyslot: The size of the encryption key"), N_("BITS"), CRYPT_ARG_UINT32, {}, OPT_KEYSLOT_KEY_SIZE_ACTIONS)
 
 ARG(OPT_LABEL, '\0', POPT_ARG_STRING, N_("Set label for the LUKS2 device"), NULL, CRYPT_ARG_STRING, {}, OPT_LABEL_ACTIONS)
 
@@ -105,17 +109,23 @@ ARG(OPT_LUKS2_KEYSLOTS_SIZE, '\0', POPT_ARG_STRING, N_("LUKS2 header keyslots ar
 
 ARG(OPT_LUKS2_METADATA_SIZE, '\0', POPT_ARG_STRING, N_("LUKS2 header metadata area size"), N_("bytes"), CRYPT_ARG_UINT64, {}, OPT_LUKS2_METADATA_SIZE_ACTIONS)
 
-ARG(OPT_MASTER_KEY_FILE, '\0', POPT_ARG_STRING, N_("Read the volume (master) key from file."), NULL, CRYPT_ARG_STRING, {}, {})
+ARG(OPT_VOLUME_KEY_FILE, '\0', POPT_ARG_STRING, N_("Use the volume key from file."), NULL, CRYPT_ARG_STRING, {}, {})
+
+ARG(OPT_NEW_KEYFILE, '\0', POPT_ARG_STRING, N_("Read the key for a new slot from a file"), NULL, CRYPT_ARG_STRING, {}, OPT_NEW_KEYFILE_ACTIONS)
+
+ARG(OPT_NEW_KEY_SLOT, '\0', POPT_ARG_STRING, N_("Slot number for new key (default is first free)"), "INT", CRYPT_ARG_INT32, { .i32_value = CRYPT_ANY_SLOT }, OPT_NEW_KEY_SLOT_ACTIONS)
 
 ARG(OPT_NEW_KEYFILE_OFFSET , '\0', POPT_ARG_STRING, N_("Number of bytes to skip in newly added keyfile"), N_("bytes"), CRYPT_ARG_UINT64, {}, {})
 
 ARG(OPT_NEW_KEYFILE_SIZE, '\0', POPT_ARG_STRING, N_("Limits the read from newly added keyfile"), N_("bytes"), CRYPT_ARG_UINT32, {}, {})
 
+ARG(OPT_NEW_TOKEN_ID, '\0', POPT_ARG_STRING, N_("Token number (default: any)"), "INT", CRYPT_ARG_INT32, { .i32_value = CRYPT_ANY_TOKEN }, OPT_NEW_TOKEN_ID_ACTIONS)
+
 ARG(OPT_OFFSET, 'o', POPT_ARG_STRING, N_("The start offset in the backend device"), N_("SECTORS"), CRYPT_ARG_UINT64, {}, OPT_OFFSET_ACTIONS)
 
-ARG(OPT_PBKDF, '\0', POPT_ARG_STRING, N_("PBKDF algorithm (for LUKS2): argon2i, argon2id, pbkdf2"), NULL, CRYPT_ARG_STRING, {}, {})
+ARG(OPT_PBKDF, '\0', POPT_ARG_STRING, N_("PBKDF algorithm (for LUKS2): argon2i, argon2id, pbkdf2"), NULL, CRYPT_ARG_STRING, {}, OPT_PBKDF_ACTIONS)
 
-ARG(OPT_PBKDF_FORCE_ITERATIONS, '\0', POPT_ARG_STRING, N_("PBKDF iterations cost (forced, disables benchmark)"), "LONG", CRYPT_ARG_UINT32, {}, {})
+ARG(OPT_PBKDF_FORCE_ITERATIONS, '\0', POPT_ARG_STRING, N_("PBKDF iterations cost (forced, disables benchmark)"), "LONG", CRYPT_ARG_UINT32, {}, OPT_PBKDF_FORCE_ITERATIONS_ACTIONS)
 
 ARG(OPT_PBKDF_MEMORY, '\0', POPT_ARG_STRING, N_("PBKDF memory cost limit"), N_("kilobytes"), CRYPT_ARG_UINT32, { .u32_value = DEFAULT_LUKS2_MEMORY_KB }, {})
 
@@ -132,6 +142,8 @@ ARG(OPT_PERF_SUBMIT_FROM_CRYPT_CPUS, '\0', POPT_ARG_NONE, N_("Use dm-crypt submi
 ARG(OPT_PERSISTENT, '\0', POPT_ARG_NONE, N_("Set activation flags persistent for device"), NULL, CRYPT_ARG_BOOL, {}, OPT_PERSISTENT_ACTIONS)
 
 ARG(OPT_PRIORITY, '\0', POPT_ARG_STRING, N_("Keyslot priority: ignore, normal, prefer"), NULL, CRYPT_ARG_STRING, {}, OPT_PRIORITY_ACTIONS)
+
+ARG(OPT_PROGRESS_JSON, '\0', POPT_ARG_NONE, N_("Print progress data in json format (suitable for machine processing)"), NULL, CRYPT_ARG_BOOL, {}, OPT_PROGRESS_JSON_ACTIONS)
 
 ARG(OPT_PROGRESS_FREQUENCY, '\0', POPT_ARG_STRING, N_("Progress line update (in seconds)"), N_("secs"), CRYPT_ARG_UINT32, {}, {})
 
@@ -151,9 +163,9 @@ ARG(OPT_SECTOR_SIZE, '\0', POPT_ARG_STRING, N_("Encryption sector size (default:
 
 ARG(OPT_SERIALIZE_MEMORY_HARD_PBKDF, '\0', POPT_ARG_NONE, N_("Use global lock to serialize memory hard PBKDF (OOM workaround)"), NULL, CRYPT_ARG_BOOL, {}, OPT_SERIALIZE_MEMORY_HARD_PBKDF_ACTIONS)
 
-ARG(OPT_SHARED, '\0', POPT_ARG_NONE, N_("Share device with another non-overlapping crypt segment"), NULL, CRYPT_ARG_BOOL, {}, {})
+ARG(OPT_SHARED, '\0', POPT_ARG_NONE, N_("Share device with another non-overlapping crypt segment"), NULL, CRYPT_ARG_BOOL, {}, OPT_SHARED_ACTIONS )
 
-ARG(OPT_SIZE, 'b', POPT_ARG_STRING, N_("The size of the device"), N_("SECTORS"), CRYPT_ARG_UINT64, {}, {})
+ARG(OPT_SIZE, 'b', POPT_ARG_STRING, N_("The size of the device"), N_("SECTORS"), CRYPT_ARG_UINT64, {}, OPT_SIZE_ACTIONS)
 
 ARG(OPT_SKIP, 'p', POPT_ARG_STRING, N_("How many sectors of the encrypted data to skip at the beginning"), N_("SECTORS"), CRYPT_ARG_UINT64, {}, OPT_SKIP_ACTIONS)
 
@@ -175,13 +187,15 @@ ARG(OPT_TOKEN_ID, '\0', POPT_ARG_STRING, N_("Token number (default: any)"), "INT
 
 ARG(OPT_TOKEN_ONLY, '\0', POPT_ARG_NONE, N_("Do not ask for passphrase if activation by token fails"), NULL, CRYPT_ARG_BOOL, {}, {})
 
+ARG(OPT_TOKEN_REPLACE, '\0', POPT_ARG_NONE, N_("Replace the current token"), NULL, CRYPT_ARG_BOOL, {}, OPT_TOKEN_REPLACE_ACTIONS)
+
 ARG(OPT_TOKEN_TYPE, '\0', POPT_ARG_STRING, N_("Restrict allowed token types used to retrieve LUKS2 key"), NULL, CRYPT_ARG_STRING, {}, {})
 
 ARG(OPT_TRIES, 'T', POPT_ARG_STRING, N_("How often the input of the passphrase can be retried"), "INT", CRYPT_ARG_UINT32, { .u32_value = 3 }, {})
 
 ARG(OPT_TYPE, 'M', POPT_ARG_STRING, N_("Type of device metadata: luks, luks1, luks2, plain, loopaes, tcrypt, bitlk"), NULL, CRYPT_ARG_STRING, {}, {})
 
-ARG(OPT_UNBOUND, '\0', POPT_ARG_NONE, N_("Create or dump unbound (no assigned data segment) LUKS2 keyslot"), NULL, CRYPT_ARG_BOOL, {}, OPT_UNBOUND_ACTIONS)
+ARG(OPT_UNBOUND, '\0', POPT_ARG_NONE, N_("Create or dump unbound LUKS2 keyslot (unassigned to data segment) or LUKS2 token (unassigned to keyslot)"), NULL, CRYPT_ARG_BOOL, {}, OPT_UNBOUND_ACTIONS)
 
 ARG(OPT_USE_RANDOM, '\0', POPT_ARG_NONE, N_("Use /dev/random for generating volume key"), NULL, CRYPT_ARG_BOOL, {}, OPT_USE_RANDOM_ACTIONS)
 
@@ -191,10 +205,28 @@ ARG(OPT_UUID, '\0', POPT_ARG_STRING, N_("UUID for device to use"), NULL, CRYPT_A
 
 ARG(OPT_VERACRYPT, '\0', POPT_ARG_NONE, N_("Scan also for VeraCrypt compatible device"), NULL, CRYPT_ARG_BOOL, {}, {})
 
-ARG(OPT_VERACRYPT_PIM, '\0', POPT_ARG_STRING, N_("Personal Iteration Multiplier for VeraCrypt compatible device"), "INT", CRYPT_ARG_UINT32, {}, {})
+ARG(OPT_VERACRYPT_PIM, '\0', POPT_ARG_STRING, N_("Personal Iteration Multiplier for VeraCrypt compatible device"), "INT", CRYPT_ARG_UINT32, {}, OPT_VERACRYPT_PIM_ACTIONS)
 
 ARG(OPT_VERACRYPT_QUERY_PIM, '\0', POPT_ARG_NONE, N_("Query Personal Iteration Multiplier for VeraCrypt compatible device"), NULL, CRYPT_ARG_BOOL, {}, {})
 
 ARG(OPT_VERBOSE, 'v', POPT_ARG_NONE, N_("Shows more detailed error messages"), NULL, CRYPT_ARG_BOOL, {}, {})
 
 ARG(OPT_VERIFY_PASSPHRASE, 'y', POPT_ARG_NONE, N_("Verifies the passphrase by asking for it twice"), NULL, CRYPT_ARG_BOOL, {}, {})
+
+/* added for reencryption */
+
+ARG(OPT_BLOCK_SIZE, 'B', POPT_ARG_STRING, N_("Reencryption block size"), N_("MiB"), CRYPT_ARG_UINT32, { .u32_value = 4 }, {})
+
+ARG(OPT_NEW, 'N', POPT_ARG_NONE, N_("Create new header on not encrypted device"), NULL, CRYPT_ARG_ALIAS, { .o.id = OPT_ENCRYPT_ID }, {})
+
+ARG(OPT_USE_DIRECTIO, '\0', POPT_ARG_NONE, N_("Use direct-io when accessing devices"), NULL, CRYPT_ARG_BOOL, {}, {})
+
+ARG(OPT_USE_FSYNC, '\0', POPT_ARG_NONE, N_("Use fsync after each block"), NULL, CRYPT_ARG_BOOL, {}, {})
+
+ARG(OPT_WRITE_LOG, '\0', POPT_ARG_NONE, N_("Update log file after every block"), NULL, CRYPT_ARG_BOOL, {}, {})
+
+/* aliases */
+
+ARG(OPT_DUMP_MASTER_KEY, '\0', POPT_ARG_NONE, N_("Alias for --dump-volume-key"), NULL, CRYPT_ARG_ALIAS, { .o.id = OPT_DUMP_VOLUME_KEY_ID}, {})
+
+ARG(OPT_MASTER_KEY_FILE, '\0', POPT_ARG_STRING, N_("Alias for --dump-volume-key-file"), NULL, CRYPT_ARG_ALIAS, { .o.id = OPT_VOLUME_KEY_FILE_ID}, {})

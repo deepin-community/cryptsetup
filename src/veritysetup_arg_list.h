@@ -1,8 +1,8 @@
 /*
  * Veritysetup command line arguments list
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -62,6 +62,8 @@ ARG(OPT_ROOT_HASH_FILE, '\0', POPT_ARG_STRING, N_("Path to root hash file"), NUL
 ARG(OPT_ROOT_HASH_SIGNATURE, '\0', POPT_ARG_STRING, N_("Path to root hash signature file"), NULL, CRYPT_ARG_STRING, {}, OPT_ROOT_HASH_SIGNATURE_ACTIONS)
 
 ARG(OPT_SALT, 's', POPT_ARG_STRING, N_("Salt"), N_("hex string"), CRYPT_ARG_STRING, {}, {})
+
+ARG(OPT_USE_TASKLETS, '\0', POPT_ARG_NONE, N_("Use kernel tasklets for performance"), NULL, CRYPT_ARG_BOOL, {}, OPT_USE_TASKLETS_ACTIONS)
 
 ARG(OPT_UUID, '\0', POPT_ARG_STRING, N_("UUID for device to use"), NULL, CRYPT_ARG_STRING, {}, {})
 

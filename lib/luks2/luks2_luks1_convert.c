@@ -1,9 +1,9 @@
 /*
  * LUKS - Linux Unified Key Setup v2, LUKS1 conversion code
  *
- * Copyright (C) 2015-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2021 Ondrej Kozina
- * Copyright (C) 2015-2021 Milan Broz
+ * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2023 Ondrej Kozina
+ * Copyright (C) 2015-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,12 +24,38 @@
 #include "../luks1/luks.h"
 #include "../luks1/af.h"
 
+/* This differs from LUKS_check_cipher() that it does not check dm-crypt fallback. */
 int LUKS2_check_cipher(struct crypt_device *cd,
 		      size_t keylength,
 		      const char *cipher,
 		      const char *cipher_mode)
 {
-	return LUKS_check_cipher(cd, keylength, cipher, cipher_mode);
+	int r;
+	struct crypt_storage *s;
+	char buf[SECTOR_SIZE], *empty_key;
+
+	log_dbg(cd, "Checking if cipher %s-%s is usable (storage wrapper).", cipher, cipher_mode);
+
+	empty_key = crypt_safe_alloc(keylength);
+	if (!empty_key)
+		return -ENOMEM;
+
+	/* No need to get KEY quality random but it must avoid known weak keys. */
+	r = crypt_random_get(cd, empty_key, keylength, CRYPT_RND_NORMAL);
+	if (r < 0)
+		goto out;
+
+	r = crypt_storage_init(&s, SECTOR_SIZE, cipher, cipher_mode, empty_key, keylength, false);
+	if (r < 0)
+		goto out;
+
+	memset(buf, 0, sizeof(buf));
+	r = crypt_storage_decrypt(s, 0, sizeof(buf), buf);
+	crypt_storage_destroy(s);
+out:
+	crypt_safe_free(empty_key);
+	crypt_safe_memzero(buf, sizeof(buf));
+	return r;
 }
 
 static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struct json_object **keyslot_object)
@@ -37,7 +63,8 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 	char *base64_str, cipher[LUKS_CIPHERNAME_L+LUKS_CIPHERMODE_L];
 	size_t base64_len;
 	struct json_object *keyslot_obj, *field, *jobj_kdf, *jobj_af, *jobj_area;
-	uint64_t offset, area_size, offs_a, offs_b, length;
+	uint64_t offset, area_size, length;
+	int r;
 
 	keyslot_obj = json_object_new_object();
 	json_object_object_add(keyslot_obj, "type", json_object_new_string("luks2"));
@@ -49,13 +76,11 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 	json_object_object_add(jobj_kdf, "hash", json_object_new_string(hdr_v1->hashSpec));
 	json_object_object_add(jobj_kdf, "iterations", json_object_new_int64(hdr_v1->keyblock[keyslot].passwordIterations));
 	/* salt field */
-	base64_len = base64_encode_alloc(hdr_v1->keyblock[keyslot].passwordSalt, LUKS_SALTSIZE, &base64_str);
-	if (!base64_str) {
+	r = crypt_base64_encode(&base64_str, &base64_len, hdr_v1->keyblock[keyslot].passwordSalt, LUKS_SALTSIZE);
+	if (r < 0) {
 		json_object_put(keyslot_obj);
 		json_object_put(jobj_kdf);
-		if (!base64_len)
-			return -EINVAL;
-		return -ENOMEM;
+		return r;
 	}
 	field = json_object_new_string_len(base64_str, base64_len);
 	free(base64_str);
@@ -67,7 +92,7 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 	json_object_object_add(jobj_af, "type", json_object_new_string("luks1"));
 	json_object_object_add(jobj_af, "hash", json_object_new_string(hdr_v1->hashSpec));
 	/* stripes field ignored, fixed to LUKS_STRIPES (4000) */
-	json_object_object_add(jobj_af, "stripes", json_object_new_int(4000));
+	json_object_object_add(jobj_af, "stripes", json_object_new_int(LUKS_STRIPES));
 	json_object_object_add(keyslot_obj, "af", jobj_af);
 
 	/* Area */
@@ -76,20 +101,22 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 
 	/* encryption algorithm field */
 	if (*hdr_v1->cipherMode != '\0') {
-		(void) snprintf(cipher, sizeof(cipher), "%s-%s", hdr_v1->cipherName, hdr_v1->cipherMode);
+		if (snprintf(cipher, sizeof(cipher), "%s-%s", hdr_v1->cipherName, hdr_v1->cipherMode) < 0) {
+			json_object_put(keyslot_obj);
+			json_object_put(jobj_area);
+			return -EINVAL;
+		}
 		json_object_object_add(jobj_area, "encryption", json_object_new_string(cipher));
 	} else
 		json_object_object_add(jobj_area, "encryption", json_object_new_string(hdr_v1->cipherName));
 
 	/* area */
-	if (LUKS_keyslot_area(hdr_v1, 0, &offs_a, &length) ||
-	    LUKS_keyslot_area(hdr_v1, 1, &offs_b, &length) ||
-	    LUKS_keyslot_area(hdr_v1, keyslot, &offset, &length)) {
+	if (LUKS_keyslot_area(hdr_v1, keyslot, &offset, &length)) {
 		json_object_put(keyslot_obj);
 		json_object_put(jobj_area);
 		return -EINVAL;
 	}
-	area_size = offs_b - offs_a;
+	area_size = size_round_up(length, 4096);
 	json_object_object_add(jobj_area, "key_size", json_object_new_int(hdr_v1->keyBytes));
 	json_object_object_add(jobj_area, "offset", crypt_jobj_new_uint64(offset));
 	json_object_object_add(jobj_area, "size", crypt_jobj_new_uint64(area_size));
@@ -170,7 +197,10 @@ static int json_luks1_segment(const struct luks_phdr *hdr_v1, struct json_object
 
 	/* cipher field */
 	if (*hdr_v1->cipherMode != '\0') {
-		(void) snprintf(cipher, sizeof(cipher), "%s-%s", hdr_v1->cipherName, hdr_v1->cipherMode);
+		if (snprintf(cipher, sizeof(cipher), "%s-%s", hdr_v1->cipherName, hdr_v1->cipherMode) < 0) {
+			json_object_put(segment_obj);
+			return -EINVAL;
+		}
 		c = cipher;
 	} else
 		c = hdr_v1->cipherName;
@@ -216,8 +246,8 @@ static int json_luks1_segments(const struct luks_phdr *hdr_v1, struct json_objec
 
 static int json_luks1_digest(const struct luks_phdr *hdr_v1, struct json_object **digest_object)
 {
-	char keyslot_str[2], *base64_str;
-	int ks;
+	char keyslot_str[16], *base64_str;
+	int r, ks;
 	size_t base64_len;
 	struct json_object *digest_obj, *array, *field;
 
@@ -244,7 +274,12 @@ static int json_luks1_digest(const struct luks_phdr *hdr_v1, struct json_object 
 	for (ks = 0; ks < LUKS_NUMKEYS; ks++) {
 		if (hdr_v1->keyblock[ks].active != LUKS_KEY_ENABLED)
 			continue;
-		(void) snprintf(keyslot_str, sizeof(keyslot_str), "%d", ks);
+		if (snprintf(keyslot_str, sizeof(keyslot_str), "%d", ks) < 0) {
+			json_object_put(field);
+			json_object_put(array);
+			json_object_put(digest_obj);
+			return -EINVAL;
+		}
 
 		field = json_object_new_string(keyslot_str);
 		if (!field || json_object_array_add(array, field) < 0) {
@@ -284,12 +319,10 @@ static int json_luks1_digest(const struct luks_phdr *hdr_v1, struct json_object 
 	json_object_object_add(digest_obj, "hash", field);
 
 	/* salt field */
-	base64_len = base64_encode_alloc(hdr_v1->mkDigestSalt, LUKS_SALTSIZE, &base64_str);
-	if (!base64_str) {
+	r = crypt_base64_encode(&base64_str, &base64_len, hdr_v1->mkDigestSalt, LUKS_SALTSIZE);
+	if (r < 0) {
 		json_object_put(digest_obj);
-		if (!base64_len)
-			return -EINVAL;
-		return -ENOMEM;
+		return r;
 	}
 
 	field = json_object_new_string_len(base64_str, base64_len);
@@ -301,12 +334,10 @@ static int json_luks1_digest(const struct luks_phdr *hdr_v1, struct json_object 
 	json_object_object_add(digest_obj, "salt", field);
 
 	/* digest field */
-	base64_len = base64_encode_alloc(hdr_v1->mkDigest, LUKS_DIGESTSIZE, &base64_str);
-	if (!base64_str) {
+	r = crypt_base64_encode(&base64_str, &base64_len, hdr_v1->mkDigest, LUKS_DIGESTSIZE);
+	if (r < 0) {
 		json_object_put(digest_obj);
-		if (!base64_len)
-			return -EINVAL;
-		return -ENOMEM;
+		return r;
 	}
 
 	field = json_object_new_string_len(base64_str, base64_len);
@@ -424,7 +455,6 @@ static void move_keyslot_offset(json_object *jobj, int offset_add)
 	}
 }
 
-/* FIXME: return specific error code for partial write error (aka keyslots are gone) */
 static int move_keyslot_areas(struct crypt_device *cd, off_t offset_from,
 			      off_t offset_to, size_t buf_size)
 {
@@ -535,6 +565,12 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 		return -EINVAL;
 	}
 
+	if (LUKS2_check_cipher(cd, hdr1->keyBytes, hdr1->cipherName, hdr1->cipherMode)) {
+		log_err(cd, _("Unable to use cipher specification %s-%s for LUKS2."),
+			hdr1->cipherName, hdr1->cipherMode);
+		return -EINVAL;
+	}
+
 	if (luksmeta_header_present(cd, luks1_size))
 		return -EINVAL;
 
@@ -558,7 +594,7 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 
 	move_keyslot_offset(jobj, luks1_shift);
 
-	// fill hdr2
+	/* Create and fill LUKS2 hdr */
 	memset(hdr2, 0, sizeof(*hdr2));
 	hdr2->hdr_size = LUKS2_HDR_16K_LEN;
 	hdr2->seqid = 1;
@@ -580,6 +616,7 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 
 	/* check future LUKS2 metadata before moving keyslots area */
 	if (LUKS2_hdr_validate(cd, hdr2->jobj, hdr2->hdr_size - LUKS2_HDR_BIN_LEN)) {
+		log_err(cd, _("Cannot convert to LUKS2 format - invalid metadata."));
 		r = -EINVAL;
 		goto out;
 	}
@@ -590,7 +627,7 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 		goto out;
 	}
 
-	// move keyslots 4k -> 32k offset
+	/* move keyslots 4k -> 32k offset */
 	buf_offset = 2 * LUKS2_HDR_16K_LEN;
 	buf_size   = luks1_size - LUKS_ALIGN_KEYSLOTS;
 
@@ -606,7 +643,7 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 		goto out;
 	}
 
-	// Write JSON hdr2
+	/* Write new LUKS2 JSON */
 	r = LUKS2_hdr_write(cd, hdr2);
 out:
 	LUKS2_hdr_free(cd, hdr2);
@@ -651,8 +688,6 @@ static int keyslot_LUKS1_compatible(struct crypt_device *cd, struct luks2_hdr *h
 	    strcmp(json_object_get_string(jobj), hash))
 		return 0;
 
-	/* FIXME: should this go to validation code instead (aka invalid luks2 header if assigned to segment 0)? */
-	/* FIXME: check all keyslots are assigned to segment id 0, and segments count == 1 */
 	ks_cipher = LUKS2_get_keyslot_cipher(hdr, keyslot, &ks_key_size);
 	data_cipher = LUKS2_get_cipher(hdr, CRYPT_DEFAULT_SEGMENT);
 	if (!ks_cipher || !data_cipher || key_size != ks_key_size || strcmp(ks_cipher, data_cipher)) {
@@ -676,14 +711,14 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 {
 	size_t buf_size, buf_offset;
 	char cipher[LUKS_CIPHERNAME_L], cipher_mode[LUKS_CIPHERMODE_L];
-	char digest[LUKS_DIGESTSIZE], digest_salt[LUKS_SALTSIZE];
+	char *digest, *digest_salt;
 	const char *hash;
 	size_t len;
 	json_object *jobj_keyslot, *jobj_digest, *jobj_segment, *jobj_kdf, *jobj_area, *jobj1, *jobj2;
 	uint32_t key_size;
 	int i, r, last_active = 0;
 	uint64_t offset, area_length;
-	char buf[256], luksMagic[] = LUKS_MAGIC;
+	char *buf, luksMagic[] = LUKS_MAGIC;
 
 	jobj_digest  = LUKS2_get_digest_jobj(hdr2, 0);
 	if (!jobj_digest)
@@ -715,6 +750,11 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 
 	if (crypt_cipher_wrapped_key(cipher, cipher_mode)) {
 		log_err(cd, _("Cannot convert to LUKS1 format - device uses wrapped key cipher %s."), cipher);
+		return -EINVAL;
+	}
+
+	if (json_segments_count(LUKS2_get_segments_jobj(hdr2)) != 1) {
+		log_err(cd, _("Cannot convert to LUKS1 format - device uses more segments."));
 		return -EINVAL;
 	}
 
@@ -773,7 +813,7 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 			 * inactive keyslots. Otherwise we would allocate all
 			 * inactive luks1 keyslots over same binary keyslot area.
 			 */
-			if (placeholder_keyslot_alloc(cd, i, offset, area_length, key_size))
+			if (placeholder_keyslot_alloc(cd, i, offset, area_length))
 				return -EINVAL;
 		}
 
@@ -800,14 +840,16 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 
 		if (!json_object_object_get_ex(jobj_kdf, "salt", &jobj1))
 			continue;
-		len = sizeof(buf);
-		memset(buf, 0, len);
-		if (!base64_decode(json_object_get_string(jobj1),
-				   json_object_get_string_len(jobj1), buf, &len))
+
+		if (crypt_base64_decode(&buf, &len, json_object_get_string(jobj1),
+					json_object_get_string_len(jobj1)))
 			continue;
-		if (len > 0 && len != LUKS_SALTSIZE)
+		if (len > 0 && len != LUKS_SALTSIZE) {
+			free(buf);
 			continue;
+		}
 		memcpy(hdr1->keyblock[i].passwordSalt, buf, LUKS_SALTSIZE);
+		free(buf);
 	}
 
 	if (!jobj_keyslot) {
@@ -843,31 +885,36 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 
 	if (!json_object_object_get_ex(jobj_digest, "digest", &jobj1))
 		return -EINVAL;
-	len = sizeof(digest);
-	if (!base64_decode(json_object_get_string(jobj1),
-			   json_object_get_string_len(jobj1), digest, &len))
-		return -EINVAL;
+	r = crypt_base64_decode(&digest, &len, json_object_get_string(jobj1),
+				json_object_get_string_len(jobj1));
+	if (r < 0)
+		return r;
 	/* We can store full digest here, not only sha1 length */
-	if (len < LUKS_DIGESTSIZE)
+	if (len < LUKS_DIGESTSIZE) {
+		free(digest);
 		return -EINVAL;
+	}
 	memcpy(hdr1->mkDigest, digest, LUKS_DIGESTSIZE);
+	free(digest);
 
 	if (!json_object_object_get_ex(jobj_digest, "salt", &jobj1))
 		return -EINVAL;
-	len = sizeof(digest_salt);
-	if (!base64_decode(json_object_get_string(jobj1),
-			   json_object_get_string_len(jobj1), digest_salt, &len))
+	r = crypt_base64_decode(&digest_salt, &len, json_object_get_string(jobj1),
+				json_object_get_string_len(jobj1));
+	if (r < 0)
+		return r;
+	if (len != LUKS_SALTSIZE) {
+		free(digest_salt);
 		return -EINVAL;
-	if (len != LUKS_SALTSIZE)
-		return -EINVAL;
+	}
 	memcpy(hdr1->mkDigestSalt, digest_salt, LUKS_SALTSIZE);
+	free(digest_salt);
 
 	if (!json_object_object_get_ex(jobj_segment, "offset", &jobj1))
 		return -EINVAL;
 	offset = crypt_jobj_get_uint64(jobj1) / SECTOR_SIZE;
 	if (offset > UINT32_MAX)
 		return -EINVAL;
-	/* FIXME: LUKS1 requires offset == 0 || offset >= luks1_hdr_size */
 	hdr1->payloadOffset = offset;
 
 	strncpy(hdr1->uuid, hdr2->uuid, UUID_STRING_L); /* max 36 chars */
@@ -881,7 +928,7 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 	if (r)
 		return r > 0 ? -EBUSY : r;
 
-	// move keyslots 32k -> 4k offset
+	/* move keyslots 32k -> 4k offset */
 	buf_offset = 2 * LUKS2_HDR_16K_LEN;
 	buf_size   = LUKS2_keyslots_size(hdr2);
 	r = move_keyslot_areas(cd, buf_offset, 8 * SECTOR_SIZE, buf_size);
@@ -893,6 +940,6 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 	crypt_wipe_device(cd, crypt_metadata_device(cd), CRYPT_WIPE_ZERO, 0,
 			  8 * SECTOR_SIZE, 8 * SECTOR_SIZE, NULL, NULL);
 
-	// Write LUKS1 hdr
+	/* Write new LUKS1 hdr */
 	return LUKS_write_phdr(hdr1, cd);
 }

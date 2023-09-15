@@ -1,7 +1,7 @@
 /*
  * dm-verity volume handling
  *
- * Copyright (C) 2012-2021 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
  *
  * This file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -87,8 +87,7 @@ int VERITY_read_sb(struct crypt_device *cd,
 		return -EIO;
 
 	if (memcmp(sb.signature, VERITY_SIGNATURE, sizeof(sb.signature))) {
-		log_err(cd, _("Device %s is not a valid VERITY device."),
-			device_path(device));
+		log_dbg(cd, "No VERITY signature detected.");
 		return -EINVAL;
 	}
 
@@ -111,6 +110,10 @@ int VERITY_read_sb(struct crypt_device *cd,
 		return -EINVAL;
 	}
 	params->data_size = le64_to_cpu(sb.data_blocks);
+
+	/* Update block size to be used for loop devices */
+	device_set_block_size(crypt_metadata_device(cd), params->hash_block_size);
+	device_set_block_size(crypt_data_device(cd), params->data_block_size);
 
 	params->hash_name = strndup((const char*)sb.algorithm, sizeof(sb.algorithm));
 	if (!params->hash_name)
@@ -236,7 +239,7 @@ uint64_t VERITY_hash_offset_block(struct crypt_params_verity *params)
 	return hash_offset / params->hash_block_size;
 }
 
-int VERITY_UUID_generate(struct crypt_device *cd __attribute__((unused)), char **uuid_string)
+int VERITY_UUID_generate(char **uuid_string)
 {
 	uuid_t uuid;
 
@@ -350,4 +353,64 @@ int VERITY_activate(struct crypt_device *cd,
 out:
 	dm_targets_free(cd, &dmd);
 	return r;
+}
+
+int VERITY_dump(struct crypt_device *cd,
+		struct crypt_params_verity *verity_hdr,
+		const char *root_hash,
+		unsigned int root_hash_size,
+		struct device *fec_device)
+{
+	uint64_t hash_blocks, verity_blocks, fec_blocks = 0, rs_blocks = 0;
+	bool fec_on_hash_device = false;
+
+	hash_blocks  = VERITY_hash_blocks(cd, verity_hdr);
+	verity_blocks = VERITY_hash_offset_block(verity_hdr) + hash_blocks;
+
+	if (fec_device && verity_hdr->fec_roots) {
+		fec_blocks = VERITY_FEC_blocks(cd, fec_device, verity_hdr);
+		rs_blocks  = VERITY_FEC_RS_blocks(fec_blocks, verity_hdr->fec_roots);
+		fec_on_hash_device = device_is_identical(crypt_metadata_device(cd), fec_device) > 0;
+		/*
+		* No way to access fec_area_offset directly.
+		* Assume FEC area starts directly after hash blocks.
+		*/
+		if (fec_on_hash_device)
+			verity_blocks += rs_blocks;
+	}
+
+	log_std(cd, "VERITY header information for %s\n", device_path(crypt_metadata_device(cd)));
+	log_std(cd, "UUID:            \t%s\n", crypt_get_uuid(cd) ?: "");
+	log_std(cd, "Hash type:       \t%u\n", verity_hdr->hash_type);
+	log_std(cd, "Data blocks:     \t%" PRIu64 "\n", verity_hdr->data_size);
+	log_std(cd, "Data block size: \t%u\n", verity_hdr->data_block_size);
+	log_std(cd, "Hash blocks:     \t%" PRIu64 "\n", hash_blocks);
+	log_std(cd, "Hash block size: \t%u\n", verity_hdr->hash_block_size);
+	log_std(cd, "Hash algorithm:  \t%s\n", verity_hdr->hash_name);
+	if (fec_device && fec_blocks) {
+		log_std(cd, "FEC RS roots:   \t%" PRIu32 "\n", verity_hdr->fec_roots);
+		log_std(cd, "FEC blocks:     \t%" PRIu64 "\n", rs_blocks);
+	}
+
+	log_std(cd, "Salt:            \t");
+	if (verity_hdr->salt_size)
+		crypt_log_hex(cd, verity_hdr->salt, verity_hdr->salt_size, "", 0, NULL);
+	else
+		log_std(cd, "-");
+	log_std(cd, "\n");
+
+	if (root_hash) {
+		log_std(cd, "Root hash:      \t");
+		crypt_log_hex(cd, root_hash, root_hash_size, "", 0, NULL);
+		log_std(cd, "\n");
+	}
+
+	/* As dump can take only hash device, we have no idea about offsets here. */
+	if (verity_hdr->hash_area_offset == 0)
+		log_std(cd, "Hash device size: \t%" PRIu64 " [bytes]\n", verity_blocks * verity_hdr->hash_block_size);
+
+	if (fec_device && verity_hdr->fec_area_offset == 0 && fec_blocks && !fec_on_hash_device)
+		log_std(cd, "FEC device size: \t%" PRIu64 " [bytes]\n", rs_blocks * verity_hdr->data_block_size);
+
+	return 0;
 }

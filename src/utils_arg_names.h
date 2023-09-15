@@ -1,8 +1,8 @@
 /*
  * Command line arguments name list
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -47,11 +47,13 @@
 #define OPT_DISABLE_VERACRYPT		"disable-veracrypt"
 #define OPT_DUMP_JSON			"dump-json-metadata"
 #define OPT_DUMP_MASTER_KEY		"dump-master-key"
+#define OPT_DUMP_VOLUME_KEY		"dump-volume-key"
 #define OPT_ENCRYPT			"encrypt"
 #define OPT_FEC_DEVICE			"fec-device"
 #define OPT_FEC_OFFSET			"fec-offset"
 #define OPT_FEC_ROOTS			"fec-roots"
 #define OPT_FORCE_PASSWORD		"force-password"
+#define OPT_FORCE_OFFLINE_REENCRYPT	"force-offline-reencrypt"
 #define OPT_FORMAT			"format"
 #define OPT_HASH			"hash"
 #define OPT_HASH_BLOCK_SIZE		"hash-block-size"
@@ -98,13 +100,18 @@
 #define OPT_KEYSLOT_KEY_SIZE		"keyslot-key-size"
 #define OPT_NO_SUPERBLOCK		"no-superblock"
 #define OPT_NO_WIPE			"no-wipe"
+#define OPT_WIPE			"wipe"
 #define OPT_LABEL			"label"
 #define OPT_LUKS2_KEYSLOTS_SIZE		"luks2-keyslots-size"
 #define OPT_LUKS2_METADATA_SIZE		"luks2-metadata-size"
 #define OPT_MASTER_KEY_FILE		"master-key-file"
+#define OPT_VOLUME_KEY_FILE		"volume-key-file"
 #define OPT_NEW				"new"
+#define OPT_NEW_KEY_SLOT		"new-key-slot"
+#define OPT_NEW_KEYFILE			"new-keyfile"
 #define OPT_NEW_KEYFILE_OFFSET		"new-keyfile-offset"
 #define OPT_NEW_KEYFILE_SIZE		"new-keyfile-size"
+#define OPT_NEW_TOKEN_ID		"new-token-id"
 #define OPT_OFFSET			"offset"
 #define OPT_PANIC_ON_CORRUPTION		"panic-on-corruption"
 #define OPT_PBKDF			"pbkdf"
@@ -118,6 +125,7 @@
 #define OPT_PERSISTENT			"persistent"
 #define OPT_PLUGIN			"plugin"
 #define OPT_PRIORITY			"priority"
+#define OPT_PROGRESS_JSON		"progress-json"
 #define OPT_PROGRESS_FREQUENCY		"progress-frequency"
 #define OPT_READONLY			"readonly"
 #define OPT_REDUCE_DEVICE_SIZE		"reduce-device-size"
@@ -144,6 +152,7 @@
 #define OPT_TIMEOUT			"timeout"
 #define OPT_TOKEN_ID			"token-id"
 #define OPT_TOKEN_ONLY			"token-only"
+#define OPT_TOKEN_REPLACE		"token-replace"
 #define OPT_TOKEN_TYPE			"token-type"
 #define OPT_TRIES			"tries"
 #define OPT_TYPE			"type"
@@ -152,6 +161,7 @@
 #define OPT_USE_FSYNC			"use-fsync"
 #define OPT_USE_RANDOM			"use-random"
 #define OPT_USE_URANDOM			"use-urandom"
+#define OPT_USE_TASKLETS		"use-tasklets"
 #define OPT_UUID			"uuid"
 #define OPT_VERACRYPT			"veracrypt"
 #define OPT_VERACRYPT_PIM		"veracrypt-pim"

@@ -1,0 +1,537 @@
+#!/bin/bash
+
+# Base test file for cryptroot testing in KVM guests
+#
+# Copyright © 2021-2022 Guilhem Moulin <guilhem@debian.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -eu
+
+TESTNAME="$(basename -- "$0")"
+TESTDIR="$(dirname -- "$0")"
+INTERACTIVE="n" # set to "y" to interact with the guest instead of mocking the session
+export TESTNAME TESTDIR
+
+declare -a EXTRA_REPOS=( "$@" ) # blindly append any extra arguments to sources.list
+START_TIME="$(printf "%(%s)T")"
+
+# Try to create /dev/kvm if missing, for instance in a chroot where /dev isn't managed by udev.
+# Then we can drop root privileges and run the rest of the script as a normal user
+if uid="$(id -u)" && [ $uid -eq 0 ]; then
+    if [ ! -c /dev/kvm ] && mknod -m0600 /dev/kvm c 10 232; then
+        echo "INFO: Created character special file /dev/kvm" >&2
+    fi
+    if [ -z "${AUTOPKGTEST_NORMAL_USER-}" ]; then
+        echo "WARN: \$AUTOPKGTEST_NORMAL_USER is empty or unset, preserving root privileges!" >&2
+    else
+        chown --from="root" -- "$AUTOPKGTEST_NORMAL_USER:" "$AUTOPKGTEST_TMP"
+        if [ -c /dev/kvm ]; then
+            if getent group kvm >/dev/null && chgrp -c kvm /dev/kvm; then
+                # kvm group is created by udev.postinst
+                chmod -c 0660 /dev/kvm
+                usermod -a -G kvm -- "$AUTOPKGTEST_NORMAL_USER"
+            else
+                chown -c -- "$AUTOPKGTEST_NORMAL_USER" "/dev/kvm"
+            fi
+        fi
+        echo "INFO: Dropping root privileges: re-executing as user '$AUTOPKGTEST_NORMAL_USER'" >&2
+        exec runuser -u "$AUTOPKGTEST_NORMAL_USER" -- "$0" "$@"
+        exit 1
+    fi
+fi
+
+set -x
+PATH="/usr/bin:/bin"
+export PATH
+
+if [ -t 1 ]; then
+    # set VT100 autowrap mode (DECAWM)
+    printf '\033[?7h'
+fi
+
+# get src:cryptsetup current version and distribution
+DEB_VERSION="$(dpkg-parsechangelog -SVERSION)"
+DEB_DISTRIBUTION="$(dpkg-parsechangelog -SDistribution)"
+DEB_BUILD_ARCHITECTURE="$(dpkg-architecture -qDEB_BUILD_ARCH)"
+DEB_BUILD_ARCH_BITS="$(dpkg-architecture -qDEB_BUILD_ARCH_BITS)"
+if [ "$DEB_DISTRIBUTION" = "UNRELEASED" ]; then
+    # take Distribution from the previous entry instead
+    DEB_DISTRIBUTION="$(dpkg-parsechangelog -o1 -c1 -SDistribution)" || DEB_DISTRIBUTION="unstable"
+    echo "WARN: Using Distribution: $DEB_DISTRIBUTION instead of UNRELEASED" >&2
+fi
+
+# determine suitable values for the APT repository Origin (for
+# autopkgtests) and URI (used outside autopkgtests) fields
+load_os_release() {
+    local os_release # see os-release(5)
+    [ -e "/etc/os-release" ] && os_release="/etc/os-release" || os_release="/usr/lib/os-release"
+    . "$os_release"
+}
+case "${DISTRIBUTOR_ID:="$(load_os_release && printf "%s" "${ID,,[A-Z]}")"}" in
+    debian) APT_REPO_ORIGIN="Debian"; APT_REPO_URI="http://deb.debian.org/debian";;
+    # suitable values for derivative can be added here
+    *) echo "ERROR: Unknown distributor ID '$DISTRIBUTOR_ID', can't extract APT origin" >&2;
+       exit 1;;
+esac
+
+# QEMU command and default options
+unset QEMU_MACHINE_TYPE QEMU_ACCEL QEMU_CPU_MODEL QEMU_SMP QEMU_MEMORY BOOT
+if [ -c /dev/kvm ] && dd if=/dev/kvm count=0 status=none; then
+    QEMU_ACCEL="kvm"
+else
+    echo "WARN: KVM is not available, guests will be slow!" >&2
+fi
+case "$DEB_BUILD_ARCHITECTURE" in
+    # see `kvm -machine help` and `kvm -cpu help`
+    amd64|i386)
+        BOOT="bios"
+        if [ "$DEB_BUILD_ARCHITECTURE" = "amd64" ]; then
+            QEMU_SYSTEM_CMD="qemu-system-x86_64"
+        else
+            QEMU_SYSTEM_CMD="qemu-system-$DEB_BUILD_ARCHITECTURE"
+        fi
+        QEMU_MACHINE_TYPE="q35"
+        if [ "${QEMU_ACCEL-}" = "kvm" ]; then
+            QEMU_CPU_MODEL="kvm$DEB_BUILD_ARCH_BITS,+aes,+sha-ni"
+        else
+            QEMU_CPU_MODEL="qemu$DEB_BUILD_ARCH_BITS,-svm,-vmx"
+        fi
+    ;;
+    arm64)
+        BOOT="efi"
+        QEMU_SYSTEM_CMD="qemu-system-aarch64"
+        QEMU_MACHINE_TYPE="virt"
+        QEMU_CPU_MODEL="cortex-a72"
+    ;;
+    armhf)
+        BOOT="efi"
+        QEMU_SYSTEM_CMD="qemu-system-arm"
+        QEMU_MACHINE_TYPE="virt"
+        QEMU_CPU_MODEL="cortex-a15"
+    ;;
+    *) echo "ERROR: Unknown architecture $DEB_BUILD_ARCHITECTURE" >&2; exit 1;;
+esac
+
+if ! command -v "$QEMU_SYSTEM_CMD" >/dev/null; then
+    echo "ERROR: Couldn't find $QEMU_SYSTEM_CMD in PATH" >&2
+    exit 1
+fi
+
+CPU_COUNT="$(getconf _NPROCESSORS_ONLN)" && [ -n "$CPU_COUNT" ] || CPU_COUNT=0
+if [ $CPU_COUNT -ge 8 ]; then
+    QEMU_SMP="cpus=4"
+elif [ $CPU_COUNT -ge 4 ]; then
+    QEMU_SMP="cpus=2"
+else
+    QEMU_SMP="cpus=1"
+fi
+
+MEM_AVAIL="$(awk '/MemAvailable/ { printf "%.0f \n", $2/1024^2 }' </proc/meminfo)" && [ -n "$MEM_AVAIL" ] || MEM_AVAIL=0
+if [ $MEM_AVAIL -gt 2 ] && [ $DEB_BUILD_ARCH_BITS -gt 32 ]; then
+    QEMU_MEMORY="size=2G"
+else
+    QEMU_MEMORY="size=1G"
+fi
+
+# number of times to powercycle the guest
+GUEST_POWERCYCLE=0
+
+# kernel flavor
+case "$DEB_BUILD_ARCHITECTURE" in
+    # see `ssh $porterbox.debian.org uname -r`
+    amd64) KERNEL_ARCH="amd64";;
+    arm64) KERNEL_ARCH="arm64";;
+    armhf) KERNEL_ARCH="armmp-lpae";;
+    i386) KERNEL_ARCH="686-pae";;
+    *) echo "ERROR: Unknown architecture $DEB_BUILD_ARCHITECTURE" >&2; exit 1;;
+esac
+
+# at the very least we need a boot loader, a kernel, and an init system
+case "$BOOT" in
+    bios) PKG_BOOTLOADER="grub-pc";;
+    efi) PKG_BOOTLOADER="grub-efi";;
+    *) echo "ERROR unknown boot method '$BOOT'" >&2; exit 1;;
+esac
+PKG_KERNEL="linux-image-$KERNEL_ARCH"
+PKG_INIT="systemd-sysv" # default pid1
+MERGED_USR="" # use default layout for the target version
+declare -a PKGS_EXTRA=() DRIVE_SIZES=( "2G" )
+PKGS_EXTRA+=( "zstd" ) # default initrd compression, see #976054
+
+if [ -f "$TESTDIR/$TESTNAME.d/config" ]; then
+    . "$TESTDIR/$TESTNAME.d/config" || exit 1
+fi
+
+if [ -n "${AUTOPKGTEST_TMP+x}" ] || [ ! -t 0 ] || [ ! -t 1 ]; then
+    INTERACTIVE="n"
+fi
+
+unset EFI_CODE EFI_VARS
+if [ "$BOOT" = "efi" ]; then
+    case "$DEB_BUILD_ARCHITECTURE" in
+        amd64|i386)
+            efi_fw_pkg="ovmf"
+            EFI_CODE="/usr/share/OVMF/OVMF_CODE.fd"
+            EFI_VARS="/usr/share/OVMF/OVMF_VARS.fd"
+        ;;
+        arm64)
+            efi_fw_pkg="qemu-efi-aarch64"
+            EFI_CODE="/usr/share/AAVMF/AAVMF_CODE.fd"
+            EFI_VARS="/usr/share/AAVMF/AAVMF_VARS.fd"
+        ;;
+        armhf)
+            efi_fw_pkg="qemu-efi-arm"
+            EFI_CODE="/usr/share/AAVMF/AAVMF32_CODE.fd"
+            EFI_VARS="/usr/share/AAVMF/AAVMF32_VARS.fd"
+        ;;
+        *) echo "ERROR: Unknown architecture $DEB_BUILD_ARCHITECTURE for EFI boot" >&2; exit 1;;
+    esac
+    for p in "$EFI_CODE" "$EFI_VARS"; do
+        if [ ! -f "$p" ]; then
+            echo "Couldn't find $p, is the '$efi_fw_pkg' package installed?" >&2
+            exit 1
+        fi
+    done
+fi
+
+case "${DEB_DISTRIBUTION%%-*}" in
+    etch|lenny|squeeze|wheezy|jessie|stretch|buster|bullseye)
+        if [ -z "$MERGED_USR" ]; then
+            MERGED_USR="no"
+        fi
+        ;;
+    *)  if [ -z "$MERGED_USR" ]; then
+            MERGED_USR="yes"
+        elif [ "$MERGED_USR" = "no" ]; then
+            # #978636: Debian 12 (codename Bookworm) should only support merged-/usr layout
+            echo "WARN: this system is not supported! (unmerged-/usr)" >&2
+        fi
+        ;;
+esac
+
+# pin versions for all packages in PKGS_EXTRA that are part of this source package
+declare -a MYPKGS
+MYPKGS=( $(sed -nr 's/^Package:\s*//Ip' debian/control) )
+for i in "${!PKGS_EXTRA[@]}"; do
+    [ "${PKGS_EXTRA[i]%[=/]*}" = "${PKGS_EXTRA[i]}" ] || continue
+    for mypkg in "${MYPKGS[@]}"; do
+        if [ "${PKGS_EXTRA[i]}" = "$mypkg" ]; then
+            PKGS_EXTRA[i]="${PKGS_EXTRA[i]}=$DEB_VERSION"
+        fi
+    done
+done
+
+unset QEMU_PID
+TEMPDIR="$(mktemp --tmpdir="${AUTOPKGTEST_TMP:-"${TMPDIR:-/tmp}"}" --directory "$TESTNAME.XXXXXXXXXX")"
+teardown() {
+    local rv=$? ts
+    if [ -n "${QEMU_PID+x}" ]; then
+        kill $QEMU_PID || true
+    fi
+    rm -rf -- "$TEMPDIR"
+    trap - EXIT
+
+    # try to fix terminal
+    [ ! -t 1 ] || printf '\033[?7h'
+
+    ts="$(printf "%(%s)T")"
+    rv=${1-$rv}
+    printf "Result for test '%s': exit status %s, runtime %d seconds\\n" "$TESTNAME" $rv $((ts - START_TIME))
+
+    exit $rv
+}
+trap "teardown" EXIT
+trap "teardown 1" INT TERM
+
+# set up APT for the testbed
+setup_apt() {
+    # we need a new cache to reliably determine essential and extra packages
+    APT_CACHE="$TEMPDIR/apt/cache"
+    APT_LISTS="$TEMPDIR/apt/lists"
+    mkdir -- "$TEMPDIR/apt" "$APT_CACHE" "$APT_LISTS"
+    ln -s "cache/archives" "$TEMPDIR/apt/pool"
+    touch "$TEMPDIR/apt/status"
+
+    if [ -n "${AUTOPKGTEST_TMP-}" ]; then
+        # reuse existing sources.list
+        apt-get indextargets \
+            --format "\$(TARGET_OF) \$(REPO_URI) \$(RELEASE) \$(COMPONENT)" \
+            "Target-Of: deb" "Identifier: Packages" "Origin: $APT_REPO_ORIGIN" \
+            >"$TEMPDIR/apt/sources.list"
+        # local autopkgtest repo has Repo-URI: file:/tmp/autopkgtest.XXXXXX/binaries/ ,
+        # Release: (empty) and no Component:
+        apt-get indextargets \
+            --format "\$(TARGET_OF) \$(REPO_URI) /" \
+            "Target-Of: deb" "Identifier: Packages" "Trusted: Yes" "Release: " \
+            >>"$TEMPDIR/apt/sources.list"
+    else
+        # generate new sources.list
+        case "$DEB_DISTRIBUTION" in
+            experimental) cat <<-EOF
+				deb $APT_REPO_URI unstable main
+				deb $APT_REPO_URI experimental main
+			EOF
+            ;;
+            *-security) cat <<-EOF
+				deb $APT_REPO_URI ${DEB_DISTRIBUTION%-security} main
+				deb $APT_REPO_URI-security $DEB_DISTRIBUTION main
+			EOF
+            ;;
+            *-*) cat <<-EOF
+				deb $APT_REPO_URI ${DEB_DISTRIBUTION%%-*} main
+				deb $APT_REPO_URI $DEB_DISTRIBUTION main
+			EOF
+            ;;
+            *) cat <<-EOF
+				deb $APT_REPO_URI $DEB_DISTRIBUTION main
+			EOF
+            ;;
+        esac >"$TEMPDIR/apt/sources.list"
+    fi
+
+    local apt_repo
+    for apt_repo in "${EXTRA_REPOS[@]}"; do
+        printf "%s\\n" "$apt_repo" >>"$TEMPDIR/apt/sources.list"
+    done
+
+    # replace file: URIs with copy: as we rely on --download-only copying .deb files to APT's cache
+    sed -ri 's/^(deb\S*)\s+\[([^]]+)\]\s+file:/\1 [\2,trusted=yes] copy:/;
+             s/^(deb\S*)\s+file:/\1 [trusted=yes] copy:/' \
+        -- "$TEMPDIR/apt/sources.list"
+
+    apt-update
+}
+
+# wrapper arround `apt-get install --download-only`
+# (we don't use `--print-uris` since it doesn't include what's been
+# included already)
+apt-download() {
+    _apt get install --download-only "$@"
+}
+apt-update() {
+    _apt get -o Acquire::Languages="none" update
+}
+apt-show() {
+    _apt cache show "$@"
+}
+_apt() {
+    local cmd="$1"
+    shift
+    env -i DEBIAN_FRONTEND="noninteractive" \
+    "apt-$cmd" \
+            -o APT::Architecture="$DEB_BUILD_ARCHITECTURE" \
+            -o APT::Architectures="$DEB_BUILD_ARCHITECTURE" \
+            -o APT::Get::Assume-Yes=true \
+            -o APT::Install-Recommends=false \
+            -o Dir::Cache="$APT_CACHE" \
+            -o Dir::Etc::SourceList="$TEMPDIR/apt/sources.list" \
+            -o Dir::Etc::SourceParts="" \
+            -o Dir::State::Lists="$APT_LISTS" \
+            -o Dir::State::Status="$TEMPDIR/apt/status" \
+            ${AUTOPKGTEST_TMP+-o Dir::Etc::Preferences="/etc/apt/preferences" -o Dir::Etc::PreferencesParts="/etc/apt/preferences.d/"} \
+            "$@"
+}
+
+
+# create a disk image with essential and extra packages
+create_debian_img() {
+    local img="$1" dir size deb usr_is_merged
+
+    dir="$(mktemp --tmpdir="$TEMPDIR" --directory debian.XXXXXXXXXX)"
+    mkdir -- "$dir/dists" "$dir/pool"
+
+    # TODO remove this once Bookworm is released, assuming
+    # init-system-helpers no longer has "Depends: usrmerge | usr-is-merged"
+    [ "$MERGED_USR" = "yes" ] && usr_is_merged="usr-is-merged" || usr_is_merged=""
+
+    # apt considers itself essential so we explicitely exclude it for stage1
+    mkdir -- "$dir/__stage1__"
+    apt-download -- "?and(?essential, ?not(?exact-name(apt)))" ${usr_is_merged:+"$usr_is_merged"}
+    for deb in "$APT_CACHE"/archives/*.deb; do
+        ln -sT "../pool/${deb##*/}" "$dir/__stage1__/${deb##*/}"
+    done
+
+    # useless for stage1
+    rm -f "$dir"/__stage1__/usr-is-merged_*.deb "$dir"/__stage1__/usrmerge_*.deb
+
+    mkdir -- "$dir/__essential__"
+    apt-download -- "?essential" "apt" ${usr_is_merged:+"$usr_is_merged"}
+    for deb in "$APT_CACHE"/archives/*.deb; do
+        ln -sT "../pool/${deb##*/}" "$dir/__essential__/${deb##*/}"
+    done
+
+    makedist "$dir"
+    extract_kernel "$TEMPDIR/linux-image"
+
+    # for `dpkg --update-avail`
+    ( cd "$dir/__essential__" && dpkg-scanpackages . >./Packages )
+
+    size="$(du -sb -- "$dir")"
+    size=$(( ${size%%[!0-9]*} / 1000 )) # approx 97% (1000/1024) full
+    genext2fs -qm0 -B 1024 -b "$size" -d "$dir" -L "debian_dist" "$img"
+    rm -rf -- "$dir"
+}
+makedist() {
+    local basedir="$1"
+    local distdir="$basedir/dists"
+    apt-download -- "?essential" "apt" ${usr_is_merged:+"$usr_is_merged"} \
+        "$PKG_BOOTLOADER" "$PKG_KERNEL" "$PKG_INIT" \
+        "${PKGS_EXTRA[@]}"
+    rm -f -- "$APT_CACHE/archives/$PKG_KERNEL"_*.deb # remove the generic .deb (only keep its dependency with versioned ABI)
+    for deb in "$APT_CACHE"/archives/*.deb; do
+        # assume no file conflicts and override existing .debs
+        ln -ft "$basedir/pool" -- "$deb"
+    done
+    ( cd "$APT_CACHE" && dpkg-scanpackages ../pool >"$distdir/Packages" )
+}
+
+# extract kernel to $TEMPDIR/linux-image and sets KERNEL_VERSION
+extract_kernel() {
+    local destdir="$1" deb_version_regex kernel_deb_regex
+    deb_version_regex="[0-9][A-Za-z0-9.+:~-]*" # per deb-version(7)
+    # we use may a kernel version other than what we're running, however the arch much be the same
+    kernel_deb_regex="linux-image-[0-9][a-z0-9.+-]*-${KERNEL_ARCH}_${deb_version_regex}_${DEB_BUILD_ARCHITECTURE}.deb"
+    KERNEL_DEB="$(find -P "$APT_CACHE/archives" -mindepth 1 -maxdepth 1 \
+        -regextype egrep -regex ".*/$kernel_deb_regex" -type f -printf "%P\\n" | \
+        sort -Vt_ -k2 | tail -n1)"
+    KERNEL_VERSION="${KERNEL_DEB#linux-image-*}"
+    KERNEL_VERSION="${KERNEL_VERSION%%_*}"
+
+    # extract the kernel of the .deb we downloaded
+    if [ ! -f "$APT_CACHE/archives/$KERNEL_DEB" ]; then
+        echo "ERROR: Couldn't find .deb for target kernel $KERNEL_VERSION" >&2
+        exit 1
+    fi
+
+    mkdir "$destdir"
+    dpkg-deb --fsys-tarfile "$APT_CACHE/archives/$KERNEL_DEB" | tar -C "$destdir" -xf- \
+        "./boot/vmlinuz-$KERNEL_VERSION" \
+        "./lib/modules/$KERNEL_VERSION"
+    ln -T -- "$destdir/boot/vmlinuz-$KERNEL_VERSION" "$TEMPDIR/vmlinuz-$KERNEL_VERSION"
+}
+
+# make sure the desired version of the package is available in the testbed
+setup_apt
+if ! apt-show "cryptsetup-bin=$DEB_VERSION" >"$TEMPDIR/out" || [ ! -s "$TEMPDIR/out" ]; then
+    apt-show -a "cryptsetup-bin" || true
+    echo "ERROR: Cannot find version $DEB_VERSION of package cryptsetup-bin" >&2
+    exit 1
+fi
+
+DEBIAN_IMG="$TEMPDIR/$DEB_DISTRIBUTION-$DEB_BUILD_ARCHITECTURE.img"
+create_debian_img "$DEBIAN_IMG"
+
+case "$DEB_BUILD_ARCHITECTURE" in
+    arm64|armhf) CONSOLE="ttyAMA0";;
+    *) CONSOLE="ttyS0";;
+esac
+
+env PACKAGES="$PKG_BOOTLOADER linux-image-$KERNEL_VERSION $PKG_INIT ${PKGS_EXTRA[*]}" \
+    BOOT="$BOOT" \
+    CONSOLE="$CONSOLE" \
+    ARCH="$DEB_BUILD_ARCHITECTURE" \
+    MERGED_USR="$MERGED_USR" \
+    "$TESTDIR/utils/mkinitramfs" "$TEMPDIR/linux-image" "$KERNEL_VERSION" "$TEMPDIR/initrd.img-$KERNEL_VERSION"
+rm -rf -- "$TEMPDIR/apt" "$TEMPDIR/linux-image" # don't need that anymore
+
+declare -a QEMU_COMMON_ARGS=(
+    -no-user-config
+    -nodefaults
+    -name "autopkgtest-cryptsetup-$TESTNAME"
+    -machine "${QEMU_MACHINE_TYPE:+"type=$QEMU_MACHINE_TYPE,"}${QEMU_ACCEL:+"accel=$QEMU_ACCEL,"}graphics=off"
+    ${QEMU_CPU_MODEL:+-cpu "$QEMU_CPU_MODEL"}
+    ${QEMU_SMP:+-smp "$QEMU_SMP"}
+    ${QEMU_MEMORY:+-m "$QEMU_MEMORY"}
+    -vga none
+    -display none
+    -object "rng-random,id=rng0,filename=/dev/urandom" -device "virtio-rng-pci,rng=rng0"
+    -boot "order=c,strict=on"
+)
+
+for ((i=0; i < ${#DRIVE_SIZES[@]}; i++)); do
+    drive_img="$TEMPDIR/drive$i.img"
+    fallocate -l "${DRIVE_SIZES[i]}" "$drive_img"
+    QEMU_COMMON_ARGS+=(
+        -drive "file=$drive_img,format=raw,cache=unsafe,if=virtio,index=$i,media=disk"
+    )
+done
+
+if [ "$BOOT" = "efi" ]; then
+    # $EFI_VARS needs to be writable so guests can update their variables
+    install -Tm0644 -- "$EFI_VARS" "$TEMPDIR/efivars.fd"
+    QEMU_COMMON_ARGS+=(
+        -drive "file=$EFI_CODE,format=raw,if=pflash,unit=0,read-only=on"
+        -drive "file=$TEMPDIR/efivars.fd,format=raw,if=pflash,unit=1"
+    )
+fi
+
+LOGDIR="$TEMPDIR"
+SOCKETDIR="$TEMPDIR"
+if [ "$INTERACTIVE" != "y" ]; then
+    QEMU_COMMON_ARGS+=(
+        -device "virtio-serial"
+        -chardev "socket,id=hvc0,path=$SOCKETDIR/hvc0,server=on,wait=off,logfile=$LOGDIR/hvc0.log,logappend=on"
+        -device "virtconsole,chardev=hvc0"
+    )
+fi
+
+declare QEMU_STDIO_ARGS=(
+    # setup is always fully unattended
+    -chardev "stdio,id=char0,mux=on,logfile=$LOGDIR/qemu.log,logappend=on"
+    -serial "chardev:char0"
+    -mon "chardev=char0,mode=readline"
+)
+if [ "$INTERACTIVE" != "y" ] || [ -n "${AUTOPKGTEST_TMP+x}" ]; then
+    # XXX if KVM is detected we could reduce the timeout to 300s or so
+    QEMU_TIMEOUT="y"
+    exec </dev/null
+else
+    QEMU_TIMEOUT=""
+fi
+
+QEMU_DEBIANIMG_DRIVE="file=$DEBIAN_IMG,format=raw,if=virtio,readonly=on,media=cdrom"
+${QEMU_TIMEOUT:+timeout 3600s} "$QEMU_SYSTEM_CMD" \
+    "${QEMU_COMMON_ARGS[@]}" "${QEMU_STDIO_ARGS[@]}" \
+    -drive "$QEMU_DEBIANIMG_DRIVE" \
+    -kernel "$TEMPDIR/vmlinuz-$KERNEL_VERSION" \
+    -append "console=$CONSOLE,115200n8" \
+    -initrd "$TEMPDIR/initrd.img-$KERNEL_VERSION" \
+    || exit $?
+
+if [ "$INTERACTIVE" = "y" ]; then
+    for ((i=0; i <= GUEST_POWERCYCLE; i++)); do
+        "$QEMU_SYSTEM_CMD" \
+            "${QEMU_COMMON_ARGS[@]}" "${QEMU_STDIO_ARGS[@]}" \
+            -netdev "user,id=net0" -device "virtio-net-pci,netdev=net0"
+    done
+else
+    for ((i=0; i <= GUEST_POWERCYCLE; i++)); do
+        ${QEMU_TIMEOUT:+timeout 900s} "$QEMU_SYSTEM_CMD" \
+            "${QEMU_COMMON_ARGS[@]}" \
+            -chardev "socket,id=mon0,path=$SOCKETDIR/mon0,server=on,wait=off,logfile=$LOGDIR/mon0.log,logappend=on" \
+            -mon "chardev=mon0,mode=control" \
+            -chardev "socket,id=ttyS0,path=$SOCKETDIR/ttyS0,server=on,wait=on,logfile=$LOGDIR/ttyS0.log,logappend=on" \
+            -serial "chardev:ttyS0" \
+            &
+        QEMU_PID=$!
+        "$TESTDIR/$TESTNAME.d/mock" "$i" "$SOCKETDIR" || exit 1
+        wait $QEMU_PID && rv=0 || rv=$?
+        unset QEMU_PID
+        [ $rv -eq 0 ] || exit $rv
+    done
+fi
+
+echo "PASSED"
+exit 0

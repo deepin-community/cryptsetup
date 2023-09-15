@@ -1,8 +1,8 @@
 /*
  * veritysetup - setup cryptographic volumes for dm-verity
  *
- * Copyright (C) 2012-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2021 Milan Broz
+ * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2023 Milan Broz
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -184,6 +184,8 @@ static int _activate(const char *dm_device,
 		activate_flags |= CRYPT_ACTIVATE_IGNORE_ZERO_BLOCKS;
 	if (ARG_SET(OPT_CHECK_AT_MOST_ONCE_ID))
 		activate_flags |= CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE;
+	if (ARG_SET(OPT_USE_TASKLETS_ID))
+		activate_flags |= CRYPT_ACTIVATE_TASKLETS;
 
 	if (!ARG_SET(OPT_NO_SUPERBLOCK_ID)) {
 		params.flags = flags;
@@ -192,6 +194,9 @@ static int _activate(const char *dm_device,
 		params.fec_device = ARG_STR(OPT_FEC_DEVICE_ID);
 		params.fec_roots = ARG_UINT32(OPT_FEC_ROOTS_ID);
 		r = crypt_load(cd, CRYPT_VERITY, &params);
+		if (r)
+			log_err(_("Device %s is not a valid VERITY device."), hash_device);
+
 	} else {
 		r = _prepare_format(&params, data_device, flags | CRYPT_VERITY_NO_HEADER);
 		if (r < 0)
@@ -246,7 +251,7 @@ static int _activate(const char *dm_device,
 			goto out;
 		}
 		signature_size = st.st_size;
-		r = tools_read_mk(ARG_STR(OPT_ROOT_HASH_SIGNATURE_ID), &signature, signature_size);
+		r = tools_read_vk(ARG_STR(OPT_ROOT_HASH_SIGNATURE_ID), &signature, signature_size);
 		if (r < 0) {
 			log_err(_("Cannot read signature file %s."), ARG_STR(OPT_ROOT_HASH_SIGNATURE_ID));
 			goto out;
@@ -332,7 +337,7 @@ static int action_status(void)
 	struct stat st;
 	char *backing_file, *root_hash;
 	size_t root_hash_size;
-	unsigned i, path = 0;
+	unsigned path = 0;
 	int r = 0;
 
 	/* perhaps a path, not a dm device name */
@@ -385,8 +390,7 @@ static int action_status(void)
 		log_std("  hash name:   %s\n", vp.hash_name);
 		log_std("  salt:        ");
 		if (vp.salt_size)
-			for(i = 0; i < vp.salt_size; i++)
-				log_std("%02hhx", (const char)vp.salt[i]);
+			crypt_log_hex(NULL, vp.salt, vp.salt_size, "", 0, NULL);
 		else
 			log_std("-");
 		log_std("\n");
@@ -424,8 +428,7 @@ static int action_status(void)
 			r = crypt_volume_key_get(cd, CRYPT_ANY_SLOT, root_hash, &root_hash_size, NULL, 0);
 			if (!r) {
 				log_std("  root hash:   ");
-				for (i = 0; i < root_hash_size; i++)
-					log_std("%02hhx", (const char)root_hash[i]);
+				crypt_log_hex(NULL, root_hash, root_hash_size, "", 0, NULL);
 				log_std("\n");
 			}
 			free(root_hash);
@@ -435,13 +438,15 @@ static int action_status(void)
 				 CRYPT_ACTIVATE_RESTART_ON_CORRUPTION|
 				 CRYPT_ACTIVATE_PANIC_ON_CORRUPTION|
 				 CRYPT_ACTIVATE_IGNORE_ZERO_BLOCKS|
-				 CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE))
-			log_std("  flags:       %s%s%s%s%s\n",
+				 CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE|
+				 CRYPT_ACTIVATE_TASKLETS))
+			log_std("  flags:       %s%s%s%s%s%s\n",
 				(cad.flags & CRYPT_ACTIVATE_IGNORE_CORRUPTION) ? "ignore_corruption " : "",
 				(cad.flags & CRYPT_ACTIVATE_RESTART_ON_CORRUPTION) ? "restart_on_corruption " : "",
 				(cad.flags & CRYPT_ACTIVATE_PANIC_ON_CORRUPTION) ? "panic_on_corruption " : "",
 				(cad.flags & CRYPT_ACTIVATE_IGNORE_ZERO_BLOCKS) ? "ignore_zero_blocks " : "",
-				(cad.flags & CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE) ? "check_at_most_once" : "");
+				(cad.flags & CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE) ? "check_at_most_once" : "",
+				(cad.flags & CRYPT_ACTIVATE_TASKLETS) ? "try_verify_in_tasklet" : "");
 	}
 out:
 	crypt_free(cd);
@@ -461,9 +466,15 @@ static int action_dump(void)
 
 	params.hash_area_offset = ARG_UINT64(OPT_HASH_OFFSET_ID);
 	params.fec_area_offset = ARG_UINT64(OPT_FEC_OFFSET_ID);
+	params.fec_device = ARG_STR(OPT_FEC_DEVICE_ID);
+	params.fec_roots = ARG_UINT32(OPT_FEC_ROOTS_ID);
+
 	r = crypt_load(cd, CRYPT_VERITY, &params);
 	if (!r)
 		crypt_dump(cd);
+	else
+		log_err(_("Device %s is not a valid VERITY device."), action_argv[0]);
+
 	crypt_free(cd);
 	return r;
 }
@@ -493,7 +504,7 @@ static void help(poptContext popt_context,
 	struct action_type *action;
 
 	if (key->shortName == '?') {
-		log_std("%s %s\n", PACKAGE_VERITY, PACKAGE_VERSION);
+		tools_package_version(PACKAGE_VERITY, false);
 		poptPrintHelp(popt_context, stdout, 0);
 		log_std(_("\n"
 			 "<action> is one of:\n"));
@@ -516,7 +527,7 @@ static void help(poptContext popt_context,
 		poptFreeContext(popt_context);
 		exit(EXIT_SUCCESS);
 	} else if (key->shortName == 'V') {
-		log_std("%s %s\n", PACKAGE_VERITY, PACKAGE_VERSION);
+		tools_package_version(PACKAGE_VERITY, false);
 		tools_cleanup();
 		poptFreeContext(popt_context);
 		exit(EXIT_SUCCESS);
@@ -567,7 +578,7 @@ int main(int argc, const char **argv)
 		{ NULL,    '\0', POPT_ARG_CALLBACK, basic_options_cb, 0, NULL, NULL },
 #define ARG(A, B, C, D, E, F, G, H) { A, B, C, NULL, A ## _ID, D, E },
 #include "veritysetup_arg_list.h"
-#undef arg
+#undef ARG
 		POPT_TABLEEND
 	};
 	static struct poptOption popt_options[] = {
@@ -634,7 +645,8 @@ int main(int argc, const char **argv)
 
 	if (action_argc < action->required_action_argc) {
 		char buf[128];
-		snprintf(buf, 128,_("%s: requires %s as arguments"), action->type, action->arg_desc);
+		if (snprintf(buf, 128,_("%s: requires %s as arguments"), action->type, action->arg_desc) < 0)
+			buf[0] = '\0';
 		usage(popt_context, EXIT_FAILURE, buf,
 		      poptGetInvocationName(popt_context));
 	}

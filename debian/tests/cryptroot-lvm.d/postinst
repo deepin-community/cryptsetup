@@ -1,0 +1,17 @@
+mkdir /etc/systemd/system/systemd-suspend.service.d
+cat >/etc/systemd/system/systemd-suspend.service.d/zz-cryptsetup-suspend-mock.conf <<-EOF
+	# override the command and don't call openvt(1) here since VT8 isn't
+	# available from the mocking logic -- we use /dev/console instead
+
+	[Service]
+	StandardInput=tty
+	StandardOutput=inherit
+	StandardError=inherit
+	TTYPath=/dev/console
+	TTYReset=yes
+
+	ExecStart=
+	ExecStart=/lib/cryptsetup/scripts/suspend/cryptsetup-suspend-wrapper
+EOF
+
+# vim: set filetype=sh :

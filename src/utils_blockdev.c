@@ -1,8 +1,8 @@
 /*
  * Linux block devices helpers
  *
- * Copyright (C) 2018-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2018-2021 Ondrej Kozina
+ * Copyright (C) 2018-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2018-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -48,28 +48,27 @@ static int dm_prepare_uuid(const char *type, const char *uuid, char *buf, size_t
 			}
 	}
 
-	snprintf(buf, buflen, DM_UUID_PREFIX "%s%s%s%s",
-		type ?: "", type ? "-" : "",
-		uuid2[0] ? uuid2 : "", uuid2[0] ? "-" : "");
+	if (snprintf(buf, buflen, DM_UUID_PREFIX "%s%s%s%s",
+	    type ?: "", type ? "-" : "",
+	    uuid2[0] ? uuid2 : "", uuid2[0] ? "-" : "") < 0)
+		return 0;
 
 	return 1;
 }
 
 /* return number of holders in general, if matched dm_uuid prefix it's returned via dm_name */
 /* negative value is error */
-static int lookup_holder_dm_name(const char *dm_uuid, dev_t devno, char *dm_name, size_t dm_name_length)
+static int lookup_holder_dm_name(const char *dm_uuid, dev_t devno, char **r_dm_name)
 {
 	struct dirent *entry;
-	char dm_subpath[PATH_MAX], data_dev_dir[PATH_MAX], uuid[DM_UUID_LEN];
+	char dm_subpath[PATH_MAX], data_dev_dir[PATH_MAX], uuid[DM_UUID_LEN], dm_name[PATH_MAX] = {};
 	ssize_t s;
 	struct stat st;
 	int dmfd, fd, len, r = 0; /* not found */
 	DIR *dir;
 
-	if (!dm_name || !dm_name_length)
+	if (!r_dm_name)
 		return -EINVAL;
-
-	*dm_name = '\0';
 
 	len = snprintf(data_dev_dir, PATH_MAX, "/sys/dev/block/%u:%u/holders", major(devno), minor(devno));
 	if (len < 0 || len >= PATH_MAX)
@@ -138,12 +137,14 @@ static int lookup_holder_dm_name(const char *dm_uuid, dev_t devno, char *dm_name
 		}
 
 		/* reads binary data */
-		s = read_buffer(fd, dm_name, dm_name_length - 1);
+		s = read_buffer(fd, dm_name, sizeof(dm_name));
 		close(fd);
 		close(dmfd);
 		if (s > 1) {
 			dm_name[s-1] = '\0';
 			log_dbg("Found dm device %s", dm_name);
+			if (!(*r_dm_name = strdup(dm_name)))
+				return -ENOMEM;
 		}
 	}
 
@@ -153,9 +154,8 @@ static int lookup_holder_dm_name(const char *dm_uuid, dev_t devno, char *dm_name
 }
 
 int tools_lookup_crypt_device(struct crypt_device *cd, const char *type,
-		const char *data_device_path, char *name, size_t name_length)
+		const char *data_device_path, char **r_name)
 {
-	int r;
 	char *c;
 	struct stat st;
 	char dev_uuid[DM_UUID_LEN + DM_BY_ID_PREFIX_LEN] = DM_BY_ID_PREFIX;
@@ -178,11 +178,8 @@ int tools_lookup_crypt_device(struct crypt_device *cd, const char *type,
 	if (!S_ISBLK(st.st_mode))
 		return -ENOTBLK;
 
-	r = lookup_holder_dm_name(dev_uuid + DM_BY_ID_PREFIX_LEN,
-			st.st_rdev, name, name_length);
-	return r;
+	return lookup_holder_dm_name(dev_uuid + DM_BY_ID_PREFIX_LEN, st.st_rdev, r_name);
 }
-
 
 static void report_partition(const char *value, const char *device, bool batch_mode)
 {
@@ -200,7 +197,8 @@ static void report_superblock(const char *value, const char *device, bool batch_
 		log_std(_("WARNING: Device %s already contains a '%s' superblock signature.\n"), device, value);
 }
 
-int tools_detect_signatures(const char *device, int ignore_luks, size_t *count, bool batch_mode)
+int tools_detect_signatures(const char *device, tools_probe_filter_info filter,
+		size_t *count,bool batch_mode)
 {
 	int r;
 	size_t tmp_count;
@@ -222,11 +220,22 @@ int tools_detect_signatures(const char *device, int ignore_luks, size_t *count, 
 		return -EINVAL;
 	}
 
-	blk_set_chains_for_full_print(h);
-
-	if (ignore_luks && blk_superblocks_filter_luks(h)) {
-		r = -EINVAL;
-		goto out;
+	switch (filter) {
+	case PRB_FILTER_LUKS:
+		if (blk_superblocks_filter_luks(h)) {
+			r = -EINVAL;
+			goto out;
+		}
+		/* fall-through */
+	case PRB_FILTER_NONE:
+		blk_set_chains_for_full_print(h);
+		break;
+	case PRB_ONLY_LUKS:
+		blk_set_chains_for_fast_detection(h);
+		if (blk_superblocks_only_luks(h)) {
+			r = -EINVAL;
+			goto out;
+		}
 	}
 
 	while ((pr = blk_probe(h)) < PRB_EMPTY) {
@@ -249,7 +258,7 @@ out:
 	return r;
 }
 
-int tools_wipe_all_signatures(const char *path)
+int tools_wipe_all_signatures(const char *path, bool exclusive, bool only_luks)
 {
 	int fd, flags, r;
 	blk_probe_status pr;
@@ -267,15 +276,15 @@ int tools_wipe_all_signatures(const char *path)
 	}
 
 	flags = O_RDWR;
-	if (S_ISBLK(st.st_mode))
+	if (S_ISBLK(st.st_mode) && exclusive)
 		flags |= O_EXCL;
 
 	/* better than opening regular file with O_EXCL (undefined) */
 	/* coverity[toctou] */
-	fd = open(path, flags);
+	fd = open(path, flags); /* lgtm[cpp/toctou-race-condition] */
 	if (fd < 0) {
 		if (errno == EBUSY)
-			log_err(_("Device %s is in use. Cannot proceed with format operation."), path);
+			log_err(_("Cannot exclusively open %s, device in use."), path);
 		else
 			log_err(_("Failed to open file %s in read/write mode."), path);
 		return -EINVAL;
@@ -288,15 +297,19 @@ int tools_wipe_all_signatures(const char *path)
 	}
 
 	blk_set_chains_for_wipes(h);
+	if (only_luks && (r = blk_superblocks_only_luks(h))) {
+		r = -EINVAL;
+		goto out;
+	}
 
 	while ((pr = blk_probe(h)) < PRB_EMPTY) {
 		if (blk_is_partition(h))
-			log_verbose("Existing '%s' partition signature on device %s will be wiped.",
+			log_verbose(_("Existing '%s' partition signature on device %s will be wiped."),
 				    blk_get_partition_type(h), path);
 		if (blk_is_superblock(h))
-			log_verbose("Existing '%s' superblock signature on device %s will be wiped.",
+			log_verbose(_("Existing '%s' superblock signature on device %s will be wiped."),
 				    blk_get_superblock_type(h), path);
-		if (blk_do_wipe(h)) {
+		if (blk_do_wipe(h) || fsync(fd)) {
 			log_err(_("Failed to wipe device signature."));
 			r = -EINVAL;
 			goto out;
@@ -311,4 +324,59 @@ out:
 	close(fd);
 	blk_free(h);
 	return r;
+}
+
+int tools_superblock_block_size(const char *device, char *sb_name, size_t sb_name_len, unsigned *r_block_size)
+{
+	struct blkid_handle *h;
+	const char *name;
+	int r = 0;
+
+	if (!r_block_size || !sb_name || sb_name_len < 1)
+		return -EINVAL;
+
+	if (!blk_supported()) {
+		log_dbg("Blkid support disabled.");
+		return 0;
+	}
+
+	if ((r = blk_init_by_path(&h, device))) {
+		log_err(_("Failed to initialize device signature probes."));
+		return -EINVAL;
+	}
+
+	blk_set_chains_for_superblocks(h);
+
+	switch (blk_probe(h)) {
+	case PRB_OK:
+		*r_block_size = blk_get_block_size(h);
+		if (!*r_block_size) /* same as not-found */
+			break;
+
+		if (!(name = blk_get_superblock_type(h))) {
+			r = -EINVAL;
+			break;
+		}
+
+		/* we don't mind truncating */
+		strncpy(sb_name, name, sb_name_len - 1);
+		sb_name[sb_name_len-1] = '\0';
+
+		log_dbg("Detected superblock %s on device %s (block size: %u).", sb_name, device, *r_block_size);
+		r = 1;
+		/* fall-through */
+	case PRB_EMPTY:
+		break;
+	default:
+		r = -EINVAL;
+	}
+
+	blk_free(h);
+
+	return r;
+}
+
+bool tools_blkid_supported(void)
+{
+	return blk_supported() != 0;
 }

@@ -1,8 +1,8 @@
 /*
  * OPENSSL crypto backend implementation
  *
- * Copyright (C) 2010-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2021 Milan Broz
+ * Copyright (C) 2010-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2023 Milan Broz
  *
  * This file is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -28,13 +28,10 @@
  * for all of the code used other than OpenSSL.
  */
 
-/*
- * HMAC will be later rewritten to a new API from OpenSSL 3
- */
-#define OPENSSL_SUPPRESS_DEPRECATED
-
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
@@ -42,6 +39,7 @@
 #if OPENSSL_VERSION_MAJOR >= 3
 #include <openssl/provider.h>
 #include <openssl/kdf.h>
+#include <openssl/core_names.h>
 static OSSL_PROVIDER *ossl_legacy = NULL;
 static OSSL_PROVIDER *ossl_default = NULL;
 static OSSL_LIB_CTX  *ossl_ctx = NULL;
@@ -59,8 +57,14 @@ struct crypt_hash {
 };
 
 struct crypt_hmac {
+#if OPENSSL_VERSION_MAJOR >= 3
+	EVP_MAC *mac;
+	EVP_MAC_CTX *md;
+	EVP_MAC_CTX *md_org;
+#else
 	HMAC_CTX *md;
 	const EVP_MD *hash_id;
+#endif
 	int hash_len;
 };
 
@@ -228,7 +232,11 @@ void crypt_backend_destroy(void)
 
 uint32_t crypt_backend_flags(void)
 {
+#if OPENSSL_VERSION_MAJOR >= 3
 	return 0;
+#else
+	return CRYPT_BACKEND_PBKDF2_INT;
+#endif
 }
 
 const char *crypt_backend_version(void)
@@ -397,7 +405,39 @@ int crypt_hmac_init(struct crypt_hmac **ctx, const char *name,
 		    const void *key, size_t key_length)
 {
 	struct crypt_hmac *h;
+#if OPENSSL_VERSION_MAJOR >= 3
+	OSSL_PARAM params[] = {
+		OSSL_PARAM_utf8_string(OSSL_MAC_PARAM_DIGEST, CONST_CAST(void*)name, 0),
+		OSSL_PARAM_END
+	};
 
+	h = malloc(sizeof(*h));
+	if (!h)
+		return -ENOMEM;
+
+	h->mac = EVP_MAC_fetch(ossl_ctx, OSSL_MAC_NAME_HMAC, NULL);
+	if (!h->mac) {
+		free(h);
+		return -EINVAL;
+	}
+
+	h->md = EVP_MAC_CTX_new(h->mac);
+	if (!h->md) {
+		EVP_MAC_free(h->mac);
+		free(h);
+		return -ENOMEM;
+	}
+
+	if (EVP_MAC_init(h->md, key, key_length, params) != 1) {
+		EVP_MAC_CTX_free(h->md);
+		EVP_MAC_free(h->mac);
+		free(h);
+		return -EINVAL;
+	}
+
+	h->hash_len = EVP_MAC_CTX_get_mac_size(h->md);
+	h->md_org = EVP_MAC_CTX_dup(h->md);
+#else
 	h = malloc(sizeof(*h));
 	if (!h)
 		return -ENOMEM;
@@ -418,46 +458,75 @@ int crypt_hmac_init(struct crypt_hmac **ctx, const char *name,
 	HMAC_Init_ex(h->md, key, key_length, h->hash_id, NULL);
 
 	h->hash_len = EVP_MD_size(h->hash_id);
+#endif
 	*ctx = h;
 	return 0;
 }
 
-static void crypt_hmac_restart(struct crypt_hmac *ctx)
+static int crypt_hmac_restart(struct crypt_hmac *ctx)
 {
+#if OPENSSL_VERSION_MAJOR >= 3
+	EVP_MAC_CTX_free(ctx->md);
+	ctx->md = EVP_MAC_CTX_dup(ctx->md_org);
+	if (!ctx->md)
+		return -EINVAL;
+#else
 	HMAC_Init_ex(ctx->md, NULL, 0, ctx->hash_id, NULL);
+#endif
+	return 0;
 }
 
 int crypt_hmac_write(struct crypt_hmac *ctx, const char *buffer, size_t length)
 {
+#if OPENSSL_VERSION_MAJOR >= 3
+	return EVP_MAC_update(ctx->md, (const unsigned char *)buffer, length) == 1 ? 0 : -EINVAL;
+#else
 	HMAC_Update(ctx->md, (const unsigned char *)buffer, length);
 	return 0;
+#endif
 }
 
 int crypt_hmac_final(struct crypt_hmac *ctx, char *buffer, size_t length)
 {
 	unsigned char tmp[EVP_MAX_MD_SIZE];
+#if OPENSSL_VERSION_MAJOR >= 3
+	size_t tmp_len = 0;
+
+	if (length > (size_t)ctx->hash_len)
+		return -EINVAL;
+
+	if (EVP_MAC_final(ctx->md, tmp,  &tmp_len, sizeof(tmp)) != 1)
+		return -EINVAL;
+#else
 	unsigned int tmp_len = 0;
 
 	if (length > (size_t)ctx->hash_len)
 		return -EINVAL;
 
 	HMAC_Final(ctx->md, tmp, &tmp_len);
-
+#endif
 	memcpy(buffer, tmp, length);
 	crypt_backend_memzero(tmp, sizeof(tmp));
 
 	if (tmp_len < length)
 		return -EINVAL;
 
-	crypt_hmac_restart(ctx);
+	if (crypt_hmac_restart(ctx))
+		return -EINVAL;
 
 	return 0;
 }
 
 void crypt_hmac_destroy(struct crypt_hmac *ctx)
 {
+#if OPENSSL_VERSION_MAJOR >= 3
+	EVP_MAC_CTX_free(ctx->md);
+	EVP_MAC_CTX_free(ctx->md_org);
+	EVP_MAC_free(ctx->mac);
+#else
 	hash_id_free(ctx->hash_id);
 	HMAC_CTX_free(ctx->md);
+#endif
 	memset(ctx, 0, sizeof(*ctx));
 	free(ctx);
 }
@@ -472,65 +541,60 @@ int crypt_backend_rng(char *buffer, size_t length,
 	return 0;
 }
 
-static int pbkdf2(const char *password, size_t password_length,
-		const char *salt, size_t salt_length,
-		uint32_t iterations, const char *hash, size_t key_length,
-		unsigned char *key)
+static int openssl_pbkdf2(const char *password, size_t password_length,
+	const char *salt, size_t salt_length, uint32_t iterations,
+	const char *hash, char *key, size_t key_length)
 {
+	int r;
 #if OPENSSL_VERSION_MAJOR >= 3
 	EVP_KDF_CTX *ctx;
 	EVP_KDF *pbkdf2;
-	int r;
 	OSSL_PARAM params[] = {
-		{ .key = "pass",
-		  .data_type = OSSL_PARAM_OCTET_STRING,
-		  .data = CONST_CAST(void*)password,
-		  .data_size = password_length
-		},
-		{ .key = "salt",
-		  .data_type = OSSL_PARAM_OCTET_STRING,
-		  .data = CONST_CAST(void*)salt,
-		  .data_size = salt_length
-		},
-		{ .key = "iter",
-		  .data_type = OSSL_PARAM_UNSIGNED_INTEGER,
-		  .data = &iterations,
-		  .data_size = sizeof(iterations)
-		},
-		{ .key = "digest",
-		  .data_type = OSSL_PARAM_UTF8_STRING,
-		  .data = CONST_CAST(void*)hash,
-		  .data_size = strlen(hash)
-		},
-		{ NULL, 0, NULL, 0, 0 }
+		OSSL_PARAM_octet_string(OSSL_KDF_PARAM_PASSWORD,
+			CONST_CAST(void*)password, password_length),
+		OSSL_PARAM_octet_string(OSSL_KDF_PARAM_SALT,
+			CONST_CAST(void*)salt, salt_length),
+		OSSL_PARAM_uint32(OSSL_KDF_PARAM_ITER, &iterations),
+		OSSL_PARAM_utf8_string(OSSL_KDF_PARAM_DIGEST,
+			CONST_CAST(void*)hash, 0),
+		OSSL_PARAM_END
 	};
 
 	pbkdf2 = EVP_KDF_fetch(ossl_ctx, "pbkdf2", NULL);
 	if (!pbkdf2)
-		return 0;
+		return -EINVAL;
 
 	ctx = EVP_KDF_CTX_new(pbkdf2);
 	if (!ctx) {
 		EVP_KDF_free(pbkdf2);
-		return 0;
+		return -EINVAL;
 	}
 
-	r = EVP_KDF_derive(ctx, key, key_length, params);
+	r = EVP_KDF_derive(ctx, (unsigned char*)key, key_length, params);
 
 	EVP_KDF_CTX_free(ctx);
 	EVP_KDF_free(pbkdf2);
-
-	/* _derive() returns 0 or negative value on error, 1 on success */
-	return r <= 0 ? 0 : 1;
 #else
 	const EVP_MD *hash_id = EVP_get_digestbyname(crypt_hash_compat_name(hash));
 	if (!hash_id)
-		return 0;
+		return -EINVAL;
 
-	return PKCS5_PBKDF2_HMAC(password, (int)password_length, (const unsigned char *)salt,
-				 (int)salt_length, iterations, hash_id,
-				 (int)key_length, key);
+	/* OpenSSL2 has iteration as signed int, avoid overflow */
+	if (iterations > INT_MAX)
+		return -EINVAL;
+
+	r = PKCS5_PBKDF2_HMAC(password, (int)password_length, (const unsigned char *)salt,
+		(int)salt_length, iterations, hash_id, (int)key_length, (unsigned char*) key);
 #endif
+	return r == 1 ? 0 : -EINVAL;
+}
+
+static int openssl_argon2(const char *type, const char *password, size_t password_length,
+	const char *salt, size_t salt_length, char *key, size_t key_length,
+	uint32_t iterations, uint32_t memory, uint32_t parallel)
+{
+	return argon2(type, password, password_length, salt, salt_length,
+		      key, key_length, iterations, memory, parallel);
 }
 
 /* PBKDF */
@@ -539,21 +603,16 @@ int crypt_pbkdf(const char *kdf, const char *hash,
 		const char *salt, size_t salt_length,
 		char *key, size_t key_length,
 		uint32_t iterations, uint32_t memory, uint32_t parallel)
-
 {
 	if (!kdf)
 		return -EINVAL;
 
-	if (!strcmp(kdf, "pbkdf2")) {
-		if (!pbkdf2(password, password_length,
-		    salt, salt_length, iterations, hash, key_length, (unsigned char *)key))
-			return -EINVAL;
-		return 0;
-	} else if (!strncmp(kdf, "argon2", 6)) {
-		return argon2(kdf, password, password_length, salt, salt_length,
-			      key, key_length, iterations, memory, parallel);
-	}
-
+	if (!strcmp(kdf, "pbkdf2"))
+		return openssl_pbkdf2(password, password_length, salt, salt_length,
+				      iterations, hash, key, key_length);
+	if (!strncmp(kdf, "argon2", 6))
+		return openssl_argon2(kdf, password, password_length, salt, salt_length,
+				      key, key_length, iterations, memory, parallel);
 	return -EINVAL;
 }
 
@@ -740,9 +799,6 @@ int crypt_bitlk_decrypt_key(const void *key, size_t key_length __attribute__((un
 	if (EVP_DecryptInit_ex(ctx, EVP_aes_256_ccm(), NULL, NULL, NULL) != 1)
 		goto out;
 
-	//EVP_CIPHER_CTX_key_length(ctx)
-	//EVP_CIPHER_CTX_iv_length(ctx)
-
 	if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_IVLEN, iv_length, NULL) != 1)
 		goto out;
 	if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tag_length, CONST_CAST(void*)tag) != 1)
@@ -760,3 +816,34 @@ out:
 	return -ENOTSUP;
 #endif
 }
+
+int crypt_backend_memeq(const void *m1, const void *m2, size_t n)
+{
+	return CRYPTO_memcmp(m1, m2, n);
+}
+
+#if !ENABLE_FIPS
+bool crypt_fips_mode(void) { return false; }
+#else
+static bool openssl_fips_mode(void)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+	return EVP_default_properties_is_fips_enabled(NULL);
+#else
+	return FIPS_mode();
+#endif
+}
+
+bool crypt_fips_mode(void)
+{
+	static bool fips_mode = false, fips_checked = false;
+
+	if (fips_checked)
+		return fips_mode;
+
+	fips_mode = openssl_fips_mode();
+	fips_checked = true;
+
+	return fips_mode;
+}
+#endif /* ENABLE FIPS */

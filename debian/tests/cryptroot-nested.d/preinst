@@ -1,0 +1,21 @@
+# check both UUID= and /dev/mapper/NAME sources for testvg-*_crypt to test for regressions a la #902943
+cat >/etc/crypttab <<-EOF
+	md0_crypt UUID=$(blkid -s UUID -o value /dev/md0) none
+	vdd_crypt UUID=$(blkid -s UUID -o value /dev/vdd) none
+	testvg-lv0_crypt /dev/mapper/testvg-lv0 none plain,cipher=aes-cbc-essiv:sha256,size=256,hash=ripemd160
+	testvg-lv1_crypt UUID=$(blkid -s UUID -o value /dev/testvg/lv1) none
+EOF
+
+cat >/etc/fstab <<-EOF
+	/dev/mapper/vdd_crypt /     btrfs compress=lzo,subvol=@     0 1
+	/dev/mapper/vdd_crypt /home btrfs compress=lzo,subvol=@home 0 2
+	/dev/mapper/vdd_crypt /usr  btrfs compress=lzo,subvol=@usr  0 2
+	/dev/mapper/vdd_crypt /var  btrfs compress=lzo,subvol=@var  0 2
+	UUID=$(blkid -s UUID -o value /dev/vda2) /boot ext2 defaults 0 2
+	/dev/mapper/testvg-lv0_crypt none swap sw 0 0
+EOF
+
+mkdir -p /etc/initramfs-tools/conf.d
+echo "RESUME=/dev/mapper/testvg-lv0_crypt" >/etc/initramfs-tools/conf.d/resume
+
+# vim: set filetype=sh :

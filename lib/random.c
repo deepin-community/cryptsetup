@@ -1,7 +1,7 @@
 /*
  * cryptsetup kernel RNG access functions
  *
- * Copyright (C) 2010-2021 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2023 Red Hat, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -21,7 +21,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <assert.h>
 #include <sys/select.h>
 
 #include "libcryptsetup.h"
@@ -42,8 +41,7 @@ static int random_fd = -1;
 #define RANDOM_DEVICE_TIMEOUT	5
 
 /* URANDOM_DEVICE access */
-static int _get_urandom(struct crypt_device *ctx __attribute__((unused)),
-			char *buf, size_t len)
+static int _get_urandom(char *buf, size_t len)
 {
 	int r;
 	size_t old_len = len;
@@ -51,7 +49,7 @@ static int _get_urandom(struct crypt_device *ctx __attribute__((unused)),
 
 	assert(urandom_fd != -1);
 
-	while(len) {
+	while (len) {
 		r = read(urandom_fd, buf, len);
 		if (r == -1 && errno != EINTR)
 			return -EINVAL;
@@ -172,19 +170,20 @@ err:
 	return -ENOSYS;
 }
 
+/* coverity[ -taint_source : arg-1 ] */
 int crypt_random_get(struct crypt_device *ctx, char *buf, size_t len, int quality)
 {
 	int status, rng_type;
 
 	switch(quality) {
 	case CRYPT_RND_NORMAL:
-		status = _get_urandom(ctx, buf, len);
+		status = _get_urandom(buf, len);
 		break;
 	case CRYPT_RND_SALT:
 		if (crypt_fips_mode())
 			status = crypt_backend_rng(buf, len, quality, 1);
 		else
-			status = _get_urandom(ctx, buf, len);
+			status = _get_urandom(buf, len);
 		break;
 	case CRYPT_RND_KEY:
 		if (crypt_fips_mode()) {
@@ -195,7 +194,7 @@ int crypt_random_get(struct crypt_device *ctx, char *buf, size_t len, int qualit
 				 crypt_random_default_key_rng();
 		switch (rng_type) {
 		case CRYPT_RNG_URANDOM:
-			status = _get_urandom(ctx, buf, len);
+			status = _get_urandom(buf, len);
 			break;
 		case CRYPT_RNG_RANDOM:
 			status = _get_random(ctx, buf, len);

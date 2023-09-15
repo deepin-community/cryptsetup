@@ -53,6 +53,7 @@ crypttab_parse_options() {
     done
 
     local IFS=',' x OPTION VALUE
+    CRYPTTAB_TYPE=""
     unset -v CRYPTTAB_OPTION_cipher \
              CRYPTTAB_OPTION_size \
              CRYPTTAB_OPTION_sector_size \
@@ -67,6 +68,7 @@ crypttab_parse_options() {
              CRYPTTAB_OPTION_tcrypt \
              CRYPTTAB_OPTION_veracrypt \
              CRYPTTAB_OPTION_bitlk \
+             CRYPTTAB_OPTION_fvault2 \
              CRYPTTAB_OPTION_swap \
              CRYPTTAB_OPTION_tmp \
              CRYPTTAB_OPTION_check \
@@ -240,6 +242,7 @@ crypttab_validate_option() {
         veracrypt) ;;
         tcrypthidden) ;;
         bitlk) ;;
+        fvault2) ;;
         same-cpu-crypt) ;;
         submit-from-crypt-cpus) ;;
         no-read-workqueue) ;;
@@ -310,6 +313,8 @@ _get_crypt_type() {
         t="plain"
     elif [ "${CRYPTTAB_OPTION_bitlk-}" = "yes" ]; then
         t="bitlk"
+    elif [ "${CRYPTTAB_OPTION_fvault2-}" = "yes" ]; then
+        t="fvault2"
     elif [ -n "${CRYPTTAB_OPTION_header+x}" ]; then
         # detached headers are only supported for LUKS devices
         if [ -e "$CRYPTTAB_OPTION_header" ] && /sbin/cryptsetup isLuks -- "$CRYPTTAB_OPTION_header"; then
@@ -388,11 +393,6 @@ unlock_mapping() {
 resume_mapping() {
     local keyfile="${1:--}"
 
-    if [ "$CRYPTTAB_TYPE" != "luks" ]; then
-        cryptsetup_message "ERROR: $CRYPTTAB_NAME: unable to resume non-luks device"
-        return 1
-    fi
-
     /sbin/cryptsetup -T1 \
         ${CRYPTTAB_OPTION_header:+--header="$CRYPTTAB_OPTION_header"} \
         ${CRYPTTAB_OPTION_keyslot:+--key-slot="$CRYPTTAB_OPTION_keyslot"} \
@@ -407,19 +407,24 @@ resume_mapping() {
 resume_device() {
     local device="$1"
     # check if device is really suspended
-    if dmsetup info -c --noheadings -o suspended -- "$device" 2>/dev/null | grep -Fxq "Active"; then
-        cryptsetup_message "ERROR: $CRYPTTAB_NAME: device was not suspendend"
-        sleep 5
+    if [ "$(dmsetup info -c --noheadings -o suspended -- "$device" 2>/dev/null)" != "Suspended" ]; then
+        cryptsetup_message "ERROR: $device: device was not suspendend"
         return 1
     fi
 
-    crypttab_find_entry "$device"
-    crypttab_parse_options --quiet
-    _get_crypt_type
+    if ! crypttab_find_entry "$device" || ! crypttab_parse_options --quiet; then
+        cryptsetup_message "ERROR: $device: not found in $TABFILE"
+        return 1
+    fi
+
+    if [ "$CRYPTTAB_TYPE" != "luks" ]; then
+        cryptsetup_message "ERROR: $CRYPTTAB_NAME: unable to resume non-LUKS device"
+        return 1
+    fi
 
     # Loop endlessly until the resume command succeeded
     while true; do
-        if [ "$CRYPTTAB_KEY" != "none" ]; then
+        if [ -z "${CRYPTTAB_OPTION_keyscript+x}" ] && [ "$CRYPTTAB_KEY" != "none" ]; then
             resume_mapping "$CRYPTTAB_KEY" && break || true
         else
             run_keyscript 1 | resume_mapping && break || true
@@ -480,13 +485,6 @@ dm_blkdevname() {
     else
         return 1
     fi
-}
-
-# dm_active_crypt_devices()
-#   Print list of active dm-crypt devices.
-dm_active_crypt_devices() {
-    # XXX: that's not robust wrt udev mangling of special characters such as blank or colons
-    dmsetup table --target crypt | sed -n 's/:.*//p'
 }
 
 # crypttab_find_entry([--quiet], $target)
@@ -642,26 +640,40 @@ get_mnt_devno() {
     fi
 }
 
-# foreach_cryptdev($callback, $maj:$min, [$maj:$min ..])
+# foreach_cryptdev([--reverse], $callback, $maj:$min, [$maj:$min ..])
 #   Run $callback on the (unmangled) name of each dm-crypt device
 #   recursively holding $maj:$min (typically corresponding to an md,
 #   linear, or dm-crypt device).  Slaves that aren't dm-crypt devices
 #   are ignored.
+#   By default each device is processed after its *slaves*.  If
+#   --reverse is set then each device is processed after its *holders*
+#   instead.
 foreach_cryptdev() {
-    local callback="$1" devno base
+    local callback="$1" reverse="n" devno base
     shift
+    if [ "$callback" = "--reverse" ]; then
+        reverse="y"
+        callback="$1"
+        shift
+    fi
     for devno in "$@"; do
         base="/sys/dev/block/$devno"
         if [ ! -d "$base" ]; then
             cryptsetup_message "ERROR: Couldn't find sysfs directory for $devno"
             return 1
         fi
-        _foreach_cryptdev "$callback" "$base"
+        _foreach_cryptdev "$base"
     done
 }
 _foreach_cryptdev() {
-    local callback="$1" d="$2" devno maj min name slave
-    [ -d "$d/slaves" ] || return 0
+    local d="$1" devno maj min name t d2
+    [ "$reverse" = "y" ] && t="holders" || t="slaves"
+    [ -d "$d/$t" ] || return 0
+    for d2 in "$d/$t"/*; do
+        if [ -d "$d2" ] && d2="$(realpath -e -- "$d2")"; then
+            _foreach_cryptdev "$d2"
+        fi
+    done
     if [ -d "$d/dm" ] && devno="$(cat "$d/dev")" &&
             maj="${devno%:*}" && min="${devno#*:}" &&
             [ "$devno" = "$maj:$min" ] && [ -n "$maj" ] && [ -n "$min" ] &&
@@ -669,11 +681,6 @@ _foreach_cryptdev() {
             name="$(dmsetup info -c --noheadings -o unmangled_name -j "$maj" -m "$min")"; then
         "$callback" "$name"
     fi
-    for slave in "$d/slaves"/*; do
-        if [ -d "$slave" ] && slave="$(realpath -e -- "$slave")"; then
-            _foreach_cryptdev "$callback" "$slave"
-        fi
-    done
 }
 
 # vim: set filetype=sh :

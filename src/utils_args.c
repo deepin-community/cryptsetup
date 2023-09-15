@@ -1,8 +1,8 @@
 /*
  * Command line arguments parsing helpers
  *
- * Copyright (C) 2020-2021 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2021 Ondrej Kozina
+ * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2023 Ondrej Kozina
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -62,7 +62,8 @@ void tools_parse_arg_value(poptContext popt_context, crypt_arg_type_info type, s
 		/* special size strings with units converted to integers */
 		if (needs_size_conv_fn && needs_size_conv_fn(popt_val)) {
 			if (tools_string_to_size(popt_arg, &arg->u.u64_value)) {
-				snprintf(msg, sizeof(msg), _("Invalid size specification in parameter --%s."), arg->name);
+				if (snprintf(msg, sizeof(msg), _("Invalid size specification in parameter --%s."), arg->name) < 0)
+					msg[0] = '\0';
 				usage(popt_context, EXIT_FAILURE, msg,
 				      poptGetInvocationName(popt_context));
 			}
@@ -73,6 +74,9 @@ void tools_parse_arg_value(poptContext popt_context, crypt_arg_type_info type, s
 				      poptGetInvocationName(popt_context));
 			arg->u.u64_value = ull;
 		}
+		break;
+	case CRYPT_ARG_ALIAS:
+		tools_parse_arg_value(popt_context, arg->u.o.ptr->type, arg->u.o.ptr, popt_arg, arg->u.o.id, needs_size_conv_fn);
 		break;
 	default:
 		/* this signals internal tools coding mistake */
@@ -118,7 +122,8 @@ void tools_check_args(const char *action, const struct tools_arg *args, size_t a
 			if (action_allowed(action, args[i].actions_array, MAX_ACTIONS)) {
 				continue;
 			} else {
-				(void)snprintf(msg, sizeof(msg), _("Option --%s is not allowed with %s action."), args[i].name, action);
+				if (snprintf(msg, sizeof(msg), _("Option --%s is not allowed with %s action."), args[i].name, action) < 0)
+					msg[0] = '\0';
 				usage(popt_context, EXIT_FAILURE, msg, poptGetInvocationName(popt_context));
 			}
 		}

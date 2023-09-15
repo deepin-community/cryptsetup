@@ -1,0 +1,27 @@
+test-clang-compilation:
+  extends:
+    - .gitlab-shared-clang
+  script:
+    - export CFLAGS="-Wall -Werror"
+    - ./configure
+    - make -j
+    - make -j check-programs
+
+test-clang-Wall-script:
+  extends:
+    - .gitlab-shared-clang
+  script:
+    - export CFLAGS="-g -O0"
+    - export CC="$CI_PROJECT_DIR/.gitlab/ci/clang-Wall"
+    - ./configure
+    - make -j CFLAGS="-g -O0 -Werror"
+    - make -j CFLAGS="-g -O0 -Werror" check-programs
+
+test-scan-build:
+  extends:
+    - .gitlab-shared-clang
+  script:
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} -V ./configure CFLAGS="-g -O0"
+    - make clean
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j check-programs

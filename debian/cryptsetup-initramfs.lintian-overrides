@@ -1,3 +1,6 @@
 # `cryptroot-unlock` is meant to be run from the initramfs image, using busybox's /bin/ash
-unusual-interpreter usr/share/cryptsetup/initramfs/bin/cryptroot-unlock /bin/busybox
+unusual-interpreter /bin/busybox [usr/share/cryptsetup/initramfs/bin/cryptroot-unlock]
 no-debconf-config
+
+# valid use of Conflicts:, cf. section 7.4 of the Debian Policy
+conflicts-with-version lvm2 (<< 2.03.15-1)
