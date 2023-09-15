@@ -1,3 +1,10 @@
+cryptsetup (2:2.6.1-5deepin) UNRELEASED; urgency=medium
+
+  [ zhangya ]
+  * suggest depends cryptsetup-initramfs modify to depends.
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 15 Sep 2023 18:22:50 +0800
+
 cryptsetup (2:2.6.1-5) unstable; urgency=medium
 
   [ Guilhem Moulin ]
