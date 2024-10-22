@@ -14,6 +14,21 @@ set -e
 #          <failed-install-package> <version> `removing'
 #          <conflicting-package> <version>
 
+# begin-remove-after: released:forky
+if [ "$1" = configure ] &&
+	[ "$(dpkg-divert --truename /usr/lib/cryptsetup/askpass)" = /usr/lib/cryptsetup/askpass.usr-is-merged ] &&
+	[ "$(dpkg-divert --listpackage /usr/lib/cryptsetup/askpass)" = cryptsetup-nuke-password ]; then
+	# /usr/lib/cryptsetup/askpass is still diverted in the same way as our
+	# preinst did.  Conclude that cryptsetup-nuke-password was installed
+	# during preinst, we duplicated the diversion and now
+	# cryptsetup-nuke-password is removed. We have to clean up.
+	echo "Removing duplicated diversion of /usr/lib/cryptsetup/askpass after cryptsetup-nuke-password is removed."
+	dpkg-divert --rename --package cryptsetup-nuke-password \
+		--divert /usr/lib/cryptsetup/askpass.usr-is-merged \
+		--remove /usr/lib/cryptsetup/askpass
+fi
+# end-remove-after
+
 case "$1" in
     configure)
         for file in cryptdisks_start cryptdisks_stop; do

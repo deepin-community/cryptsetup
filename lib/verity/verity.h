@@ -1,21 +1,8 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 /*
  * dm-verity volume handling
  *
- * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
- *
- * This file is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this file; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
  */
 
 #ifndef _VERITY_H
@@ -23,6 +10,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #define VERITY_MAX_HASH_TYPE 1
 #define VERITY_BLOCK_SIZE_OK(x)	((x) % 512 || (x) < 512 || \
@@ -31,6 +19,7 @@
 struct crypt_device;
 struct crypt_params_verity;
 struct device;
+struct volume_key;
 
 int VERITY_read_sb(struct crypt_device *cd,
 		   uint64_t sb_offset,
@@ -44,12 +33,17 @@ int VERITY_write_sb(struct crypt_device *cd,
 
 int VERITY_activate(struct crypt_device *cd,
 		     const char *name,
-		     const char *root_hash,
-		     size_t root_hash_size,
-		     const char *signature_description,
+		     struct volume_key *root_hash,
+		     struct volume_key *signature,
 		     struct device *fec_device,
 		     struct crypt_params_verity *verity_hdr,
 		     uint32_t activation_flags);
+
+int VERITY_verify_params(struct crypt_device *cd,
+	struct crypt_params_verity *hdr,
+	bool signed_root_hash,
+	struct device *fec_device,
+	struct volume_key *root_hash);
 
 int VERITY_verify(struct crypt_device *cd,
 		struct crypt_params_verity *verity_hdr,

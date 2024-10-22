@@ -67,14 +67,13 @@ fi
 
 depmod -ab "$EXTRACT_DIR" "$KERNEL_VERSION"
 for kmod in virtio_console virtio_blk virtio_pci virtio_rng \
-        "$EXTRACT_DIR/lib/modules/$KERNEL_VERSION"/kernel/arch/*/crypto/*.ko \
-        "$EXTRACT_DIR/lib/modules/$KERNEL_VERSION"/kernel/crypto/*.ko \
+        "$EXTRACT_DIR/lib/modules/$KERNEL_VERSION"/kernel/arch/*/crypto/*.ko* \
+        "$EXTRACT_DIR/lib/modules/$KERNEL_VERSION"/kernel/crypto/*.ko* \
         $MODULES; do
     kmod="${kmod##*/}"
-    modprobe -aid "$EXTRACT_DIR" -S "$KERNEL_VERSION" --show-depends "${kmod%.ko}"
-done | while read -r insmod kmod; do
+    modprobe -aid "$EXTRACT_DIR" -S "$KERNEL_VERSION" --show-depends "${kmod%%.*}"
+done | while read -r insmod kmod _; do
     [ "$insmod" = "insmod" ] || continue
-    [ "$kmod" = "${kmod%.ko *}" ] || kmod="${kmod%.ko *}.ko"
     kmod_rel="${kmod#"$EXTRACT_DIR/lib/modules/$KERNEL_VERSION/"}"
     if [ ! -f "$kmod" ] || [ "${kmod_rel#kernel/}" = "$kmod_rel" ]; then
         echo "Error: Unexpected modprobe output: $insmod $kmod" >&2
@@ -110,10 +109,9 @@ copy_exec /sbin/dmsetup
 copy_exec /usr/bin/dpkg-deb
 copy_exec /bin/tar
 
-# assume ossl-modules/legacy.so and libgcc_s.so are relative to the linked libcryptsetup.so
+# assume ossl-modules/legacy.so is relative to the linked libcryptsetup.so
 libdir="$(env --unset=LD_PRELOAD ldd /sbin/cryptsetup | sed -nr '/.*=>\s*(\S+)\/libcryptsetup\.so\..*/ {s//\1/p;q}')"
 copy_exec "$libdir/ossl-modules/legacy.so" || true
-copy_libgcc "$libdir"
 
 for p in /sbin/cryptsetup /sbin/lvm /sbin/mdadm /sbin/mke2fs /sbin/mkfs.btrfs /bin/btrfs; do
     if [ -x "$p" ]; then

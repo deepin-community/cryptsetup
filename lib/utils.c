@@ -1,24 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * utils - miscellaneous device utilities for cryptsetup
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <stdio.h>
@@ -45,18 +32,75 @@ unsigned crypt_cpusonline(void)
 uint64_t crypt_getphysmemory_kb(void)
 {
 	long pagesize, phys_pages;
-	uint64_t phys_memory_kb;
+	uint64_t phys_memory_kb, page_size_kb;
 
 	pagesize = sysconf(_SC_PAGESIZE);
 	phys_pages = sysconf(_SC_PHYS_PAGES);
 
-	if (pagesize < 0 || phys_pages < 0)
+	if (pagesize <= 0 || phys_pages <= 0)
 		return 0;
 
-	phys_memory_kb = pagesize / 1024;
-	phys_memory_kb *= phys_pages;
+	page_size_kb = pagesize / 1024;
+	phys_memory_kb = page_size_kb * phys_pages;
 
+	/* sanity check for overflow */
+	if (phys_memory_kb / phys_pages != page_size_kb)
+		return 0;
+
+	/* coverity[return_overflow:FALSE] */
 	return phys_memory_kb;
+}
+
+uint64_t crypt_getphysmemoryfree_kb(void)
+{
+	long pagesize, phys_pages;
+	uint64_t phys_memoryfree_kb, page_size_kb;
+
+	pagesize = sysconf(_SC_PAGESIZE);
+	phys_pages = sysconf(_SC_AVPHYS_PAGES);
+
+	if (pagesize <= 0 || phys_pages <= 0)
+		return 0;
+
+	page_size_kb = pagesize / 1024;
+	phys_memoryfree_kb = page_size_kb * phys_pages;
+
+	/* sanity check for overflow */
+	if (phys_memoryfree_kb / phys_pages != page_size_kb)
+		return 0;
+
+	/* coverity[return_overflow:FALSE] */
+	return phys_memoryfree_kb;
+}
+
+bool crypt_swapavailable(void)
+{
+	int fd;
+	ssize_t size;
+	char buf[4096], *p;
+	uint64_t total;
+
+	if ((fd = open("/proc/meminfo", O_RDONLY)) < 0)
+		return true;
+
+	size = read(fd, buf, sizeof(buf));
+	close(fd);
+	if (size < 1)
+		return true;
+
+	if (size < (ssize_t)sizeof(buf))
+		buf[size] = 0;
+	else
+		buf[sizeof(buf) - 1] = 0;
+
+	p = strstr(buf, "SwapTotal:");
+	if (!p)
+		return true;
+
+	if (sscanf(p, "SwapTotal: %" PRIu64 " kB", &total) != 1)
+		return true;
+
+	return total > 0;
 }
 
 void crypt_process_priority(struct crypt_device *cd, int *priority, bool raise)
@@ -146,6 +190,7 @@ int crypt_keyfile_device_read(struct crypt_device *cd,  const char *keyfile,
 	size_t buflen, i;
 	uint64_t file_read_size;
 	struct stat st;
+	bool close_fd = false;
 
 	if (!key || !key_size_read)
 		return -EINVAL;
@@ -153,11 +198,15 @@ int crypt_keyfile_device_read(struct crypt_device *cd,  const char *keyfile,
 	*key = NULL;
 	*key_size_read = 0;
 
-	fd = keyfile ? open(keyfile, O_RDONLY) : STDIN_FILENO;
-	if (fd < 0) {
-		log_err(cd, _("Failed to open key file."));
-		return -EINVAL;
-	}
+	if (keyfile) {
+		fd = open(keyfile, O_RDONLY);
+		if (fd < 0) {
+			log_err(cd, _("Failed to open key file."));
+			return -EINVAL;
+		}
+		close_fd = true;
+	} else
+		fd = STDIN_FILENO;
 
 	if (isatty(fd)) {
 		log_err(cd, _("Cannot read keyfile from a terminal."));
@@ -271,7 +320,7 @@ int crypt_keyfile_device_read(struct crypt_device *cd,  const char *keyfile,
 	*key_size_read = i;
 	r = 0;
 out:
-	if (fd != STDIN_FILENO)
+	if (close_fd)
 		close(fd);
 
 	if (r)

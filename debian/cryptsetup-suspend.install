@@ -1,5 +1,5 @@
-debian/scripts/suspend/cryptsetup-suspend /lib/cryptsetup/scripts/suspend/
-debian/scripts/suspend/cryptsetup-suspend-wrapper /lib/cryptsetup/scripts/suspend/
-debian/scripts/suspend/cryptsetup-suspend.shutdown /lib/systemd/system-shutdown/
+debian/scripts/suspend/cryptsetup-suspend /usr/lib/cryptsetup/scripts/suspend/
+debian/scripts/suspend/cryptsetup-suspend-wrapper /usr/lib/cryptsetup/scripts/suspend/
+debian/scripts/suspend/cryptsetup-suspend.shutdown /usr/lib/systemd/system-shutdown/
 debian/scripts/suspend/suspend.conf /etc/cryptsetup/
-debian/scripts/suspend/systemd/cryptsetup-suspend.conf /lib/systemd/system/systemd-suspend.service.d/
+debian/scripts/suspend/systemd/cryptsetup-suspend.conf /usr/lib/systemd/system/systemd-suspend.service.d/

@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 /*
  * BITLK (BitLocker-compatible) volume handling
  *
- * Copyright (C) 2019-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2019-2023 Milan Broz
- * Copyright (C) 2019-2023 Vojtech Trefny
- *
- * This file is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this file; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2019-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2019-2024 Milan Broz
+ * Copyright (C) 2019-2024 Vojtech Trefny
  */
 
 #include <errno.h>
@@ -324,6 +311,9 @@ static int parse_vmk_entry(struct crypt_device *cd, uint8_t *data, int start, in
 		/* unknown timestamps in recovery protected VMK */
 		} else if (key_entry_value == BITLK_ENTRY_VALUE_RECOVERY_TIME) {
 			;
+		/* optional hint (?) string (masked email?), we can safely ignore it */
+		} else if (key_entry_value == BITLK_ENTRY_VALUE_HINT) {
+			;
 		} else if (key_entry_value == BITLK_ENTRY_VALUE_STRING) {
 			if (key_entry_size < BITLK_ENTRY_HEADER_LEN)
 				return -EINVAL;
@@ -352,6 +342,9 @@ static int parse_vmk_entry(struct crypt_device *cd, uint8_t *data, int start, in
 			}
 		/* no idea what this is, lets hope it's not important */
 		} else if (key_entry_value == BITLK_ENTRY_VALUE_USE_KEY && (*vmk)->protection == BITLK_PROTECTION_STARTUP_KEY) {
+			;
+		/* quietly ignore unsupported TPM key */
+		} else if (key_entry_value == BITLK_ENTRY_VALUE_TPM_KEY && (*vmk)->protection == BITLK_PROTECTION_TPM) {
 			;
 		} else {
 			if (supported) {
@@ -735,6 +728,7 @@ int BITLK_dump(struct crypt_device *cd, struct device *device, struct bitlk_meta
 {
 	struct volume_key *vk_p;
 	struct bitlk_vmk *vmk_p;
+	char time[32];
 	int next_id = 0;
 	int i = 0;
 
@@ -743,7 +737,8 @@ int BITLK_dump(struct crypt_device *cd, struct device *device, struct bitlk_meta
 	log_std(cd, "GUID:         \t%s\n", params->guid);
 	log_std(cd, "Sector size:  \t%u [bytes]\n", params->sector_size);
 	log_std(cd, "Volume size:  \t%" PRIu64 " [bytes]\n", params->volume_size);
-	log_std(cd, "Created:      \t%s", ctime((time_t *)&(params->creation_time)));
+	if (ctime_r((time_t *)&params->creation_time, time))
+		log_std(cd, "Created:      \t%s", time);
 	log_std(cd, "Description:  \t%s\n", params->description);
 	log_std(cd, "Cipher name:  \t%s\n", params->cipher);
 	log_std(cd, "Cipher mode:  \t%s\n", params->cipher_mode);
@@ -982,8 +977,7 @@ static int get_startup_key(struct crypt_device *cd,
 	}
 }
 
-static int bitlk_kdf(struct crypt_device *cd,
-		     const char *password,
+static int bitlk_kdf(const char *password,
 		     size_t passwordLen,
 		     bool recovery,
 		     const uint8_t *salt,
@@ -1120,7 +1114,7 @@ int BITLK_get_volume_key(struct crypt_device *cd,
 	next_vmk = params->vmks;
 	while (next_vmk) {
 		if (next_vmk->protection == BITLK_PROTECTION_PASSPHRASE) {
-			r = bitlk_kdf(cd, password, passwordLen, false, next_vmk->salt, &vmk_dec_key);
+			r = bitlk_kdf(password, passwordLen, false, next_vmk->salt, &vmk_dec_key);
 			if (r) {
 				/* something wrong happened, but we still want to check other key slots */
 				next_vmk = next_vmk->next;
@@ -1140,7 +1134,7 @@ int BITLK_get_volume_key(struct crypt_device *cd,
 				continue;
 			}
 			log_dbg(cd, "Trying to use given password as a recovery key.");
-			r = bitlk_kdf(cd, recovery_key->key, recovery_key->keylength,
+			r = bitlk_kdf(recovery_key->key, recovery_key->keylength,
 				      true, next_vmk->salt, &vmk_dec_key);
 			crypt_free_volume_key(recovery_key);
 			if (r)

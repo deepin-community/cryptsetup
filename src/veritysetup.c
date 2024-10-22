@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * veritysetup - setup cryptographic volumes for dm-verity
  *
- * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2024 Milan Broz
  */
 
 #include "cryptsetup.h"
@@ -186,6 +173,8 @@ static int _activate(const char *dm_device,
 		activate_flags |= CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE;
 	if (ARG_SET(OPT_USE_TASKLETS_ID))
 		activate_flags |= CRYPT_ACTIVATE_TASKLETS;
+	if (ARG_SET(OPT_SHARED_ID))
+		activate_flags |= CRYPT_ACTIVATE_SHARED;
 
 	if (!ARG_SET(OPT_NO_SUPERBLOCK_ID)) {
 		params.flags = flags;
@@ -599,6 +588,9 @@ int main(int argc, const char **argv)
 	textdomain(PACKAGE);
 
 	popt_context = poptGetContext("verity", argc, argv, popt_options, 0);
+	if (!popt_context)
+		exit(EXIT_FAILURE);
+
 	poptSetOtherOptionHelp(popt_context,
 	                       _("[OPTION...] <action> <action-specific>"));
 

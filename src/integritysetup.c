@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * integritysetup - setup integrity protected volumes for dm-integrity
  *
- * Copyright (C) 2017-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2017-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2017-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2017-2024 Milan Broz
  */
 
 #include <uuid/uuid.h>
@@ -190,13 +177,18 @@ static int action_format(void)
 			goto out;
 	}
 
-	r = tools_detect_signatures(action_argv[0], PRB_FILTER_NONE, &signatures, ARG_SET(OPT_BATCH_MODE_ID));
-	if (r < 0)
-		goto out;
+	if (!ARG_SET(OPT_DISABLE_BLKID_ID)) {
+		r = tools_detect_signatures(action_argv[0], PRB_FILTER_NONE, &signatures, ARG_SET(OPT_BATCH_MODE_ID));
+		if (r < 0) {
+			if (r == -EIO)
+				log_err(_("Blkid scan failed for %s."), action_argv[0]);
+			goto out;
+		}
 
-	/* Signature candidates found */
-	if (signatures && ((r = tools_wipe_all_signatures(action_argv[0], true, false)) < 0))
-		goto out;
+		/* Signature candidates found */
+		if (signatures && ((r = tools_wipe_all_signatures(action_argv[0], true, false)) < 0))
+			goto out;
+	}
 
 	if (ARG_SET(OPT_INTEGRITY_LEGACY_PADDING_ID))
 		crypt_set_compatibility(cd, CRYPT_COMPAT_LEGACY_INTEGRITY_PADDING);
@@ -212,8 +204,12 @@ static int action_format(void)
 		log_std(_("Formatted with tag size %u, internal integrity %s.\n"),
 			params2.tag_size, params2.integrity);
 
-	if (!ARG_SET(OPT_NO_WIPE_ID))
+	if (!ARG_SET(OPT_NO_WIPE_ID)) {
 		r = _wipe_data_device(cd, integrity_key);
+		/* Interrupted wipe should not fail format action */
+		if (r == -EINTR)
+			r = 0;
+	}
 out:
 	crypt_safe_free(integrity_key);
 	crypt_safe_free(CONST_CAST(void*)params.journal_integrity_key);
@@ -660,6 +656,9 @@ int main(int argc, const char **argv)
 	textdomain(PACKAGE);
 
 	popt_context = poptGetContext("integrity", argc, argv, popt_options, 0);
+	if (!popt_context)
+		exit(EXIT_FAILURE);
+
 	poptSetOtherOptionHelp(popt_context,
 	                       _("[OPTION...] <action> <action-specific>"));
 

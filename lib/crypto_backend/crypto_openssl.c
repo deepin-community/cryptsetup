@@ -1,36 +1,15 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later WITH cryptsetup-OpenSSL-exception
 /*
  * OPENSSL crypto backend implementation
  *
- * Copyright (C) 2010-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2023 Milan Broz
- *
- * This file is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this file; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * In addition, as a special exception, the copyright holders give
- * permission to link the code of portions of this program with the
- * OpenSSL library under certain conditions as described in each
- * individual source file, and distribute linked combinations
- * including the two.
- *
- * You must obey the GNU Lesser General Public License in all respects
- * for all of the code used other than OpenSSL.
+ * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2024 Milan Broz
  */
 
-#include <string.h>
+#include <stdio.h>
 #include <errno.h>
 #include <limits.h>
+#include <strings.h>
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
@@ -44,9 +23,20 @@ static OSSL_PROVIDER *ossl_legacy = NULL;
 static OSSL_PROVIDER *ossl_default = NULL;
 static OSSL_LIB_CTX  *ossl_ctx = NULL;
 static char backend_version[256] = "OpenSSL";
+
+#define MAX_THREADS 8
+#if !HAVE_DECL_OSSL_GET_MAX_THREADS
+static int OSSL_set_max_threads(OSSL_LIB_CTX *ctx __attribute__((unused)),
+				uint64_t max_threads __attribute__((unused))) { return 0; }
+static uint64_t OSSL_get_max_threads(OSSL_LIB_CTX *ctx __attribute__((unused))) { return 0; }
+#else
+#include <openssl/thread.h>
+#endif
+
 #endif
 
 #define CONST_CAST(x) (x)(uintptr_t)
+#define UNUSED(x) (void)(x)
 
 static int crypto_backend_initialised = 0;
 
@@ -162,6 +152,7 @@ static int openssl_backend_init(bool fips)
  */
 #if OPENSSL_VERSION_MAJOR >= 3
 	int r;
+	bool ossl_threads = false;
 
 	/*
 	 * In FIPS mode we keep default OpenSSL context & global config
@@ -181,16 +172,24 @@ static int openssl_backend_init(bool fips)
 		ossl_legacy = OSSL_PROVIDER_try_load(ossl_ctx, "legacy", 0);
 	}
 
-	r = snprintf(backend_version, sizeof(backend_version), "%s %s%s%s",
+	if (OSSL_set_max_threads(ossl_ctx, MAX_THREADS) == 1 &&
+	    OSSL_get_max_threads(ossl_ctx) == MAX_THREADS)
+		ossl_threads = true;
+
+	r = snprintf(backend_version, sizeof(backend_version), "%s %s%s%s%s%s",
 		OpenSSL_version(OPENSSL_VERSION),
 		ossl_default ? "[default]" : "",
 		ossl_legacy  ? "[legacy]" : "",
-		fips  ? "[fips]" : "");
+		fips  ? "[fips]" : "",
+		ossl_threads ? "[threads]" : "",
+		crypt_backend_flags() & CRYPT_BACKEND_ARGON2 ? "[argon2]" : "");
 
 	if (r < 0 || (size_t)r >= sizeof(backend_version)) {
 		openssl_backend_exit();
 		return -EINVAL;
 	}
+#else
+	UNUSED(fips);
 #endif
 	return 0;
 }
@@ -232,11 +231,14 @@ void crypt_backend_destroy(void)
 
 uint32_t crypt_backend_flags(void)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
-	return 0;
-#else
-	return CRYPT_BACKEND_PBKDF2_INT;
+	uint32_t flags = 0;
+#if OPENSSL_VERSION_MAJOR < 3
+	flags |= CRYPT_BACKEND_PBKDF2_INT;
 #endif
+#if HAVE_DECL_OSSL_KDF_PARAM_ARGON2_VERSION
+	flags |= CRYPT_BACKEND_ARGON2;
+#endif
+	return flags;
 }
 
 const char *crypt_backend_version(void)
@@ -281,6 +283,8 @@ static void hash_id_free(const EVP_MD *hash_id)
 {
 #if OPENSSL_VERSION_MAJOR >= 3
 	EVP_MD_free(CONST_CAST(EVP_MD*)hash_id);
+#else
+	UNUSED(hash_id);
 #endif
 }
 
@@ -297,6 +301,8 @@ static void cipher_type_free(const EVP_CIPHER *cipher_type)
 {
 #if OPENSSL_VERSION_MAJOR >= 3
 	EVP_CIPHER_free(CONST_CAST(EVP_CIPHER*)cipher_type);
+#else
+	UNUSED(cipher_type);
 #endif
 }
 
@@ -391,7 +397,6 @@ void crypt_hash_destroy(struct crypt_hash *ctx)
 {
 	hash_id_free(ctx->hash_id);
 	EVP_MD_CTX_free(ctx->md);
-	memset(ctx, 0, sizeof(*ctx));
 	free(ctx);
 }
 
@@ -527,7 +532,6 @@ void crypt_hmac_destroy(struct crypt_hmac *ctx)
 	hash_id_free(ctx->hash_id);
 	HMAC_CTX_free(ctx->md);
 #endif
-	memset(ctx, 0, sizeof(*ctx));
 	free(ctx);
 }
 
@@ -593,8 +597,53 @@ static int openssl_argon2(const char *type, const char *password, size_t passwor
 	const char *salt, size_t salt_length, char *key, size_t key_length,
 	uint32_t iterations, uint32_t memory, uint32_t parallel)
 {
+#if HAVE_DECL_OSSL_KDF_PARAM_ARGON2_VERSION
+	EVP_KDF_CTX *ctx;
+	EVP_KDF *argon2;
+	unsigned int threads = parallel;
+	int r;
+	OSSL_PARAM params[] = {
+		OSSL_PARAM_octet_string(OSSL_KDF_PARAM_PASSWORD,
+			CONST_CAST(void*)password, password_length),
+		OSSL_PARAM_octet_string(OSSL_KDF_PARAM_SALT,
+			CONST_CAST(void*)salt, salt_length),
+		OSSL_PARAM_uint32(OSSL_KDF_PARAM_ITER, &iterations),
+		OSSL_PARAM_uint(OSSL_KDF_PARAM_THREADS, &threads),
+		OSSL_PARAM_uint32(OSSL_KDF_PARAM_ARGON2_LANES, &parallel),
+		OSSL_PARAM_uint32(OSSL_KDF_PARAM_ARGON2_MEMCOST, &memory),
+		OSSL_PARAM_END
+	};
+
+	if (OSSL_get_max_threads(ossl_ctx) == 0)
+		threads = 1;
+
+	argon2 = EVP_KDF_fetch(ossl_ctx, type, NULL);
+	if (!argon2)
+		return -EINVAL;
+
+	ctx = EVP_KDF_CTX_new(argon2);
+	if (!ctx) {
+		EVP_KDF_free(argon2);
+		return -EINVAL;
+	}
+
+	if (EVP_KDF_CTX_set_params(ctx, params) != 1) {
+		EVP_KDF_CTX_free(ctx);
+		EVP_KDF_free(argon2);
+		return -EINVAL;
+	}
+
+	r = EVP_KDF_derive(ctx, (unsigned char*)key, key_length, NULL /*params*/);
+
+	EVP_KDF_CTX_free(ctx);
+	EVP_KDF_free(argon2);
+
+	/* _derive() returns 0 or negative value on error, 1 on success */
+	return r == 1 ? 0 : -EINVAL;
+#else
 	return argon2(type, password, password_length, salt, salt_length,
 		      key, key_length, iterations, memory, parallel);
+#endif
 }
 
 /* PBKDF */

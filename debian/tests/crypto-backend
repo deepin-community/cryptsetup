@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# Check crypto backend, see https://gitlab.com/cryptsetup/cryptsetup/-/issues/851 .
+
+set -ue
+PATH="/usr/bin:/bin"
+export PATH
+
+CRYPTSETUP="/sbin/cryptsetup"
+
+NAME="crypto-backend"
+TEMPDIR="$AUTOPKGTEST_TMP/$NAME"
+
+mkdir "$TEMPDIR"
+trap 'rm -rf -- "$TEMPDIR"' EXIT INT TERM
+
+IMG="$TEMPDIR/disk.img"
+KEYFILE="$TEMPDIR/keyfile"
+DEBUG="$TEMPDIR/debug"
+
+dd if=/dev/zero bs=1M count=64 status="none" of="$IMG"
+head -c32 /dev/urandom >"$KEYFILE"
+
+"$CRYPTSETUP" luksFormat --batch-mode \
+    --key-file="$KEYFILE" \
+    --type=luks2 \
+    --pbkdf=argon2id \
+    --pbkdf-force-iterations=4 \
+    --pbkdf-memory=32 \
+    -- "$IMG"
+
+"$CRYPTSETUP" luksOpen --debug --key-file="$KEYFILE" --test-passphrase "$IMG" >"$DEBUG"
+sed -nri '/^# Crypto backend\s+/ {s/.*?\(([^()]+)\).*/\1/p;q}' "$DEBUG"
+cat "$DEBUG"
+
+if ! grep -qE '^OpenSSL\b' <"$DEBUG"; then
+    echo "ERROR: Crypto backend isn't OpenSSL" >&2
+    exit 1
+fi
+
+sed -ri 's/^[^\[]*//' "$DEBUG"
+# " [cryptsetup libargon2]": bundled libargon2
+# " [external libargon2]": system libargon2
+# "][argon2]": crypto backend's own implementation
+if ! grep -qF "][argon2]" <"$DEBUG"; then
+    echo "ERROR: Unexpected argon2 backend" >&2
+    exit 1
+fi
+
+LIBCRYPTSETUP="$(env --unset=LD_PRELOAD ldd "$CRYPTSETUP" | sed -nr '/^\s*libcryptsetup\.so(\.[0-9]+)*\s+=>\s+/ {s///;s/\s.*//;p;q}')"
+if [ -z "$LIBCRYPTSETUP" ] || [ ! -e "$LIBCRYPTSETUP" ]; then
+    echo "ERROR: $CRYPTSETUP doesn't link against libcryptsetup??" >&2
+    exit 1
+fi
+
+assert_linked_argon2() {
+    local path="$1"
+    if env --unset=LD_PRELOAD ldd "$path" | grep -qE '^\s*libargon2\.so(\.[0-9]+)*\s+=>\s'; then
+        echo "ERROR: $path links against libargon2" >&2
+        exit 1
+    fi
+    return 0
+}
+
+assert_linked_argon2 "$CRYPTSETUP"
+assert_linked_argon2 "$LIBCRYPTSETUP"

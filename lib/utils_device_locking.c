@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Metadata on-disk locking for processes serialization
  *
- * Copyright (C) 2016-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2016-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2024 Ondrej Kozina
  */
 
 #include <errno.h>
@@ -134,7 +121,7 @@ static int open_resource(struct crypt_device *cd, const char *res)
 		return -EINVAL;
 
 	log_dbg(cd, "Opening lock resource file %s/%s", DEFAULT_LUKS2_LOCK_PATH, res);
-	r = openat(lockdir_fd, res, O_CREAT | O_NOFOLLOW | O_RDWR | O_CLOEXEC, 0777);
+	r = openat(lockdir_fd, res, O_CREAT|O_NOFOLLOW|O_RDWR|O_CLOEXEC, S_IRUSR|S_IWUSR|S_IRGRP|S_IROTH);
 	err = errno;
 
 	close(lockdir_fd);
@@ -403,30 +390,6 @@ int device_write_lock_internal(struct crypt_device *cd, struct device *device)
 	log_dbg(cd, "Device %s WRITE lock taken.", device_path(device));
 
 	return 1;
-}
-
-int crypt_read_lock(struct crypt_device *cd, const char *resource, bool blocking, struct crypt_lock_handle **lock)
-{
-	int r;
-	struct crypt_lock_handle *h;
-
-	if (!resource)
-		return -EINVAL;
-
-	log_dbg(cd, "Acquiring %sblocking read lock for resource %s.", blocking ? "" : "non", resource);
-
-	r = acquire_and_verify(cd, NULL, resource, LOCK_SH | (blocking ? 0 : LOCK_NB), &h);
-	if (r < 0)
-		return r;
-
-	h->type = DEV_LOCK_READ;
-	h->refcnt = 1;
-
-	log_dbg(cd, "READ lock for resource %s taken.", resource);
-
-	*lock = h;
-
-	return 0;
 }
 
 int crypt_write_lock(struct crypt_device *cd, const char *resource, bool blocking, struct crypt_lock_handle **lock)

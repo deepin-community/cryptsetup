@@ -1,21 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * blkid probe utilities
  *
- * Copyright (C) 2018-2023 Red Hat, Inc. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2018-2024 Red Hat, Inc. All rights reserved.
  */
 
 #include <errno.h>
@@ -29,6 +16,7 @@
 #include "utils_io.h"
 
 #ifdef HAVE_BLKID
+
 #include <blkid/blkid.h>
 /* make bad checksums flag optional */
 #ifndef BLKID_SUBLKS_BADCSUM
@@ -45,11 +33,9 @@ static size_t crypt_getpagesize(void)
 	return r <= 0 ? 4096 : (size_t)r;
 }
 #endif
-#endif
 
 void blk_set_chains_for_wipes(struct blkid_handle *h)
 {
-#ifdef HAVE_BLKID
 	blkid_probe_enable_partitions(h->pr, 1);
 	blkid_probe_set_partitions_flags(h->pr, 0
 #ifdef HAVE_BLKID_WIPE
@@ -65,7 +51,6 @@ void blk_set_chains_for_wipes(struct blkid_handle *h)
 						 BLKID_SUBLKS_VERSION |
 						 BLKID_SUBLKS_MAGIC   |
 						 BLKID_SUBLKS_BADCSUM);
-#endif
 }
 
 void blk_set_chains_for_full_print(struct blkid_handle *h)
@@ -75,25 +60,19 @@ void blk_set_chains_for_full_print(struct blkid_handle *h)
 
 void blk_set_chains_for_superblocks(struct blkid_handle *h)
 {
-#ifdef HAVE_BLKID
 	blkid_probe_enable_superblocks(h->pr, 1);
 	blkid_probe_set_superblocks_flags(h->pr, BLKID_SUBLKS_TYPE);
-#endif
 }
 
 void blk_set_chains_for_fast_detection(struct blkid_handle *h)
 {
-#ifdef HAVE_BLKID
 	blkid_probe_enable_partitions(h->pr, 1);
 	blkid_probe_set_partitions_flags(h->pr, 0);
 	blk_set_chains_for_superblocks(h);
-#endif
 }
 
 int blk_init_by_path(struct blkid_handle **h, const char *path)
 {
-	int r = -ENOTSUP;
-#ifdef HAVE_BLKID
 	struct blkid_handle *tmp = malloc(sizeof(*tmp));
 	if (!tmp)
 		return -ENOMEM;
@@ -107,16 +86,11 @@ int blk_init_by_path(struct blkid_handle **h, const char *path)
 	}
 
 	*h = tmp;
-
-	r = 0;
-#endif
-	return r;
+	return 0;
 }
 
 int blk_init_by_fd(struct blkid_handle **h, int fd)
 {
-	int r = -ENOTSUP;
-#ifdef HAVE_BLKID
 	struct blkid_handle *tmp = malloc(sizeof(*tmp));
 	if (!tmp)
 		return -ENOMEM;
@@ -136,13 +110,9 @@ int blk_init_by_fd(struct blkid_handle **h, int fd)
 	tmp->fd = fd;
 
 	*h = tmp;
-
-	r = 0;
-#endif
-	return r;
+	return 0;
 }
 
-#ifdef HAVE_BLKID
 static int blk_superblocks_luks(struct blkid_handle *h, bool enable)
 {
 	char luks[] = "crypto_LUKS";
@@ -154,47 +124,34 @@ static int blk_superblocks_luks(struct blkid_handle *h, bool enable)
 			enable ? BLKID_FLTR_ONLYIN : BLKID_FLTR_NOTIN,
 			luks_filter);
 }
-#endif
 
 int blk_superblocks_filter_luks(struct blkid_handle *h)
 {
-	int r = -ENOTSUP;
-#ifdef HAVE_BLKID
-	r = blk_superblocks_luks(h, false);
-#endif
-	return r;
+	return blk_superblocks_luks(h, false);
 }
 
 int blk_superblocks_only_luks(struct blkid_handle *h)
 {
-	int r = -ENOTSUP;
-#ifdef HAVE_BLKID
-	r = blk_superblocks_luks(h, true);
-#endif
-	return r;
+	return blk_superblocks_luks(h, true);
 }
 
 blk_probe_status blk_probe(struct blkid_handle *h)
 {
 	blk_probe_status pr = PRB_FAIL;
-#ifdef HAVE_BLKID
+
 	int r = blkid_do_probe(h->pr);
 
 	if (r == 0)
 		pr = PRB_OK;
 	else if (r == 1)
 		pr = PRB_EMPTY;
-#endif
+
 	return pr;
 }
 
 blk_probe_status blk_safeprobe(struct blkid_handle *h)
 {
-	int r = -1;
-#ifdef HAVE_BLKID
-	r = blkid_do_safeprobe(h->pr);
-#endif
-	switch (r) {
+	switch (blkid_do_safeprobe(h->pr)) {
 	case -2:
 		return PRB_AMBIGUOUS;
 	case 1:
@@ -208,43 +165,30 @@ blk_probe_status blk_safeprobe(struct blkid_handle *h)
 
 int blk_is_partition(struct blkid_handle *h)
 {
-	int r = 0;
-#ifdef HAVE_BLKID
-	r = blkid_probe_has_value(h->pr, "PTTYPE");
-#endif
-	return r;
+	return blkid_probe_has_value(h->pr, "PTTYPE");
 }
 
 int blk_is_superblock(struct blkid_handle *h)
 {
-	int r = 0;
-#ifdef HAVE_BLKID
-	r = blkid_probe_has_value(h->pr, "TYPE");
-#endif
-	return r;
+	return blkid_probe_has_value(h->pr, "TYPE");
 }
 
 const char *blk_get_partition_type(struct blkid_handle *h)
 {
 	const char *value = NULL;
-#ifdef HAVE_BLKID
 	(void) blkid_probe_lookup_value(h->pr, "PTTYPE", &value, NULL);
-#endif
 	return value;
 }
 
 const char *blk_get_superblock_type(struct blkid_handle *h)
 {
 	const char *value = NULL;
-#ifdef HAVE_BLKID
 	(void) blkid_probe_lookup_value(h->pr, "TYPE", &value, NULL);
-#endif
 	return value;
 }
 
 void blk_free(struct blkid_handle *h)
 {
-#ifdef HAVE_BLKID
 	if (!h)
 		return;
 
@@ -252,10 +196,8 @@ void blk_free(struct blkid_handle *h)
 		blkid_free_probe(h->pr);
 
 	free(h);
-#endif
 }
 
-#ifdef HAVE_BLKID
 #ifndef HAVE_BLKID_WIPE
 static int blk_step_back(struct blkid_handle *h)
 {
@@ -268,11 +210,9 @@ static int blk_step_back(struct blkid_handle *h)
 #endif
 }
 #endif /* not HAVE_BLKID_WIPE */
-#endif /* HAVE_BLKID */
 
 int blk_do_wipe(struct blkid_handle *h)
 {
-#ifdef HAVE_BLKID
 #ifdef HAVE_BLKID_WIPE
 	return blkid_do_wipe(h->pr, 0);
 #else
@@ -319,29 +259,110 @@ int blk_do_wipe(struct blkid_handle *h)
 
 	return -EIO;
 #endif
-#else /* HAVE_BLKID */
-	return -ENOTSUP;
-#endif
 }
 
 int blk_supported(void)
 {
-	int r = 0;
-#ifdef HAVE_BLKID
-	r = 1;
-#endif
-	return r;
+	return 1;
 }
 
 unsigned blk_get_block_size(struct blkid_handle *h)
 {
 	unsigned block_size = 0;
-#ifdef HAVE_BLKID
 	const char *data;
 	if (!blk_is_superblock(h) || !blkid_probe_has_value(h->pr, "BLOCK_SIZE") ||
 	    blkid_probe_lookup_value(h->pr, "BLOCK_SIZE", &data, NULL) ||
 	    sscanf(data, "%u", &block_size) != 1)
 		block_size = 0;
-#endif
+
 	return block_size;
 }
+
+#else /* HAVE_BLKID */
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
+void blk_set_chains_for_wipes(struct blkid_handle *h)
+{
+}
+
+void blk_set_chains_for_full_print(struct blkid_handle *h)
+{
+}
+
+void blk_set_chains_for_superblocks(struct blkid_handle *h)
+{
+}
+
+void blk_set_chains_for_fast_detection(struct blkid_handle *h)
+{
+}
+
+int blk_init_by_path(struct blkid_handle **h, const char *path)
+{
+	return -ENOTSUP;
+}
+
+int blk_init_by_fd(struct blkid_handle **h, int fd)
+{
+	return -ENOTSUP;
+}
+
+int blk_superblocks_filter_luks(struct blkid_handle *h)
+{
+	return -ENOTSUP;
+}
+
+int blk_superblocks_only_luks(struct blkid_handle *h)
+{
+	return -ENOTSUP;
+}
+
+blk_probe_status blk_probe(struct blkid_handle *h)
+{
+	return PRB_FAIL;
+}
+
+blk_probe_status blk_safeprobe(struct blkid_handle *h)
+{
+	return PRB_FAIL;
+}
+
+int blk_is_partition(struct blkid_handle *h)
+{
+	return 0;
+}
+
+int blk_is_superblock(struct blkid_handle *h)
+{
+	return 0;
+}
+
+const char *blk_get_partition_type(struct blkid_handle *h)
+{
+	return NULL;
+}
+
+const char *blk_get_superblock_type(struct blkid_handle *h)
+{
+	return NULL;
+}
+
+void blk_free(struct blkid_handle *h)
+{
+}
+
+int blk_do_wipe(struct blkid_handle *h)
+{
+	return -ENOTSUP;
+}
+
+int blk_supported(void)
+{
+	return 0;
+}
+
+unsigned blk_get_block_size(struct blkid_handle *h)
+{
+	return 0;
+}
+#endif

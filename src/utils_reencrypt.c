@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * cryptsetup - action re-encryption utilities
  *
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- * Copyright (C) 2021-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2021-2024 Ondrej Kozina
  */
 
 #include <uuid/uuid.h>
@@ -306,7 +293,7 @@ static int reencrypt_luks2_load(struct crypt_device *cd, const char *data_device
 	if (!ARG_SET(OPT_BATCH_MODE_ID) && !ARG_SET(OPT_RESUME_ONLY_ID)) {
 		r = asprintf(&msg, _("Device %s is already in LUKS2 reencryption. "
 				     "Do you wish to resume previously initialised operation?"),
-			     crypt_get_metadata_device_name(cd) ?: data_device);
+			     crypt_get_metadata_device_name(cd) ?: crypt_get_device_name(cd));
 		if (r < 0) {
 			r = -ENOMEM;
 			goto out;
@@ -348,11 +335,6 @@ static int luks2_reencrypt_in_progress(struct crypt_device *cd)
 
 	if (crypt_persistent_flags_get(cd, CRYPT_FLAGS_REQUIREMENTS, &flags))
 		return -EINVAL;
-
-	if (flags & CRYPT_REQUIREMENT_OFFLINE_REENCRYPT) {
-		log_err(_("Legacy LUKS2 reencryption is no longer supported."));
-		return -EINVAL;
-	}
 
 	return flags & CRYPT_REQUIREMENT_ONLINE_REENCRYPT;
 }
@@ -411,11 +393,31 @@ static enum device_status_info load_luks(struct crypt_device **r_cd,
 
 static bool luks2_reencrypt_eligible(struct crypt_device *cd)
 {
+	uint32_t flags;
 	struct crypt_params_integrity ip = { 0 };
+
+	if (crypt_persistent_flags_get(cd, CRYPT_FLAGS_REQUIREMENTS, &flags))
+		return false;
+
+	if (flags & CRYPT_REQUIREMENT_OFFLINE_REENCRYPT) {
+		log_err(_("Legacy LUKS2 reencryption is no longer supported."));
+		return false;
+	}
+
+	if (flags & CRYPT_REQUIREMENT_OPAL) {
+		log_err(_("Can not reencrypt LUKS2 device configured to use OPAL."));
+		return false;
+	}
 
 	/* raw integrity info is available since 2.0 */
 	if (crypt_get_integrity_info(cd, &ip) || ip.tag_size) {
 		log_err(_("Reencryption of device with integrity profile is not supported."));
+		return false;
+	}
+
+	/* Check that cipher is in compatible format */
+	if (!crypt_get_cipher(cd)) {
+		log_err(_("No known cipher specification pattern detected in LUKS2 header."));
 		return false;
 	}
 
@@ -721,50 +723,58 @@ static int reencrypt_restore_header(struct crypt_device **cd,
 }
 
 static int decrypt_luks2_datashift_init(struct crypt_device **cd,
-	const char *data_device,
 	const char *expheader)
 {
 	int fd, r;
 	size_t passwordLen;
 	struct stat hdr_st;
+	char *msg, *data_device, *active_name = NULL, *password = NULL;
 	bool remove_header = false;
-	char *msg, *active_name = NULL, *password = NULL;
 	struct crypt_params_reencrypt params = {
 		.mode = CRYPT_REENCRYPT_DECRYPT,
 		.direction = CRYPT_REENCRYPT_FORWARD,
 		.resilience = "datashift-checksum",
 		.hash = ARG_STR(OPT_RESILIENCE_HASH_ID) ?: "sha256",
-		.data_shift = crypt_get_data_offset(*cd),
 		.device_size = ARG_UINT64(OPT_DEVICE_SIZE_ID) / SECTOR_SIZE,
 		.max_hotzone_size = ARG_UINT64(OPT_HOTZONE_SIZE_ID) / SECTOR_SIZE,
 		.flags = CRYPT_REENCRYPT_MOVE_FIRST_SEGMENT
 	};
 
+	assert(expheader);
+	assert(cd && *cd);
+
+	params.data_shift = crypt_get_data_offset(*cd);
+
+	if (!(data_device = strdup(crypt_get_device_name(*cd))))
+		return -ENOMEM;
+
 	if (!ARG_SET(OPT_BATCH_MODE_ID)) {
 		r = asprintf(&msg, _("Header file %s does not exist. Do you want to initialize LUKS2 "
 				     "decryption of device %s and export LUKS2 header to file %s?"),
 			     expheader, data_device, expheader);
-		if (r < 0)
-			return -ENOMEM;
+		if (r < 0) {
+			r = -ENOMEM;
+			goto out;
+		}
 		r = yesDialog(msg, _("Operation aborted.\n")) ? 0 : -EINVAL;
 		free(msg);
 		if (r < 0)
-			return r;
+			goto out;
 	}
 
 	if ((r = decrypt_verify_and_set_params(&params)))
-		return r;
+		goto out;
 
 	r = reencrypt_hint_force_offline_reencrypt(data_device);
 	if (r < 0)
-		return r;
+		goto out;
 
 	r = tools_get_key(NULL, &password, &passwordLen,
 			ARG_UINT64(OPT_KEYFILE_OFFSET_ID), ARG_UINT32(OPT_KEYFILE_SIZE_ID),
 			ARG_STR(OPT_KEY_FILE_ID), ARG_UINT32(OPT_TIMEOUT_ID),
 			verify_passphrase(0), 0, *cd);
 	if (r < 0)
-		return r;
+		goto out;
 
 	r = reencrypt_check_passphrase(*cd, ARG_INT32(OPT_KEY_SLOT_ID), password, passwordLen);
 	if (r < 0)
@@ -839,6 +849,7 @@ static int decrypt_luks2_datashift_init(struct crypt_device **cd,
 	}
 out:
 	free(active_name);
+	free(data_device);
 	crypt_safe_free(password);
 
 	if (r < 0 && !remove_header && !stat(expheader, &hdr_st) && S_ISREG(hdr_st.st_mode))
@@ -1322,9 +1333,15 @@ static int check_broken_luks_signature(const char *device)
 	int r;
 	size_t count;
 
+	if (ARG_SET(OPT_DISABLE_BLKID_ID))
+		return 0;
+
 	r = tools_detect_signatures(device, PRB_ONLY_LUKS, &count, ARG_SET(OPT_BATCH_MODE_ID));
-	if (r < 0)
+	if (r < 0) {
+		if (r == -EIO)
+			log_err(_("Blkid scan failed for %s."), device);
 		return -EINVAL;
+	}
 	if (count) {
 		log_err(_("Device %s contains broken LUKS metadata. Aborting operation."), device);
 		return -EINVAL;
@@ -1421,7 +1438,8 @@ static int _decrypt(struct crypt_device **cd, enum device_status_info dev_st, co
 
 	assert(cd);
 
-	if (dev_st == DEVICE_LUKS1 || dev_st == DEVICE_LUKS1_UNUSABLE)
+	if (dev_st == DEVICE_LUKS1 || dev_st == DEVICE_LUKS1_UNUSABLE ||
+	    (dev_st == DEVICE_NOT_LUKS && ARG_SET(OPT_UUID_ID) && !ARG_SET(OPT_HEADER_ID)))
 		return reencrypt_luks1(data_device);
 
 	/* header file does not exist, try loading device type from data device */
@@ -1449,13 +1467,15 @@ static int _decrypt(struct crypt_device **cd, enum device_status_info dev_st, co
 		if ((r = reencrypt_luks2_load(*cd, data_device)) < 0)
 			return r;
 	} else if (dev_st == DEVICE_LUKS2) {
+		if (!luks2_reencrypt_eligible(*cd))
+			return -EINVAL;
 		if (!ARG_SET(OPT_HEADER_ID)) {
 			log_err(_("LUKS2 decryption requires --header option."));
 			return -EINVAL;
 		}
 
 		if (export_header)
-			r = decrypt_luks2_datashift_init(cd, data_device, ARG_STR(OPT_HEADER_ID));
+			r = decrypt_luks2_datashift_init(cd, ARG_STR(OPT_HEADER_ID));
 		else
 			r = decrypt_luks2_init(*cd, data_device);
 

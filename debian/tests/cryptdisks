@@ -151,7 +151,7 @@ cryptdisks_stop plain_crypt
 
 disk_setup
 cat >/etc/crypttab <<-EOF
-	sector_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-cbc-essiv:sha256,size=256,sector-size=4096
+	sector_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-xts-plain64,size=256,sector-size=4096
 EOF
 
 cryptdisks_start sector_crypt
@@ -168,7 +168,7 @@ cryptdisks_stop sector_crypt
 disk_setup
 cat /proc/sys/kernel/random/uuid >"$TMPDIR/passphrase"
 cat >/etc/crypttab <<-EOF
-	hash_crypt $CRYPT_DEV none plain,cipher=aes-cbc-essiv:sha256,size=256,hash=sha256
+	hash_crypt $CRYPT_DEV none plain,cipher=aes-xts-plain64,size=256,hash=sha256
 EOF
 
 cryptdisks_start hash_crypt </dev/tty & pid=$!
@@ -192,7 +192,7 @@ offset=2048 # in 512 byte sectors
 skip=256    # in 512 byte sectors
 disk_setup
 cat >/etc/crypttab <<-EOF
-	offset_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-cbc-essiv:sha256,size=256,offset=$offset,skip=$skip
+	offset_crypt $CRYPT_DEV /dev/urandom plain,cipher=aes-xts-plain64,size=256,offset=$offset,skip=$skip
 EOF
 
 # having an existing file system before the offset has no effect (cf. #994056)

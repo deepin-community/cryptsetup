@@ -1,9 +1,9 @@
 AC_PREREQ([2.67])
-AC_INIT([cryptsetup],[2.6.1])
+AC_INIT([cryptsetup],[2.7.5])
 
 dnl library version from <major>.<minor>.<release>[-<suffix>]
 LIBCRYPTSETUP_VERSION=$(echo $PACKAGE_VERSION | cut -f1 -d-)
-LIBCRYPTSETUP_VERSION_INFO=21:0:9
+LIBCRYPTSETUP_VERSION_INFO=22:0:10
 
 AM_SILENT_RULES([yes])
 AC_CONFIG_SRCDIR(src/cryptsetup.c)
@@ -128,12 +128,10 @@ if test "x$enable_largefile" = "xno"; then
   AC_MSG_ERROR([Building with --disable-largefile is not supported, it can cause data corruption.])
 fi
 
-AC_C_CONST
 AC_C_BIGENDIAN
 AC_TYPE_OFF_T
 AC_SYS_LARGEFILE
 AC_FUNC_FSEEKO
-AC_PROG_GCC_TRADITIONAL
 AC_FUNC_STRERROR_R
 
 dnl ==========================================================================
@@ -267,6 +265,9 @@ AC_DEFUN([CONFIGURE_GCRYPT], [
 		GCRYPT_REQ_VERSION=1.1.42
 	fi
 
+	use_internal_pbkdf2=0
+	use_internal_argon2=1
+
 	dnl libgcrypt rejects to use pkgconfig, use AM_PATH_LIBGCRYPT from gcrypt-devel here.
 	dnl Do not require gcrypt-devel if other crypto backend is used.
 	m4_ifdef([AM_PATH_LIBGCRYPT],[
@@ -290,7 +291,24 @@ AC_DEFUN([CONFIGURE_GCRYPT], [
 		NO_FIPS([])
 	fi
 
+	m4_ifdef([AM_PATH_LIBGCRYPT],[
+	AC_ARG_ENABLE([gcrypt-argon2],
+		dnl Check if we can use gcrypt Argon2 (1.11.0 supports empty password)
+		AS_HELP_STRING([--disable-gcrypt-argon2], [force disable internal gcrypt Argon2]),
+		[],
+		[AM_PATH_LIBGCRYPT([1.11.0], [use_internal_argon2=0], [use_internal_argon2=1])])
+	AM_PATH_LIBGCRYPT($GCRYPT_REQ_VERSION,,[AC_MSG_ERROR([You need the gcrypt library.])])],
+	AC_MSG_ERROR([Missing support for gcrypt: install gcrypt and regenerate configure.]))
+
+	AC_MSG_CHECKING([if internal cryptsetup Argon2 is compiled-in])
+	if test $use_internal_argon2 = 0; then
+		AC_MSG_RESULT([no])
+	else
+		AC_MSG_RESULT([yes])
+	fi
+
 	AC_CHECK_DECLS([GCRY_CIPHER_MODE_XTS], [], [], [#include <gcrypt.h>])
+	AC_CHECK_DECLS([GCRY_KDF_ARGON2], [], [], [#include <gcrypt.h>])
 
 	if test "x$enable_static_cryptsetup" = "xyes"; then
 		saved_LIBS=$LIBS
@@ -310,19 +328,25 @@ AC_DEFUN([CONFIGURE_GCRYPT], [
 ])
 
 AC_DEFUN([CONFIGURE_OPENSSL], [
-	PKG_CHECK_MODULES([OPENSSL], [openssl >= 0.9.8],,
+	PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto >= 0.9.8],,
 		AC_MSG_ERROR([You need openssl library.]))
-	CRYPTO_CFLAGS=$OPENSSL_CFLAGS
-	CRYPTO_LIBS=$OPENSSL_LIBS
+	CRYPTO_CFLAGS=$LIBCRYPTO_CFLAGS
+	CRYPTO_LIBS=$LIBCRYPTO_LIBS
 	use_internal_pbkdf2=0
+	use_internal_argon2=1
 
 	if test "x$enable_static_cryptsetup" = "xyes"; then
 		saved_PKG_CONFIG=$PKG_CONFIG
 		PKG_CONFIG="$PKG_CONFIG --static"
-		PKG_CHECK_MODULES([OPENSSL_STATIC], [openssl])
-		CRYPTO_STATIC_LIBS=$OPENSSL_STATIC_LIBS
+		PKG_CHECK_MODULES([LIBCRYPTO_STATIC], [libcrypto])
+		CRYPTO_STATIC_LIBS=$LIBCRYPTO_STATIC_LIBS
 		PKG_CONFIG=$saved_PKG_CONFIG
 	fi
+
+	saved_LIBS=$LIBS
+	AC_CHECK_DECLS([OSSL_get_max_threads], [], [], [#include <openssl/thread.h>])
+	AC_CHECK_DECLS([OSSL_KDF_PARAM_ARGON2_VERSION], [use_internal_argon2=0], [], [#include <openssl/core_names.h>])
+	LIBS=$saved_LIBS
 ])
 
 AC_DEFUN([CONFIGURE_NSS], [
@@ -343,6 +367,7 @@ AC_DEFUN([CONFIGURE_NSS], [
 	CRYPTO_CFLAGS=$NSS_CFLAGS
 	CRYPTO_LIBS=$NSS_LIBS
 	use_internal_pbkdf2=1
+	use_internal_argon2=1
 	NO_FIPS([])
 ])
 
@@ -353,6 +378,7 @@ AC_DEFUN([CONFIGURE_KERNEL], [
 #		[AC_MSG_ERROR([You need Linux kernel with userspace crypto interface.])],
 #		[#include <sys/socket.h>])
 	use_internal_pbkdf2=1
+	use_internal_argon2=1
 	NO_FIPS([])
 ])
 
@@ -369,6 +395,7 @@ AC_DEFUN([CONFIGURE_NETTLE], [
 
 	CRYPTO_STATIC_LIBS=$CRYPTO_LIBS
 	use_internal_pbkdf2=0
+	use_internal_argon2=1
 	NO_FIPS([])
 ])
 
@@ -493,12 +520,21 @@ AC_ARG_ENABLE([internal-argon2],
 AC_ARG_ENABLE([libargon2],
 	AS_HELP_STRING([--enable-libargon2], [enable external libargon2 (PHC) library (disables internal bundled version)]))
 
-if test "x$enable_libargon2" = "xyes" ; then
+if test $use_internal_argon2 = 0 || ( test "x$enable_internal_argon2" = "xno" && test "x$enable_libargon2" != "xyes" ); then
+	if test "x$enable_internal_argon2" = "xyes" || test "x$enable_libargon2" = "xyes"; then
+		AC_MSG_NOTICE([Argon2 in $with_crypto_backend lib is used; internal Argon2 options are ignored.])
+	fi
+	enable_internal_argon2=no
+	enable_internal_sse_argon2=no
+	enable_libargon2=no
+	use_internal_argon2=0
+elif test "x$enable_libargon2" = "xyes" ; then
 	AC_CHECK_HEADERS(argon2.h,,
 		[AC_MSG_ERROR([You need libargon2 development library installed.])])
 	AC_CHECK_DECL(Argon2_id,,[AC_MSG_ERROR([You need more recent Argon2 library with support for Argon2id.])], [#include <argon2.h>])
 	PKG_CHECK_MODULES([LIBARGON2], [libargon2],,[LIBARGON2_LIBS="-largon2"])
 	enable_internal_argon2=no
+	use_internal_argon2=0
 else
 	AC_MSG_WARN([Argon2 bundled (slow) reference implementation will be used, please consider to use system library with --enable-libargon2.])
 
@@ -517,11 +553,10 @@ else
 	fi
 fi
 
-if test "x$enable_internal_argon2" = "xyes"; then
-	AC_DEFINE(USE_INTERNAL_ARGON2, 1, [Use internal Argon2])
-fi
 AM_CONDITIONAL(CRYPTO_INTERNAL_ARGON2, test "x$enable_internal_argon2" = "xyes")
 AM_CONDITIONAL(CRYPTO_INTERNAL_SSE_ARGON2, test "x$enable_internal_sse_argon2" = "xyes")
+dnl If libargon is in use, we have defined HAVE_ARGON2_H
+AC_DEFINE_UNQUOTED(USE_INTERNAL_ARGON2, [$use_internal_argon2], [Use internal Argon2])
 
 dnl Link with blkid to check for other device types
 AC_ARG_ENABLE([blkid],
@@ -555,6 +590,27 @@ fi
 AM_CONDITIONAL(HAVE_BLKID, test "x$enable_blkid" = "xyes")
 AM_CONDITIONAL(HAVE_BLKID_WIPE, test "x$enable_blkid_wipe" = "xyes")
 AM_CONDITIONAL(HAVE_BLKID_STEP_BACK, test "x$enable_blkid_step_back" = "xyes")
+
+AC_ARG_ENABLE([hw-opal],
+	AS_HELP_STRING([--disable-hw-opal], [disable use of hardware-backed OPAL for device encryption]),
+	[],
+	[enable_hw_opal=yes])
+
+if test "x$enable_hw_opal" = "xyes"; then
+	have_opal=yes
+	AC_CHECK_DECLS([ OPAL_FL_SUM_SUPPORTED,
+			 IOC_OPAL_GET_LR_STATUS,
+			 IOC_OPAL_GET_GEOMETRY
+		       ],
+		       [],
+		       [have_opal=no],
+		       [#include <linux/sed-opal.h>])
+	if test "x$have_opal" = "xyes"; then
+		AC_DEFINE([HAVE_HW_OPAL], 1, [Define to 1 to enable OPAL support.])
+	else
+		AC_MSG_WARN([Can not compile with OPAL support, kernel headers are too old, requires v6.4.])
+	fi
+fi
 
 dnl Magic for cryptsetup.static build.
 if test "x$enable_static_cryptsetup" = "xyes"; then
@@ -634,16 +690,16 @@ dnl Set Requires.private for libcryptsetup.pc
 dnl pwquality is used only by tools
 PKGMODULES="uuid devmapper json-c"
 case $with_crypto_backend in
-	gcrypt)  PKGMODULES+=" libgcrypt" ;;
-	openssl) PKGMODULES+=" openssl" ;;
-	nss)     PKGMODULES+=" nss" ;;
-	nettle)  PKGMODULES+=" nettle" ;;
+	gcrypt)  PKGMODULES="$PKGMODULES libgcrypt" ;;
+	openssl) PKGMODULES="$PKGMODULES openssl" ;;
+	nss)     PKGMODULES="$PKGMODULES nss" ;;
+	nettle)  PKGMODULES="$PKGMODULES nettle" ;;
 esac
 if test "x$enable_libargon2" = "xyes"; then
-	PKGMODULES+=" libargon2"
+	PKGMODULES="$PKGMODULES libargon2"
 fi
 if test "x$enable_blkid" = "xyes"; then
-	PKGMODULES+=" blkid"
+	PKGMODULES="$PKGMODULES blkid"
 fi
 AC_SUBST([PKGMODULES])
 dnl ==========================================================================
@@ -681,9 +737,9 @@ AC_DEFUN([CS_ABSPATH], [
 ])
 
 dnl ==========================================================================
-CS_STR_WITH([plain-hash],   [password hashing function for plain mode], [ripemd160])
+CS_STR_WITH([plain-hash],   [password hashing function for plain mode], [sha256])
 CS_STR_WITH([plain-cipher], [cipher for plain mode], [aes])
-CS_STR_WITH([plain-mode],   [cipher mode for plain mode], [cbc-essiv:sha256])
+CS_STR_WITH([plain-mode],   [cipher mode for plain mode], [xts-plain64])
 CS_NUM_WITH([plain-keybits],[key length in bits for plain mode], [256])
 
 CS_STR_WITH([luks1-hash],   [hash function for LUKS1 header], [sha256])

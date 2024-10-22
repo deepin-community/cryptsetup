@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Veritysetup command line arguments list
  *
- * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2020-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2024 Ondrej Kozina
  */
 
 /* long name, short name, popt type, help description, units, internal argument type, default value, allowed actions (empty=global) */
@@ -62,6 +49,8 @@ ARG(OPT_ROOT_HASH_FILE, '\0', POPT_ARG_STRING, N_("Path to root hash file"), NUL
 ARG(OPT_ROOT_HASH_SIGNATURE, '\0', POPT_ARG_STRING, N_("Path to root hash signature file"), NULL, CRYPT_ARG_STRING, {}, OPT_ROOT_HASH_SIGNATURE_ACTIONS)
 
 ARG(OPT_SALT, 's', POPT_ARG_STRING, N_("Salt"), N_("hex string"), CRYPT_ARG_STRING, {}, {})
+
+ARG(OPT_SHARED, '\0', POPT_ARG_NONE, N_("Share data device with another verity segment"), NULL, CRYPT_ARG_BOOL, {}, OPT_SHARED_ACTIONS )
 
 ARG(OPT_USE_TASKLETS, '\0', POPT_ARG_NONE, N_("Use kernel tasklets for performance"), NULL, CRYPT_ARG_BOOL, {}, OPT_USE_TASKLETS_ACTIONS)
 

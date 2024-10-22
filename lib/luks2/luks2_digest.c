@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, digest handling
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -157,7 +144,7 @@ int LUKS2_digest_dump(struct crypt_device *cd, int digest)
 }
 
 int LUKS2_digest_any_matching(struct crypt_device *cd,
-		struct luks2_hdr *hdr,
+		struct luks2_hdr *hdr __attribute__((unused)),
 		const struct volume_key *vk)
 {
 	int digest;
@@ -174,6 +161,18 @@ int LUKS2_digest_verify_by_segment(struct crypt_device *cd,
 	int segment,
 	const struct volume_key *vk)
 {
+	int r = -EINVAL;
+	unsigned s;
+
+	if (segment == CRYPT_ANY_SEGMENT) {
+		for (s = 0; s < json_segments_count(LUKS2_get_segments_jobj(hdr)); s++) {
+			if ((r = LUKS2_digest_verify_by_digest(cd, LUKS2_digest_by_segment(hdr, s), vk)) >= 0)
+				return r;
+		}
+
+		return -EPERM;
+	}
+
 	return LUKS2_digest_verify_by_digest(cd, LUKS2_digest_by_segment(hdr, segment), vk);
 }
 

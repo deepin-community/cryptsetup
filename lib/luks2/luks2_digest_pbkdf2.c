@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, PBKDF2 digest handler (LUKS1 compatible)
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -147,6 +134,9 @@ static int PBKDF2_digest_store(struct crypt_device *cd,
 		json_object_object_get_ex(hdr->jobj, "digests", &jobj_digests);
 	}
 
+	if (!jobj_digest)
+		return -ENOMEM;
+
 	json_object_object_add(jobj_digest, "type", json_object_new_string("pbkdf2"));
 	json_object_object_add(jobj_digest, "keyslots", json_object_new_array());
 	json_object_object_add(jobj_digest, "segments", json_object_new_array());
@@ -169,8 +159,13 @@ static int PBKDF2_digest_store(struct crypt_device *cd,
 	json_object_object_add(jobj_digest, "digest", json_object_new_string(base64_str));
 	free(base64_str);
 
-	if (jobj_digests)
-		json_object_object_add_by_uint(jobj_digests, digest, jobj_digest);
+	if (jobj_digests) {
+		r = json_object_object_add_by_uint(jobj_digests, digest, jobj_digest);
+		if (r < 0) {
+			json_object_put(jobj_digest);
+			return r;
+		}
+	}
 
 	JSON_DBG(cd, jobj_digest, "Digest JSON:");
 	return 0;

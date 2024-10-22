@@ -1,21 +1,8 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 /*
  * dm-verity volume handling
  *
- * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
- *
- * This file is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this file; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
  */
 
 #include <errno.h>
@@ -251,91 +238,134 @@ int VERITY_UUID_generate(char **uuid_string)
 	return 0;
 }
 
+int VERITY_verify_params(struct crypt_device *cd,
+	struct crypt_params_verity *hdr,
+	bool signed_root_hash,
+	struct device *fec_device,
+	struct volume_key *root_hash)
+{
+	bool userspace_verification;
+	int v, r;
+	unsigned int fec_errors = 0;
+
+	assert(cd);
+	assert(hdr);
+	assert(root_hash);
+
+	log_dbg(cd, "Verifying VERITY device using hash %s.",
+		hdr->hash_name);
+
+	userspace_verification = hdr->flags & CRYPT_VERITY_CHECK_HASH;
+
+	if (userspace_verification && signed_root_hash) {
+		log_err(cd, _("Root hash signature verification is not supported."));
+		return -EINVAL;
+	}
+
+	if ((hdr->flags & CRYPT_VERITY_ROOT_HASH_SIGNATURE) && !signed_root_hash) {
+		log_err(cd, _("Root hash signature required."));
+		return -EINVAL;
+	}
+
+	if (!userspace_verification)
+		return 0;
+
+	log_dbg(cd, "Verification of VERITY data in userspace required.");
+	r = VERITY_verify(cd, hdr, root_hash->key, root_hash->keylength);
+
+	if ((r == -EPERM || r == -EFAULT) && fec_device) {
+		v = r;
+		log_dbg(cd, "Verification failed, trying to repair with FEC device.");
+		r = VERITY_FEC_process(cd, hdr, fec_device, 1, &fec_errors);
+		if (r < 0)
+			log_err(cd, _("Errors cannot be repaired with FEC device."));
+		else if (fec_errors) {
+			log_err(cd, _("Found %u repairable errors with FEC device."),
+				fec_errors);
+			/* If root hash failed, we cannot be sure it was properly repaired */
+		}
+		if (v == -EFAULT)
+			r = -EPERM;
+	}
+
+	return r;
+}
+
 /* Activate verity device in kernel device-mapper */
 int VERITY_activate(struct crypt_device *cd,
 		     const char *name,
-		     const char *root_hash,
-		     size_t root_hash_size,
-		     const char *signature_description,
+		     struct volume_key *root_hash,
+		     struct volume_key *signature,
 		     struct device *fec_device,
 		     struct crypt_params_verity *verity_hdr,
 		     uint32_t activation_flags)
 {
 	uint32_t dmv_flags;
-	unsigned int fec_errors = 0;
-	int r, v;
-	struct crypt_dm_active_device dmd = {
-		.size = verity_hdr->data_size * verity_hdr->data_block_size / 512,
-		.flags = activation_flags,
-		.uuid = crypt_get_uuid(cd),
-	};
+	int r;
+	key_serial_t kid;
+	char *description = NULL;
+	struct crypt_dm_active_device dmd = { 0 };
 
-	log_dbg(cd, "Trying to activate VERITY device %s using hash %s.",
-		name ?: "[none]", verity_hdr->hash_name);
+	assert(name);
+	assert(root_hash);
+	assert(verity_hdr);
 
-	if (verity_hdr->flags & CRYPT_VERITY_CHECK_HASH) {
-		if (signature_description) {
-			log_err(cd, _("Root hash signature verification is not supported."));
+	dmd.size = verity_hdr->data_size * verity_hdr->data_block_size / 512;
+	dmd.flags = activation_flags;
+	dmd.uuid = crypt_get_uuid(cd);
+
+	log_dbg(cd, "Activating VERITY device %s using hash %s.",
+		name, verity_hdr->hash_name);
+
+	if (signature) {
+		r = asprintf(&description, "cryptsetup:%s%s%s",
+			 crypt_get_uuid(cd) ?: "", crypt_get_uuid(cd) ? "-" : "", name);
+		if (r < 0)
+			return -EINVAL;
+
+		log_dbg(cd, "Adding signature %s (type user) into thread keyring.", description);
+		kid = keyring_add_key_in_thread_keyring(USER_KEY, description, signature->key, signature->keylength);
+		if (kid < 0) {
+			log_dbg(cd, "keyring_add_key_in_thread_keyring failed with errno %d.", errno);
+			log_err(cd, _("Failed to load key in kernel keyring."));
+			free(description);
 			return -EINVAL;
 		}
-
-		log_dbg(cd, "Verification of data in userspace required.");
-		r = VERITY_verify(cd, verity_hdr, root_hash, root_hash_size);
-
-		if ((r == -EPERM || r == -EFAULT) && fec_device) {
-			v = r;
-			log_dbg(cd, "Verification failed, trying to repair with FEC device.");
-			r = VERITY_FEC_process(cd, verity_hdr, fec_device, 1, &fec_errors);
-			if (r < 0)
-				log_err(cd, _("Errors cannot be repaired with FEC device."));
-			else if (fec_errors) {
-				log_err(cd, _("Found %u repairable errors with FEC device."),
-					fec_errors);
-				/* If root hash failed, we cannot be sure it was properly repaired */
-			}
-			if (v == -EFAULT)
-				r = -EPERM;
-		}
-
-		if (r < 0)
-			return r;
 	}
-
-	if (!name)
-		return 0;
 
 	r = device_block_adjust(cd, crypt_metadata_device(cd), DEV_OK,
 				0, NULL, NULL);
 	if (r)
-		return r;
+		goto out;
 
-	r = device_block_adjust(cd, crypt_data_device(cd), DEV_EXCL,
+	r = device_block_adjust(cd, crypt_data_device(cd),
+				activation_flags & CRYPT_ACTIVATE_SHARED ? DEV_OK : DEV_EXCL,
 				0, &dmd.size, &dmd.flags);
 	if (r)
-		return r;
+		goto out;
 
 	if (fec_device) {
 		r = device_block_adjust(cd, fec_device, DEV_OK,
 					0, NULL, NULL);
 		if (r)
-			return r;
+			goto out;
 	}
 
 	r = dm_verity_target_set(&dmd.segment, 0, dmd.size, crypt_data_device(cd),
-			crypt_metadata_device(cd), fec_device, root_hash,
-			root_hash_size, signature_description,
+			crypt_metadata_device(cd), fec_device, root_hash->key,
+			root_hash->keylength, description,
 			VERITY_hash_offset_block(verity_hdr),
 			VERITY_FEC_blocks(cd, fec_device, verity_hdr), verity_hdr);
 
 	if (r)
-		return r;
+		goto out;
 
 	r = dm_create_device(cd, name, CRYPT_VERITY, &dmd);
 	if (r < 0 && (dm_flags(cd, DM_VERITY, &dmv_flags) || !(dmv_flags & DM_VERITY_SUPPORTED))) {
 		log_err(cd, _("Kernel does not support dm-verity mapping."));
 		r = -ENOTSUP;
 	}
-	if (r < 0 && signature_description && !(dmv_flags & DM_VERITY_SIGNATURE_SUPPORTED)) {
+	if (r < 0 && signature && !(dmv_flags & DM_VERITY_SIGNATURE_SUPPORTED)) {
 		log_err(cd, _("Kernel does not support dm-verity signature option."));
 		r = -ENOTSUP;
 	}
@@ -351,6 +381,8 @@ int VERITY_activate(struct crypt_device *cd,
 
 	r = 0;
 out:
+	crypt_drop_keyring_key_by_description(cd, description, USER_KEY);
+	free(description);
 	dm_targets_free(cd, &dmd);
 	return r;
 }

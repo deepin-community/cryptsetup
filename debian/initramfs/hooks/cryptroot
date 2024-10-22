@@ -220,7 +220,7 @@ populate_CRYPTO_HASHES() {
     elif [ "$CRYPTTAB_TYPE" = "plain" ]; then
         # --hash is being ignored when opening via key file
         if [ "$CRYPTTAB_KEY" = "none" ] && [ -z "${CRYPTTAB_OPTION_keyscript+x}" ]; then
-            hash="${CRYPTTAB_OPTION_hash-ripemd160}" # default password hashing as of cryptsetup 2.5
+            hash="${CRYPTTAB_OPTION_hash-sha256}" # default password hashing as of cryptsetup 2.7
         fi
     else
         hash="" # or hash="@@UNKNOWN@@"?
@@ -266,8 +266,8 @@ populate_CRYPTO_MODULES() {
 add_modules() {
     local glob="$1" found=n
     shift
-    for mod in $(find -H "$@" -name "$glob.ko" -type f -printf '%f\n'); do
-        manual_add_modules "${mod%.ko}"
+    for mod in $(find -H "$@" -name "$glob.ko*" -type f -printf '%f\n'); do
+        manual_add_modules "${mod%%.*}"
         found=y
     done
     [ "$found" = y ] && return 0 || return 1
@@ -306,32 +306,11 @@ copy_libssl_legacy_library() {
 
     crypttab_foreach_entry populate_CRYPTO_HASHES
     # See https://www.openssl.org/docs/man3.0/man7/OSSL_PROVIDER-legacy.html#Hashing-Algorithms-Message-Digests
-    if printf '%s\n' "$CRYPTO_HASHES" | grep -Fxq -e @@UNKNOWN@@ -e ripemd160 -e whirlpool; then
+    if printf '%s\n' "$CRYPTO_HASHES" | grep -Fxq -e @@UNKNOWN@@ -e whirlpool; then
         # legacy hashes are used so legacy.so needs to be copied to the initramfs
         # (assume ossl-modules/legacy.so is relative to the linked libcrypto.so)
         copy_exec "$libcryptodir/ossl-modules/legacy.so" || true
     fi
-}
-
-# See #1032221: newer libargon2 are built with glibc ≥2.34 hence no
-# longer links libpthread.  This in turns means that initramfs-tool's
-# copy_exec() is no longer able to detect pthread_*() need and thus
-# doesn't copy libgcc_s.so anymore.  So we need to do it manually
-# instead.
-copy_libgcc_argon2() {
-    local libdir rv=0
-    libdir="$(env --unset=LD_PRELOAD ldd /sbin/cryptsetup | sed -nr '/.*=>\s*(\S+)\/libargon2\.so\..*/ {s//\1/p;q}')"
-    copy_libgcc "$libdir" || rv=$?
-    if [ $rv -ne 0 ]; then
-        # merged-/usr mismatch, see #1032518
-        if [ "${libdir#/usr/}" != "$libdir" ]; then
-            libdir="${libdir#/usr}"
-        else
-            libdir="/usr/${libdir#/}"
-        fi
-        copy_libgcc "$libdir" && rv=0 || rv=$?
-    fi
-    return $rv
 }
 
 
@@ -365,12 +344,10 @@ if [ -r "$TABFILE" ]; then
 fi
 
 # add required components
-manual_add_modules dm_mod
-manual_add_modules dm_crypt
+manual_add_modules dm_mod dm_crypt
 
 copy_exec /sbin/cryptsetup
 copy_exec /sbin/dmsetup
-copy_libgcc_argon2
 
 [ "$ASKPASS" = n ] || copy_exec /lib/cryptsetup/askpass
 

@@ -2,7 +2,7 @@
 cat >/etc/crypttab <<-EOF
 	md0_crypt UUID=$(blkid -s UUID -o value /dev/md0) none
 	vdd_crypt UUID=$(blkid -s UUID -o value /dev/vdd) none
-	testvg-lv0_crypt /dev/mapper/testvg-lv0 none plain,cipher=aes-cbc-essiv:sha256,size=256,hash=ripemd160
+	testvg-lv0_crypt /dev/mapper/testvg-lv0 none plain,cipher=aes-xts-plain64,size=256,hash=sha256
 	testvg-lv1_crypt UUID=$(blkid -s UUID -o value /dev/testvg/lv1) none
 EOF
 

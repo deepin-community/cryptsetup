@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Helper utilities for LUKS2 features
  *
- * Copyright (C) 2018-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2018-2023 Milan Broz
- * Copyright (C) 2018-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2018-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2018-2024 Milan Broz
+ * Copyright (C) 2018-2024 Ondrej Kozina
  */
 
 #include "cryptsetup.h"
@@ -50,7 +37,8 @@ bool isLUKS1(const char *type)
 
 bool isLUKS2(const char *type)
 {
-	return type && !strcmp(type, CRYPT_LUKS2);
+	/* OPAL just changes the driver, header format is identical, so overload */
+	return type && (!strcmp(type, CRYPT_LUKS2));
 }
 
 int verify_passphrase(int def)
@@ -102,6 +90,9 @@ void set_activation_flags(uint32_t *flags)
 	if (ARG_SET(OPT_TEST_PASSPHRASE_ID) &&
             (ARG_SET(OPT_KEY_SLOT_ID) || ARG_SET(OPT_UNBOUND_ID)))
 		*flags |= CRYPT_ACTIVATE_ALLOW_UNBOUND_KEY;
+
+	if (ARG_SET(OPT_LINK_VK_TO_KEYRING_ID))
+		*flags |= CRYPT_ACTIVATE_KEYRING_KEY;
 
 	if (ARG_SET(OPT_SERIALIZE_MEMORY_HARD_PBKDF_ID))
 		*flags |= CRYPT_ACTIVATE_SERIALIZE_MEMORY_HARD_PBKDF;
@@ -167,6 +158,7 @@ int tools_read_json_file(const char *file, char **json, size_t *json_size, bool 
 	ssize_t ret;
 	int fd, block, r;
 	void *buf = NULL;
+	bool close_fd = false;
 
 	block = tools_signals_blocked();
 	if (block)
@@ -183,6 +175,7 @@ int tools_read_json_file(const char *file, char **json, size_t *json_size, bool 
 			r = -EINVAL;
 			goto out;
 		}
+		close_fd = true;
 	}
 
 	buf = malloc(LUKS2_MAX_MDA_SIZE);
@@ -214,7 +207,7 @@ int tools_read_json_file(const char *file, char **json, size_t *json_size, bool 
 out:
 	if (block && !quit)
 		set_int_block(1);
-	if (fd >= 0 && fd != STDIN_FILENO)
+	if (close_fd)
 		close(fd);
 	if (r && buf) {
 		memset(buf, 0, LUKS2_MAX_MDA_SIZE);

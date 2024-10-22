@@ -20,3 +20,26 @@ esac
 . /lib/cryptsetup/functions
 
 rm -f -- "$CRYPTROOT_COUNT_FILE"
+
+dmremove_deferred() {
+    local d="$1" d2 name devno maj min
+    if [ -d "$d/dm" ] && devno="$(cat "$d/dev")" &&
+            maj="${devno%:*}" && min="${devno#*:}" &&
+            [ "$devno" = "$maj:$min" ] && [ -n "$maj" ] && [ -n "$min" ] &&
+            name="$(dmsetup info -c --noheadings -o unmangled_name -j "$maj" -m "$min")"; then
+        dmsetup remove --deferred "$name"
+    fi
+    if [ -d "$d/slaves" ]; then
+        for d2 in "$d/slaves"/*; do
+            if [ -d "$d2" ] && d2="$(realpath "$d2")"; then
+                dmremove_deferred "$d2"
+            fi
+        done
+    fi
+}
+
+if devnos="$(get_mnt_devno "$rootmnt")"; then
+    for devno in $devnos; do
+        dmremove_deferred "/sys/dev/block/$devno"
+    done
+fi

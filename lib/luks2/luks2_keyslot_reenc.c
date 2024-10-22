@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, reencryption keyslot handler
  *
- * Copyright (C) 2016-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2016-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2024 Ondrej Kozina
  */
 
 #include "luks2_internal.h"
@@ -145,7 +132,12 @@ static int reenc_keyslot_alloc(struct crypt_device *cd,
 	else
 		json_object_object_add(jobj_keyslot, "direction", json_object_new_string("backward"));
 
-	json_object_object_add_by_uint(jobj_keyslots, keyslot, jobj_keyslot);
+	r = json_object_object_add_by_uint(jobj_keyslots, keyslot, jobj_keyslot);
+	if (r) {
+		json_object_put(jobj_keyslot);
+		return r;
+	}
+
 	if (LUKS2_check_json_size(cd, hdr)) {
 		log_dbg(cd, "New keyslot too large to fit in free metadata space.");
 		json_object_object_del_by_uint(jobj_keyslots, keyslot);
@@ -371,8 +363,7 @@ static int reenc_keyslot_validate(struct crypt_device *cd, json_object *jobj_key
 	return 0;
 }
 
-static int reenc_keyslot_update_needed(struct crypt_device *cd,
-	json_object *jobj_keyslot,
+static int reenc_keyslot_update_needed(json_object *jobj_keyslot,
 	const struct crypt_params_reencrypt *params,
 	size_t alignment)
 {
@@ -537,8 +528,7 @@ static int reenc_keyslot_load_resilience(struct crypt_device *cd,
 		return reenc_keyslot_load_resilience_secondary(cd, type, jobj_area, area_length, rp);
 }
 
-static bool reenc_keyslot_update_is_valid(struct crypt_device *cd,
-	json_object *jobj_area,
+static bool reenc_keyslot_update_is_valid(json_object *jobj_area,
 	const struct crypt_params_reencrypt *params)
 {
 	const char *type;
@@ -589,7 +579,7 @@ static int reenc_keyslot_update(struct crypt_device *cd,
 	if (!params || !params->resilience)
 		jobj_area_new = reencrypt_keyslot_area_jobj_update_block_size(cd, jobj_area, alignment);
 	else {
-		if (!reenc_keyslot_update_is_valid(cd, jobj_area, params)) {
+		if (!reenc_keyslot_update_is_valid(jobj_area, params)) {
 			log_err(cd, _("Invalid reencryption resilience mode change requested."));
 			return -EINVAL;
 		}
@@ -661,7 +651,7 @@ int LUKS2_keyslot_reencrypt_update_needed(struct crypt_device *cd,
 	    strcmp(json_object_get_string(jobj_type), "reencrypt"))
 		return -EINVAL;
 
-	r = reenc_keyslot_update_needed(cd, jobj_keyslot, params, alignment);
+	r = reenc_keyslot_update_needed(jobj_keyslot, params, alignment);
 	if (!r)
 		log_dbg(cd, "No update of reencrypt keyslot needed.");
 

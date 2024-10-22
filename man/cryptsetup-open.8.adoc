@@ -35,18 +35,22 @@ is inverted for historical reasons, all other aliases use the standard
 *<device> <name>* order.
 
 === PLAIN
-*open --type plain <device> <name>* +
+*open --type plain <device> <name>* --cipher <spec> --key-size <bits> --hash <alg> +
 plainOpen <device> <name> (*old syntax*) +
 create <name> <device> (*OBSOLETE syntax*)
 
 Opens (creates a mapping with) <name> backed by device <device>.
+
+*WARNING:* You should always specify options *--cipher*, *--key-size* and
+(if no keyfile is used) then also *--hash* to avoid incompatibility as
+default values can be different in older cryptsetup versions. +
 
 *<options>* can be [--hash, --cipher, --verify-passphrase, --sector-size,
 --key-file, --keyfile-size, --keyfile-offset, --key-size, --offset,
 --skip, --device-size, --size, --readonly, --shared, --allow-discards,
 --refresh, --timeout, --verify-passphrase, --iv-large-sectors].
 
-Example: 'cryptsetup open --type plain /dev/sda10 e1' maps the raw
+Example: 'cryptsetup open --type plain --cipher aes-cbc-essiv:sha256 --key-size 256 --hash sha256 /dev/sda10 e1' maps the raw
 encrypted device /dev/sda10 to the mapped (decrypted) device
 /dev/mapper/e1, which can then be mounted, fsck-ed or have a filesystem
 created on it.
@@ -74,7 +78,8 @@ matching PIN protected token.
 --volume-key-file, --token-id, --token-only, --token-type,
 --disable-external-tokens, --disable-keyring, --disable-locks, --type,
 --refresh, --serialize-memory-hard-pbkdf, --unbound, --tries, --timeout,
---verify-passphrase, --persistent].
+--verify-passphrase, --persistent, --volume-key-keyring, --link-vk-to-keyring,
+--external-tokens-path].
 
 === loopAES
 *open --type loopaes <device> <name> --key-file <keyfile>* +
@@ -149,6 +154,11 @@ Opens the BITLK (a BitLocker compatible) <device> and sets up a mapping
 *<options>* can be [--key-file, --keyfile-offset, --keyfile-size, --key-size,
 --readonly, --test-passphrase, --allow-discards --volume-key-file, --tries,
 --timeout, --verify-passphrase].
+
+Note that *--test-passphrase* doesn't work with *--volume-key-file* because
+we cannot check whether the provided volume key is correct for this device
+or not. When using *--volume-key-file* the device will be opened even if
+the provided key is not correct.
 
 === FileVault2
 *open --type fvault2 <device> <name>* +

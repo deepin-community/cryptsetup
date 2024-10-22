@@ -1,23 +1,11 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 /*
  * crypto backend implementation
  *
- * Copyright (C) 2010-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2023 Milan Broz
- *
- * This file is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this file; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2024 Milan Broz
  */
+
 #ifndef _CRYPTO_BACKEND_H
 #define _CRYPTO_BACKEND_H
 
@@ -43,9 +31,11 @@ void crypt_backend_destroy(void);
 
 #define CRYPT_BACKEND_KERNEL     (1 << 0) /* Crypto uses kernel part, for benchmark */
 #define CRYPT_BACKEND_PBKDF2_INT (1 << 1) /* Iteration in PBKDF2 is signed int and can overflow */
+#define CRYPT_BACKEND_ARGON2     (1 << 2) /* Backend provides native Argon2 implementation */
 
 uint32_t crypt_backend_flags(void);
 const char *crypt_backend_version(void);
+const char *crypt_argon2_version(void);
 
 /* HASH */
 int crypt_hash_size(const char *name);

@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Command line arguments name list
  *
- * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2020-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2024 Ondrej Kozina
  */
 
 #ifndef UTILS_ARG_NAMES_H
@@ -41,6 +28,7 @@
 #define OPT_DEFERRED			"deferred"
 #define OPT_DEVICE_SIZE			"device-size"
 #define OPT_DECRYPT			"decrypt"
+#define OPT_DISABLE_BLKID		"disable-blkid"
 #define OPT_DISABLE_EXTERNAL_TOKENS	"disable-external-tokens"
 #define OPT_DISABLE_KEYRING		"disable-keyring"
 #define OPT_DISABLE_LOCKS		"disable-locks"
@@ -49,6 +37,7 @@
 #define OPT_DUMP_MASTER_KEY		"dump-master-key"
 #define OPT_DUMP_VOLUME_KEY		"dump-volume-key"
 #define OPT_ENCRYPT			"encrypt"
+#define OPT_EXTERNAL_TOKENS_PATH	"external-tokens-path"
 #define OPT_FEC_DEVICE			"fec-device"
 #define OPT_FEC_OFFSET			"fec-offset"
 #define OPT_FEC_ROOTS			"fec-roots"
@@ -61,6 +50,9 @@
 #define OPT_HEADER			"header"
 #define OPT_HEADER_BACKUP_FILE		"header-backup-file"
 #define OPT_HOTZONE_SIZE		"hotzone-size"
+#define OPT_HW_OPAL			"hw-opal"
+#define OPT_HW_OPAL_ONLY		"hw-opal-only"
+#define OPT_HW_OPAL_FACTORY_RESET	"hw-opal-factory-reset"
 #define OPT_IGNORE_CORRUPTION		"ignore-corruption"
 #define OPT_IGNORE_ZERO_BLOCKS		"ignore-zero-blocks"
 #define OPT_INIT_ONLY			"init-only"
@@ -102,10 +94,12 @@
 #define OPT_NO_WIPE			"no-wipe"
 #define OPT_WIPE			"wipe"
 #define OPT_LABEL			"label"
+#define OPT_LINK_VK_TO_KEYRING		"link-vk-to-keyring"
 #define OPT_LUKS2_KEYSLOTS_SIZE		"luks2-keyslots-size"
 #define OPT_LUKS2_METADATA_SIZE		"luks2-metadata-size"
 #define OPT_MASTER_KEY_FILE		"master-key-file"
 #define OPT_VOLUME_KEY_FILE		"volume-key-file"
+#define OPT_VOLUME_KEY_KEYRING		"volume-key-keyring"
 #define OPT_NEW				"new"
 #define OPT_NEW_KEY_SLOT		"new-key-slot"
 #define OPT_NEW_KEYFILE			"new-keyfile"

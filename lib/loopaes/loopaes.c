@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 /*
  * loop-AES compatible volume handling
  *
- * Copyright (C) 2011-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2011-2023 Milan Broz
- *
- * This file is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this file; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2011-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2011-2024 Milan Broz
  */
 
 #include <errno.h>
@@ -158,7 +145,7 @@ int LOOPAES_parse_keyfile(struct crypt_device *cd,
 	key_lengths[0] = 0;
 	while (offset < buffer_len && key_index < LOOPAES_KEYS_MAX) {
 		keys[key_index] = &buffer[offset];
-		key_lengths[key_index] = 0;;
+		key_lengths[key_index] = 0;
 		while (offset < buffer_len && buffer[offset]) {
 			offset++;
 			key_lengths[key_index]++;

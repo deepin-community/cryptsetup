@@ -1,0 +1,76 @@
+TMPDIR="$AUTOPKGTEST_TMP"
+
+# wrappers
+luks1Format() {
+    cryptsetup luksFormat --batch-mode --type=luks1 \
+        --pbkdf-force-iterations=1000 \
+        "$@"
+}
+luks2Format() {
+    cryptsetup luksFormat --batch-mode --type=luks2 \
+        --pbkdf=argon2id --pbkdf-force-iterations=4 --pbkdf-memory=32 \
+        "$@"
+}
+diff() { command diff --color=auto --text "$@"; }
+
+# create disk image
+CRYPT_IMG="$TMPDIR/disk.img"
+CRYPT_DEV=""
+install -m0600 /dev/null "$TMPDIR/keyfile"
+disk_setup() {
+    local lo
+    for lo in $(losetup -j "$CRYPT_IMG" | cut -sd: -f1); do
+        losetup -d "$lo"
+    done
+    dd if="/dev/zero" of="$CRYPT_IMG" bs=1M count=64
+    CRYPT_DEV="$(losetup --find --show -- "$CRYPT_IMG")"
+}
+
+# custom initramfs-tools configuration (to speed things up -- we use
+# COMPRESS=zstd since it's reasonably fast and COMPRESS=none is not
+# supported)
+mkdir "$TMPDIR/initramfs-tools"
+mkdir "$TMPDIR/initramfs-tools/conf.d" \
+      "$TMPDIR/initramfs-tools/scripts" \
+      "$TMPDIR/initramfs-tools/hooks"
+cat >"$TMPDIR/initramfs-tools/initramfs.conf" <<-EOF
+	COMPRESS=zstd
+	MODULES=list
+	RESUME=none
+	UMASK=0077
+EOF
+
+INITRD_IMG="$TMPDIR/initrd.img"
+INITRD_DIR="$TMPDIR/initrd"
+cleanup_initrd_dir() {
+    local d
+    for d in dev proc sys; do
+        mountpoint -q "$INITRD_DIR/$d" && umount "$INITRD_DIR/$d" || true
+    done
+    rm -rf --one-file-system -- "$INITRD_DIR"
+}
+trap cleanup_initrd_dir EXIT INT TERM
+
+mkinitramfs() {
+    local d
+    command mkinitramfs -d "$TMPDIR/initramfs-tools" -o "$INITRD_IMG"
+    # `mkinitramfs -k` would be better but we can't set $DESTDIR in advance
+    cleanup_initrd_dir
+    command unmkinitramfs "$INITRD_IMG" "$INITRD_DIR"
+    for d in dev proc sys; do
+        mkdir -p "$INITRD_DIR/$d"
+        mount --bind "/$d" "$INITRD_DIR/$d"
+    done
+}
+check_initrd_crypttab() {
+    local rv=0 err="${1+": $1"}"
+    diff --label=a/cryptroot/crypttab --label=b/cryptroot/crypttab \
+        --unified --ignore-space-change \
+        -- - "$INITRD_DIR/cryptroot/crypttab" || rv=$?
+    if [ $rv -ne 0 ]; then
+        printf "ERROR$err in file %s line %d\\n" "${BASH_SOURCE[0]}" ${BASH_LINENO[0]} >&2
+        exit 1
+    fi
+}
+
+# vim: set filetype=sh :

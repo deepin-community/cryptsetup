@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * utils_pbkdf - PBKDF settings for libcryptsetup
  *
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <stdlib.h>
@@ -61,9 +48,9 @@ const struct crypt_pbkdf_type *crypt_get_pbkdf_type_params(const char *pbkdf_typ
 	return NULL;
 }
 
-static uint32_t adjusted_phys_memory(void)
+uint32_t pbkdf_adjusted_phys_memory_kb(void)
 {
-	uint64_t memory_kb = crypt_getphysmemory_kb();
+	uint64_t free_kb, memory_kb = crypt_getphysmemory_kb();
 
 	/* Ignore bogus value */
 	if (memory_kb < (128 * 1024) || memory_kb > UINT32_MAX)
@@ -74,6 +61,22 @@ static uint32_t adjusted_phys_memory(void)
 	 * OOM killer is too clever...
 	 */
 	memory_kb /= 2;
+
+	/*
+	 * Never use more that half of available free memory on system without swap.
+	 */
+	if (!crypt_swapavailable()) {
+		free_kb = crypt_getphysmemoryfree_kb();
+
+		/*
+		 * Using exactly free memory causes OOM too, use only half of the value.
+		 * Ignore small values (< 64MB), user should use PBKDF2 in such environment.
+		 */
+		free_kb /= 2;
+
+		if (free_kb > (64 * 1024) && free_kb < memory_kb)
+			return free_kb;
+	}
 
 	return memory_kb;
 }
@@ -238,7 +241,8 @@ int init_pbkdf_type(struct crypt_device *cd,
 		cd_pbkdf->parallel_threads = pbkdf_limits.max_parallel;
 	}
 
-	if (cd_pbkdf->parallel_threads) {
+	/* Do not limit threads by online CPUs if user forced values (no benchmark). */
+	if (cd_pbkdf->parallel_threads && !(cd_pbkdf->flags & CRYPT_PBKDF_NO_BENCHMARK)) {
 		cpus = crypt_cpusonline();
 		if (cd_pbkdf->parallel_threads > cpus) {
 			log_dbg(cd, "Only %u active CPUs detected, "
@@ -248,8 +252,9 @@ int init_pbkdf_type(struct crypt_device *cd,
 		}
 	}
 
-	if (cd_pbkdf->max_memory_kb) {
-		memory_kb = adjusted_phys_memory();
+	/* Do not limit by available physical memory if user forced values (no benchmark). */
+	if (cd_pbkdf->max_memory_kb && !(cd_pbkdf->flags & CRYPT_PBKDF_NO_BENCHMARK)) {
+		memory_kb = pbkdf_adjusted_phys_memory_kb();
 		if (cd_pbkdf->max_memory_kb > memory_kb) {
 			log_dbg(cd, "Not enough physical memory detected, "
 				"PBKDF max memory decreased from %dkB to %dkB.",
