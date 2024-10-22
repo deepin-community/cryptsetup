@@ -12,8 +12,13 @@ FAST_PBKDF="--pbkdf-force-iterations 1000"
 
 FIPS_MODE=$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)
 
-CRYPTSETUP_VALGRIND=../.libs/cryptsetup
-CRYPTSETUP_LIB_VALGRIND=../.libs
+if [ -n "$CRYPTSETUP_TESTS_RUN_IN_MESON" ]; then
+	CRYPTSETUP_VALGRIND=$CRYPTSETUP
+else
+	CRYPTSETUP_VALGRIND=../.libs/cryptsetup
+	CRYPTSETUP_LIB_VALGRIND=../.libs
+fi
+
 
 function fips_mode()
 {
@@ -54,7 +59,10 @@ function valgrind_setup()
 {
 	command -v valgrind >/dev/null || fail "Cannot find valgrind."
 	[ ! -f $CRYPTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
-	export LD_LIBRARY_PATH="$CRYPTSETUP_LIB_VALGRIND:$LD_LIBRARY_PATH"
+	[ ! -f valg.sh ] && fail "Unable to get location of valg runner script."
+	if [ -z "$CRYPTSETUP_TESTS_RUN_IN_MESON" ]; then
+		export LD_LIBRARY_PATH="$CRYPTSETUP_LIB_VALGRIND:$LD_LIBRARY_PATH"
+	fi
 }
 
 function valgrind_run()
@@ -92,7 +100,7 @@ add_device() {
 		exit 77
 	fi
 
-	sleep 2
+	sleep 1
 	DEV=$(grep -l -e scsi_debug /sys/block/*/device/model | cut -f4 -d /)
 
 	if [ ! -e /sys/block/$DEV/alignment_offset ] ; then
@@ -176,7 +184,7 @@ format_plain() # sector size
 {
 	echo -n "Formatting plain device (sector size $1)..."
 	if [ -n "$DM_SECTOR_SIZE" ] ; then
-		echo $PWD1 | $CRYPTSETUP open --type plain --hash sha256 --sector-size $1 $DEV $DEV_NAME || fail
+		echo $PWD1 | $CRYPTSETUP open --type plain --cipher aes-cbc-essiv:sha256 --key-size 256 --hash sha256 --sector-size $1 $DEV $DEV_NAME || fail
 		$CRYPTSETUP close $DEV_NAME || fail
 		echo "PASSED"
 	else
@@ -284,7 +292,7 @@ format_plain_fail 4096
 cleanup
 
 # skip tests using empty passphrase (LUKS1 cipher_null)
-if [ ! fips_mode ]; then
+if ! fips_mode; then
 echo "# Offset check: 512B sector drive"
 add_device dev_size_mb=16 sector_size=512 num_tgts=1
 #           |k| expO reqO expected slot offsets
@@ -330,12 +338,19 @@ echo "# Create enterprise-class 4K drive with fs and LUKS images."
 # cryptsetup should properly use 4k block on direct-io
 add_device dev_size_mb=32 sector_size=4096 physblk_exp=0 num_tgts=1 opt_blks=64
 for file in $(ls img_fs_*.img.xz) ; do
-	echo "Format using fs image $file."
+	echo -n "Format using fs image $file "
 	xz -d -c $file | dd of=$DEV bs=1M 2>/dev/null || fail "bad image"
 	[ ! -d $MNT_DIR ] && mkdir $MNT_DIR
-	mount $DEV $MNT_DIR || skip "Mounting image is not available."
+	mount $DEV $MNT_DIR 2>/dev/null
+	if [ $? -ne 0 ] ; then
+		echo "[N/A]"
+		continue
+	fi
 	echo $PWD1 | $CRYPTSETUP luksFormat --type luks1 --key-size 256 $FAST_PBKDF $MNT_DIR/luks.img || fail
 	echo $PWD2 | $CRYPTSETUP luksFormat --type luks1 --key-size 256 $FAST_PBKDF $MNT_DIR/luks.img --header $MNT_DIR/luks_header.img || fail
-	umount $MNT_DIR
+	umount $MNT_DIR || fail
+	echo "[OK]"
 done
 cleanup
+
+exit 0

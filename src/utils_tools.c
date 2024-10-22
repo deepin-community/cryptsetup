@@ -1,24 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * cryptsetup - setup cryptographic volumes for dm-crypt
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include "cryptsetup.h"
@@ -435,8 +422,9 @@ int tools_write_mk(const char *file, const char *key, int keysize)
 
 void tools_package_version(const char *name, bool use_pwlibs)
 {
-	bool udev = false, blkid = false, keyring = false, fips = false;
-	bool kernel_capi = false, pwquality = false, passwdqc = false;
+	bool udev = false, blkid = false, keyring = false, fips = false,
+	     kernel_capi = false, pwquality = false, passwdqc = false,
+	     hw_opal = false;
 #ifdef USE_UDEV
 	udev = true;
 #endif
@@ -457,12 +445,16 @@ void tools_package_version(const char *name, bool use_pwlibs)
 #elif defined(ENABLE_PASSWDQC)
 	passwdqc = true;
 #endif
-	log_std("%s %s flags: %s%s%s%s%s%s%s\n", name, PACKAGE_VERSION,
+#ifdef HAVE_HW_OPAL
+	hw_opal = true;
+#endif
+	log_std("%s %s flags: %s%s%s%s%s%s%s%s\n", name, PACKAGE_VERSION,
 		udev ?	"UDEV " : "",
 		blkid ? "BLKID " : "",
 		keyring ? "KEYRING " : "",
 		fips ? "FIPS " : "",
 		kernel_capi ? "KERNEL_CAPI " : "",
 		pwquality && use_pwlibs ? "PWQUALITY " : "",
-		passwdqc && use_pwlibs ? "PASSWDQC " : "");
+		passwdqc && use_pwlibs ? "PASSWDQC " : "",
+		hw_opal ? "HW_OPAL " : "");
 }

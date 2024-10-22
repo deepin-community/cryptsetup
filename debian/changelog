@@ -1,9 +1,168 @@
-cryptsetup (2:2.6.1-5deepin) UNRELEASED; urgency=medium
+cryptsetup (2:2.7.5-1) unstable; urgency=medium
 
-  [ zhangya ]
-  * suggest depends cryptsetup-initramfs modify to depends.
+  * New bugfix upstream release.
+  * d/t/cryptroot-*: Always install login(1) inside the guest to fix DEP-8
+    tests.
+  * d/t/utils/mock.pm: Fix login().
+  * initramfs hook: Don't let ripemd160 trigger copying legacy.so into the
+    initramfs image.  Since OpenSSL 3.0.7 RIPEMD160 is in both legacy and
+    default providers.
+  * Adjust build-deps and DEP-8 tests to account for OpenSSL legacy provider
+    being shipped in its own package.
+  * DEP-8: Fix d/t/initramfs-hook-legacy.
+  * crypttab(5): Don't claim that ‘noauto’ is not supported by systemd.
+    (Closes: #1071602)
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Fri, 15 Sep 2023 18:22:50 +0800
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 03 Sep 2024 12:23:09 +0200
+
+cryptsetup (2:2.7.4-1) unstable; urgency=medium
+
+  [ Guilhem Moulin ]
+  * New bugfix upstream release.
+  * d/functions: Silently ignore crypttab(5) option x-initrd.attach.
+    (Closes: #1072058)
+  * DEP-8: Mark cryptroot-* as flaky.  To be re-evaluated if/when the
+    tests only run on environment where KVM is available. (Closes: #1073052)
+  * d/t/cryptroot-lvm.d/preinst: Add x-initrd.attach crypttab(5) option.
+  * initramfs: local-bottom: Call `dmsetup remove --deferred` on the root FS
+    holders.  Thanks to Luca Boccassi for the suggestion.
+  * d/t/cryptroot-*: Always install passwd(1) inside the guest.
+
+  [ Benjamin Drung ]
+  * initramfs hook: Combine calls to manual_add_modules (LP: #2065180)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Sun, 04 Aug 2024 22:59:09 +0200
+
+cryptsetup (2:2.7.2-2) unstable; urgency=medium
+
+  * Update standards version to 4.7.0, no changes needed.
+  * d/crontrol: cryptsetup-initramfs: Add Breaks: libcryptsetup12 (<<
+    2:2.7.2-1) since the hook assumes libcryptsetup.so.12 is not linked with
+    libargon2.so. (Closes: #1068849)
+  * d/t/utils/mkinitramfs: Remove obsolete copy_libgcc() call.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Mon, 15 Apr 2024 00:51:12 +0200
+
+cryptsetup (2:2.7.2-1) unstable; urgency=medium
+
+  * New bugfix upstream release.
+    + Fix various issues with OPAL devices.
+  * Use OpenSSL's own argon2 implementation rather than libargon2.  This drops
+    libargon2 from (Build-)Depends and bumps the minimum required OpenSSL
+    version to 3.2.
+  * d/control: cryptsetup Depends: Bump minimum cryptsetup-bin version to
+    2:2.7.2-1 as the wrapper no longer contain workarounds for libargon2 and
+    libgcc_s.
+  * d/copyright: Update licensing information to reflect upstream's
+    relicensing of its FAQ and an older miscellaneous script.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 09 Apr 2024 15:18:49 +0200
+
+cryptsetup (2:2.7.1-1) unstable; urgency=medium
+
+  * New bugfix upstream release.
+
+  [ Guilhem Moulin ]
+  * d/functions: get_mnt_devno(): Speed up execution time on large
+    /proc/mounts.
+  * d/t/cryptroot-*: Fix DEP-8 tests when the kernel .deb installs modules in
+    /usr/lib/modules not /lib/modules, such as
+    linux-image-6.6.15-686-pae_6.6.15-2_i386.deb.
+  * d/cryptsetup.lintian-overrides: Remove unused overrides.
+
+  [ Helmut Grohne ]
+  * /lib/cryptsetup/askpass: Coordinated move to /usr for DEP17
+    (Closes: #1060270)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Sat, 09 Mar 2024 23:05:42 +0100
+
+cryptsetup (2:2.7.0-1) unstable; urgency=medium
+
+  * Upload to unstable.
+  * Revert "d/gbp.conf: Set ‘debian-branch = debian/experimental’."
+  * Revert "Use OpenSSL's own argon2 implementation" (since sid doesn't have
+    OpenSSL 3.2 yet).
+  * Revert "d/control: cryptsetup Depends: Bump minimum cryptsetup-bin version
+    to 2.7~."
+  * Revert "d/cryptsetup.lintian-overrides: Ignore ‘conflicts-with-version
+    cryptsetup-nuke-password’."
+  * Revert "d/cryptsetup.lintian-overrides: Remove unused overrides."
+  * Revert "/lib/cryptsetup/askpass: coordinated move to /usr for DEP17"
+
+ -- Guilhem Moulin <guilhem@debian.org>  Mon, 26 Feb 2024 12:50:46 +0100
+
+cryptsetup (2:2.7.0-1+exp) experimental; urgency=medium
+
+  * New upstream release.
+
+  [ Guilhem Moulin ]
+  * d/control: cryptsetup Depends: Bump minimum cryptsetup-bin version to 2.7~.
+  * d/control: Build-Depends: Replace pkg-config with pkgconf.
+  * d/cryptsetup-suspend.lintian-overrides: Remove alien tag.
+  * d/cryptsetup.lintian-overrides: Remove unused overrides.
+  * d/cryptsetup.lintian-overrides: Add override ‘conflicts-with-version
+    cryptsetup-nuke-password’.
+  * d/t/cryptroot-*: Fix DEP-8 tests with QEMU 8.2.
+
+  [ Helmut Grohne ]
+  * /lib/cryptsetup/askpass: coordinated move to /usr for DEP17.
+    (Closes: #1060270)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Mon, 26 Feb 2024 11:57:19 +0100
+
+cryptsetup (2:2.7.0~rc1-1) experimental; urgency=medium
+
+  * New upstream release candidate.
+  * d/gbp.conf: Set ‘debian-branch = debian/experimental’.
+  * Add new DEP-8 test to check crypto backend flags.  (And whether system
+    libargon2 is used.)
+  * Use OpenSSL's own argon2 implementation rather than libargon2.  This drops
+    libargon2 from (Build-)Depends and bumps the minimum required OpenSSL
+    version to 3.2.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Wed, 20 Dec 2023 18:28:36 +0100
+
+cryptsetup (2:2.7.0~rc0-2) experimental; urgency=medium
+
+  Rebuild for experimental.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 05 Dec 2023 21:11:42 +0100
+
+cryptsetup (2:2.6.1-6) unstable; urgency=medium
+
+  [ Kevin Locke ]
+  * cryptsetup-initramfs: Add support for compressed kernel modules.
+    (Closes: #1036049, #1057441)
+
+  [ Guilhem Moulin ]
+  * d/tests: Replace `passwd --delete` with `busybox passwd -d`.
+  * add_modules(): Change suffix drop logic to match initramfs-tools.
+  * Fix DEP-8 tests with kernels shipping compressed modules.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 05 Dec 2023 17:48:58 +0100
+
+cryptsetup (2:2.7.0~rc0-1) experimental; urgency=medium
+
+  * New upstream release candidate 2.7.0:
+    + Add support for (opt-in) hardware OPAL disk encryption.
+    + plain mode: Set default cipher to aes-xts-plain64 and password hashing
+      to sha256.  This is a backward incompatible change for plain mode when
+      relying on the defaults.  It doesn't affect LUKS volumes.  Defaults for
+      plain mode should not be relied upon anyway; for many releases the
+      Debian wrappers found in the ‘cryptsetup’ binary package spew a loud
+      warning when ‘cipher=’ or ‘hash=’ are not explicitly specified in the
+      crypttab(5) options of plain devices.  The cryptsetup(8) executable now
+      issue such a warning as well.
+    + Allow activation (open), luksResume, and luksAddKey to use the volume
+      key stored in a keyring.
+    + Allow one to store volume key to a user-specified keyring in open and
+      luksResume commands.
+  * Update d/libcryptsetup12.symbols.
+  * Remove d/patches applied upstream.
+  * Update debian/* to reflect current cipher and hash for plain mode.
+  * d/tests: Replace `passwd --delete` with `busybox passwd -d`.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Wed, 29 Nov 2023 17:19:10 +0100
 
 cryptsetup (2:2.6.1-5) unstable; urgency=medium
 

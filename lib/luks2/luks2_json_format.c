@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, LUKS2 header format code
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -204,76 +191,33 @@ int LUKS2_generate_hdr(
 	struct crypt_device *cd,
 	struct luks2_hdr *hdr,
 	const struct volume_key *vk,
-	const char *cipherName,
-	const char *cipherMode,
+	const char *cipher_spec,
 	const char *integrity,
 	const char *uuid,
 	unsigned int sector_size,  /* in bytes */
 	uint64_t data_offset,      /* in bytes */
-	uint64_t align_offset,     /* in bytes */
-	uint64_t required_alignment,
-	uint64_t metadata_size,
-	uint64_t keyslots_size)
+	uint64_t metadata_size_bytes,
+	uint64_t keyslots_size_bytes,
+	uint64_t device_size_bytes,
+	uint32_t opal_segment_number,
+	uint32_t opal_key_size)
 {
-	struct json_object *jobj_segment, *jobj_integrity, *jobj_keyslots, *jobj_segments, *jobj_config;
-	char cipher[128];
+	struct json_object *jobj_segment, *jobj_keyslots, *jobj_segments, *jobj_config;
 	uuid_t partitionUuid;
 	int r, digest;
-	uint64_t mdev_size;
 
-	if (!metadata_size)
-		metadata_size = LUKS2_HDR_16K_LEN;
-	hdr->hdr_size = metadata_size;
+	assert(cipher_spec || (opal_key_size > 0 && device_size_bytes));
 
-	if (data_offset && data_offset < get_min_offset(hdr)) {
-		log_err(cd, _("Requested data offset is too small."));
-		return -EINVAL;
-	}
-
-	/* Increase keyslot size according to data offset */
-	if (!keyslots_size && data_offset)
-		keyslots_size = data_offset - get_min_offset(hdr);
-
-	/* keyslots size has to be 4 KiB aligned */
-	keyslots_size -= (keyslots_size % 4096);
-
-	if (keyslots_size > LUKS2_MAX_KEYSLOTS_SIZE)
-		keyslots_size = LUKS2_MAX_KEYSLOTS_SIZE;
-
-	if (!keyslots_size) {
-		assert(LUKS2_DEFAULT_HDR_SIZE > 2 * LUKS2_HDR_OFFSET_MAX);
-		keyslots_size = LUKS2_DEFAULT_HDR_SIZE - get_min_offset(hdr);
-		/* Decrease keyslots_size due to metadata device being too small */
-		if (!device_size(crypt_metadata_device(cd), &mdev_size) &&
-		    ((keyslots_size + get_min_offset(hdr)) > mdev_size) &&
-		    device_fallocate(crypt_metadata_device(cd), keyslots_size + get_min_offset(hdr)) &&
-		    (get_min_offset(hdr) <= mdev_size))
-			keyslots_size = mdev_size - get_min_offset(hdr);
-	}
-
-	/* Decrease keyslots_size if we have smaller data_offset */
-	if (data_offset && (keyslots_size + get_min_offset(hdr)) > data_offset) {
-		keyslots_size = data_offset - get_min_offset(hdr);
-		log_dbg(cd, "Decreasing keyslot area size to %" PRIu64
-			" bytes due to the requested data offset %"
-			PRIu64 " bytes.", keyslots_size, data_offset);
-	}
-
-	/* Data offset has priority */
-	if (!data_offset && required_alignment) {
-		data_offset = size_round_up(get_min_offset(hdr) + keyslots_size,
-					    (size_t)required_alignment);
-		data_offset += align_offset;
-	}
+	hdr->hdr_size = metadata_size_bytes;
 
 	log_dbg(cd, "Formatting LUKS2 with JSON metadata area %" PRIu64
 		" bytes and keyslots area %" PRIu64 " bytes.",
-		metadata_size - LUKS2_HDR_BIN_LEN, keyslots_size);
+		metadata_size_bytes - LUKS2_HDR_BIN_LEN, keyslots_size_bytes);
 
-	if (keyslots_size < (LUKS2_HDR_OFFSET_MAX - 2*LUKS2_HDR_16K_LEN))
+	if (keyslots_size_bytes < (LUKS2_HDR_OFFSET_MAX - 2*LUKS2_HDR_16K_LEN))
 		log_std(cd, _("WARNING: keyslots area (%" PRIu64 " bytes) is very small,"
 			" available LUKS2 keyslot count is very limited.\n"),
-			keyslots_size);
+			keyslots_size_bytes);
 
 	hdr->seqid = 1;
 	hdr->version = 2;
@@ -291,93 +235,131 @@ int LUKS2_generate_hdr(
 
 	uuid_unparse(partitionUuid, hdr->uuid);
 
-	if (*cipherMode != '\0')
-		r = snprintf(cipher, sizeof(cipher), "%s-%s", cipherName, cipherMode);
-	else
-		r = snprintf(cipher, sizeof(cipher), "%s", cipherName);
-	if (r < 0 || (size_t)r >= sizeof(cipher))
-		return -EINVAL;
-
 	hdr->jobj = json_object_new_object();
+	if (!hdr->jobj) {
+		r = -ENOMEM;
+		goto err;
+	}
 
 	jobj_keyslots = json_object_new_object();
+	if (!jobj_keyslots) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(hdr->jobj, "keyslots", jobj_keyslots);
 	json_object_object_add(hdr->jobj, "tokens", json_object_new_object());
 	jobj_segments = json_object_new_object();
+	if (!jobj_segments) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(hdr->jobj, "segments", jobj_segments);
 	json_object_object_add(hdr->jobj, "digests", json_object_new_object());
 	jobj_config = json_object_new_object();
+	if (!jobj_config) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(hdr->jobj, "config", jobj_config);
 
 	digest = LUKS2_digest_create(cd, "pbkdf2", hdr, vk);
-	if (digest < 0)
+	if (digest < 0) {
+		r = -EINVAL;
 		goto err;
-
-	if (LUKS2_digest_segment_assign(cd, hdr, 0, digest, 1, 0) < 0)
-		goto err;
-
-	jobj_segment = json_segment_create_crypt(data_offset, 0, NULL, cipher, sector_size, 0);
-	if (!jobj_segment)
-		goto err;
-
-	if (integrity) {
-		jobj_integrity = json_object_new_object();
-		json_object_object_add(jobj_integrity, "type", json_object_new_string(integrity));
-		json_object_object_add(jobj_integrity, "journal_encryption", json_object_new_string("none"));
-		json_object_object_add(jobj_integrity, "journal_integrity", json_object_new_string("none"));
-		json_object_object_add(jobj_segment, "integrity", jobj_integrity);
 	}
 
-	json_object_object_add_by_uint(jobj_segments, 0, jobj_segment);
+	if (LUKS2_digest_segment_assign(cd, hdr, 0, digest, 1, 0) < 0) {
+		r = -EINVAL;
+		goto err;
+	}
 
-	json_object_object_add(jobj_config, "json_size", crypt_jobj_new_uint64(metadata_size - LUKS2_HDR_BIN_LEN));
-	json_object_object_add(jobj_config, "keyslots_size", crypt_jobj_new_uint64(keyslots_size));
+	if (!opal_key_size)
+		jobj_segment = json_segment_create_crypt(data_offset, 0,
+							 NULL, cipher_spec,
+							 integrity, sector_size,
+							 0);
+	else if (opal_key_size && cipher_spec)
+		jobj_segment = json_segment_create_opal_crypt(data_offset, &device_size_bytes,
+							      opal_segment_number, opal_key_size, 0,
+							      cipher_spec, integrity,
+							      sector_size, 0);
+	else
+		jobj_segment = json_segment_create_opal(data_offset, &device_size_bytes,
+							opal_segment_number, opal_key_size);
+
+	if (!jobj_segment) {
+		r = -EINVAL;
+		goto err;
+	}
+
+	if (json_object_object_add_by_uint(jobj_segments, 0, jobj_segment)) {
+		json_object_put(jobj_segment);
+		r = -ENOMEM;
+		goto err;
+	}
+
+	json_object_object_add(jobj_config, "json_size", crypt_jobj_new_uint64(metadata_size_bytes - LUKS2_HDR_BIN_LEN));
+	json_object_object_add(jobj_config, "keyslots_size", crypt_jobj_new_uint64(keyslots_size_bytes));
 
 	JSON_DBG(cd, hdr->jobj, "Header JSON:");
 	return 0;
 err:
 	json_object_put(hdr->jobj);
 	hdr->jobj = NULL;
-	return -EINVAL;
+	return r;
 }
 
 int LUKS2_wipe_header_areas(struct crypt_device *cd,
-	struct luks2_hdr *hdr, bool detached_header)
+	struct luks2_hdr *hdr)
 {
 	int r;
-	uint64_t offset, length;
-	size_t wipe_block;
+	uint64_t device_size_bytes, length, offset;
+	size_t wipe_block = 1024 * 1024;
 
-	/* Wipe complete header, keyslots and padding areas with zeroes. */
-	offset = 0;
-	length = LUKS2_get_data_offset(hdr) * SECTOR_SIZE;
-	wipe_block = 1024 * 1024;
-
-	if (LUKS2_hdr_validate(cd, hdr->jobj, hdr->hdr_size - LUKS2_HDR_BIN_LEN))
+	if (!hdr || LUKS2_hdr_validate(cd, hdr->jobj, hdr->hdr_size - LUKS2_HDR_BIN_LEN))
 		return -EINVAL;
 
-	/* On detached header wipe at least the first 4k */
-	if (detached_header) {
-		length = 4096;
-		wipe_block = 4096;
-	}
+	r = device_size(crypt_metadata_device(cd), &device_size_bytes);
+	if (r < 0)
+		return -EINVAL;
 
-	r = device_check_size(cd, crypt_metadata_device(cd), length, 1);
-	if (r)
-		return r;
+	/* Wipe up to maximal allowed metadata size, but do not write beyond data offset. */
+	length = LUKS2_get_data_offset(hdr) * SECTOR_SIZE;
+	if (!length || length > LUKS2_HDR_MAX_MDA_SIZE)
+		length = LUKS2_HDR_MAX_MDA_SIZE;
+
+	/* Also do not extend the device size yet (file backends) */
+	if (length > device_size_bytes)
+		length = device_size_bytes;
 
 	log_dbg(cd, "Wiping LUKS areas (0x%06" PRIx64 " - 0x%06" PRIx64") with zeroes.",
-		offset, length + offset);
+		0ULL, length);
 
-	r = crypt_wipe_device(cd, crypt_metadata_device(cd), CRYPT_WIPE_ZERO,
-			      offset, length, wipe_block, NULL, NULL);
+	r = crypt_wipe_device(cd, crypt_metadata_device(cd), CRYPT_WIPE_ZERO, 0,
+			      length, wipe_block, NULL, NULL);
 	if (r < 0)
 		return r;
 
+	/* Allocate at least actual LUKS2 metadata size */
+	r = device_check_size(cd, crypt_metadata_device(cd),
+			      LUKS2_hdr_and_areas_size(hdr), 1);
+	if (r)
+		return r;
+
 	/* Wipe keyslot area */
-	wipe_block = 1024 * 1024;
 	offset = get_min_offset(hdr);
 	length = LUKS2_keyslots_size(hdr);
+
+	/*
+	 * Skip keyslots area wipe in case it is not defined.
+	 * Otherwise we would wipe whole data device (length == 0)
+	 * starting at offset get_min_offset(hdr).
+	 */
+	if (!length)
+		return 0;
 
 	log_dbg(cd, "Wiping keyslots area (0x%06" PRIx64 " - 0x%06" PRIx64") with random data.",
 		offset, length + offset);
@@ -407,5 +389,82 @@ int LUKS2_set_keyslots_size(struct luks2_hdr *hdr, uint64_t data_offset)
 		return 1;
 
 	json_object_object_add(jobj_config, "keyslots_size", crypt_jobj_new_uint64(keyslots_size));
+	return 0;
+}
+
+int LUKS2_hdr_get_storage_params(struct crypt_device *cd,
+			    uint64_t alignment_offset_bytes,
+			    uint64_t alignment_bytes,
+			    uint64_t *ret_metadata_size_bytes,
+			    uint64_t *ret_keyslots_size_bytes,
+			    uint64_t *ret_data_offset_bytes)
+{
+	uint64_t data_offset_bytes, keyslots_size_bytes, metadata_size_bytes, mdev_size_bytes;
+
+	assert(cd);
+	assert(ret_metadata_size_bytes);
+	assert(ret_keyslots_size_bytes);
+	assert(ret_data_offset_bytes);
+
+	metadata_size_bytes = crypt_get_metadata_size_bytes(cd);
+	keyslots_size_bytes = crypt_get_keyslots_size_bytes(cd);
+	data_offset_bytes = crypt_get_data_offset_sectors(cd) * SECTOR_SIZE;
+
+	if (!metadata_size_bytes)
+		metadata_size_bytes = LUKS2_HDR_16K_LEN;
+
+	if (data_offset_bytes && data_offset_bytes < 2 * metadata_size_bytes) {
+		log_err(cd, _("Requested data offset is too small."));
+		return -EINVAL;
+	}
+
+	/* Increase keyslot size according to data offset */
+	if (!keyslots_size_bytes && data_offset_bytes)
+		keyslots_size_bytes = data_offset_bytes - 2 * metadata_size_bytes;
+
+	/* keyslots size has to be 4 KiB aligned */
+	keyslots_size_bytes -= (keyslots_size_bytes % 4096);
+
+	if (keyslots_size_bytes > LUKS2_MAX_KEYSLOTS_SIZE)
+		keyslots_size_bytes = LUKS2_MAX_KEYSLOTS_SIZE;
+
+	if (!keyslots_size_bytes) {
+		assert(LUKS2_DEFAULT_HDR_SIZE > 2 * LUKS2_HDR_OFFSET_MAX);
+		keyslots_size_bytes = LUKS2_DEFAULT_HDR_SIZE - 2 * metadata_size_bytes;
+		/* Decrease keyslots_size due to metadata device being too small */
+		if (!device_size(crypt_metadata_device(cd), &mdev_size_bytes) &&
+		    ((keyslots_size_bytes + 2 * metadata_size_bytes) > mdev_size_bytes) &&
+		    device_fallocate(crypt_metadata_device(cd), keyslots_size_bytes + 2 * metadata_size_bytes) &&
+		    ((2 * metadata_size_bytes) <= mdev_size_bytes))
+			keyslots_size_bytes = mdev_size_bytes - 2 * metadata_size_bytes;
+	}
+
+	/* Decrease keyslots_size if we have smaller data_offset */
+	if (data_offset_bytes && (keyslots_size_bytes + 2 * metadata_size_bytes) > data_offset_bytes) {
+		keyslots_size_bytes = data_offset_bytes - 2 * metadata_size_bytes;
+		log_dbg(cd, "Decreasing keyslot area size to %" PRIu64
+			" bytes due to the requested data offset %"
+			PRIu64 " bytes.", keyslots_size_bytes, data_offset_bytes);
+	}
+
+	/* Data offset has priority */
+	if (!data_offset_bytes && alignment_bytes) {
+		data_offset_bytes = size_round_up(2 * metadata_size_bytes + keyslots_size_bytes,
+					    (size_t)alignment_bytes);
+		data_offset_bytes += alignment_offset_bytes;
+	}
+
+	if (crypt_get_metadata_size_bytes(cd) && (crypt_get_metadata_size_bytes(cd) != metadata_size_bytes))
+		log_std(cd, _("WARNING: LUKS2 metadata size changed to %" PRIu64 " bytes.\n"),
+			metadata_size_bytes);
+
+	if (crypt_get_keyslots_size_bytes(cd) && (crypt_get_keyslots_size_bytes(cd) != keyslots_size_bytes))
+		log_std(cd, _("WARNING: LUKS2 keyslots area size changed to %" PRIu64 " bytes.\n"),
+			keyslots_size_bytes);
+
+	*ret_metadata_size_bytes = metadata_size_bytes;
+	*ret_keyslots_size_bytes = keyslots_size_bytes;
+	*ret_data_offset_bytes = data_offset_bytes;
+
 	return 0;
 }

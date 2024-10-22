@@ -1,3 +1,39 @@
+cryptsetup (2:2.7.5-1) unstable; urgency=medium
+
+  Devices using legacy hash algorithms such as whirlpool now require the
+  ‘openssl-provider-legacy’ binary package.  This is due to changes in the
+  OpenSSL packaging.  For now that package is transitively installed, but
+  users relying on it are advised to mark it as manually installed with the
+  following command:
+
+      apt-mark manual openssl-provider-legacy
+
+  Note that hash algorithms found in the ‘openssl-provider-legacy’ binary
+  package are deemed insecure and it is therefore advised to use another
+  algorithm if possible.  (In that case ‘openssl-provider-legacy’ can safely
+  be uninstalled once no other package depends on it.)  The default hash
+  algorithms are listed in the output of `cryptsetup --help`.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 03 Sep 2024 12:23:09 +0200
+
+cryptsetup (2:2.7.0~rc0-1) experimental; urgency=medium
+
+  Default cipher and password hashing for plain mode have respectively
+  been changed to aes-xts-plain64 and sha256 (from aes-cbc-essiv:sha256
+  resp. ripemd160).
+
+  The new values matches what is used for LUKS, but the change does NOT
+  affect LUKS volumes.
+
+  This is a backward incompatible change for plain mode when relying on
+  the defaults, which (for plain mode only) is strongly advised against.
+  For many releases the Debian wrappers found in the ‘cryptsetup’ binary
+  package have spewed a loud warning for plain devices from crypttab(5)
+  where ‘cipher=’ or ‘hash=’ are not explicitly specified.  The
+  cryptsetup(8) executable now issue such a warning as well.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Wed, 29 Nov 2023 17:19:10 +0100
+
 cryptsetup (2:2.3.6-1+exp1) bullseye-security; urgency=high
 
   This release fixes a key truncation issue for standalone dm-integrity

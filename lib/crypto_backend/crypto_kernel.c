@@ -1,25 +1,11 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
 /*
  * Linux kernel userspace API crypto backend implementation
  *
- * Copyright (C) 2010-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2023 Milan Broz
- *
- * This file is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
- *
- * This file is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this file; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2024 Milan Broz
  */
 
-#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -245,7 +231,6 @@ void crypt_hash_destroy(struct crypt_hash *ctx)
 		close(ctx->tfmfd);
 	if (ctx->opfd >= 0)
 		close(ctx->opfd);
-	memset(ctx, 0, sizeof(*ctx));
 	free(ctx);
 }
 
@@ -324,7 +309,6 @@ void crypt_hmac_destroy(struct crypt_hmac *ctx)
 		close(ctx->tfmfd);
 	if (ctx->opfd >= 0)
 		close(ctx->opfd);
-	memset(ctx, 0, sizeof(*ctx));
 	free(ctx);
 }
 

@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * libcryptsetup - cryptsetup library, cipher benchmark
  *
- * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2024 Milan Broz
  */
 
 #include <stdlib.h>
@@ -101,6 +88,7 @@ int crypt_benchmark_pbkdf(struct crypt_device *cd,
 {
 	int r, priority;
 	const char *kdf_opt;
+	uint32_t memory_kb;
 
 	if (!pbkdf || (!password && password_size))
 		return -EINVAL;
@@ -112,6 +100,14 @@ int crypt_benchmark_pbkdf(struct crypt_device *cd,
 	kdf_opt = !strcmp(pbkdf->type, CRYPT_KDF_PBKDF2) ? pbkdf->hash : "";
 
 	log_dbg(cd, "Running %s(%s) benchmark.", pbkdf->type, kdf_opt);
+
+	memory_kb = pbkdf_adjusted_phys_memory_kb();
+	if (memory_kb < pbkdf->max_memory_kb) {
+		log_dbg(cd, "Not enough physical memory detected, "
+			"PBKDF max memory decreased from %dkB to %dkB.",
+			pbkdf->max_memory_kb, memory_kb);
+		pbkdf->max_memory_kb = memory_kb;
+	}
 
 	crypt_process_priority(cd, &priority, true);
 	r = crypt_pbkdf_perf(pbkdf->type, pbkdf->hash, password, password_size,

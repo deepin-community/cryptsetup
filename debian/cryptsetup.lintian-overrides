@@ -1,3 +1,4 @@
 init.d-script-does-not-implement-status-option [etc/init.d/cryptdisks]
 init.d-script-does-not-implement-status-option [etc/init.d/cryptdisks-early]
 no-debconf-config
+cryptsetup: conflicts-with-version cryptsetup-nuke-password (<< 5~)

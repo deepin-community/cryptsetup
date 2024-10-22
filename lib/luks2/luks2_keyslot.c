@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, keyslot handling
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -428,11 +415,13 @@ static int LUKS2_keyslot_open_priority_digest(struct crypt_device *cd,
 {
 	json_object *jobj_keyslots, *jobj;
 	crypt_keyslot_priority slot_priority;
-	int keyslot, r = -ENOENT;
+	int keyslot, r = -ENOENT, r_old;
 
 	json_object_object_get_ex(hdr->jobj, "keyslots", &jobj_keyslots);
 
 	json_object_object_foreach(jobj_keyslots, slot, val) {
+		r_old = r;
+
 		if (!json_object_object_get_ex(val, "priority", &jobj))
 			slot_priority = CRYPT_SLOT_PRIORITY_NORMAL;
 		else
@@ -451,6 +440,9 @@ static int LUKS2_keyslot_open_priority_digest(struct crypt_device *cd,
 		   former meaning password wrong, latter key slot unusable for segment */
 		if ((r != -EPERM) && (r != -ENOENT))
 			break;
+		/* If a previous keyslot failed with EPERM (bad password) prefer it */
+		if (r_old == -EPERM && r == -ENOENT)
+			r = -EPERM;
 	}
 
 	return r;
@@ -466,11 +458,13 @@ static int LUKS2_keyslot_open_priority(struct crypt_device *cd,
 {
 	json_object *jobj_keyslots, *jobj;
 	crypt_keyslot_priority slot_priority;
-	int keyslot, r = -ENOENT;
+	int keyslot, r = -ENOENT, r_old;
 
 	json_object_object_get_ex(hdr->jobj, "keyslots", &jobj_keyslots);
 
 	json_object_object_foreach(jobj_keyslots, slot, val) {
+		r_old = r;
+
 		if (!json_object_object_get_ex(val, "priority", &jobj))
 			slot_priority = CRYPT_SLOT_PRIORITY_NORMAL;
 		else
@@ -489,6 +483,9 @@ static int LUKS2_keyslot_open_priority(struct crypt_device *cd,
 		   former meaning password wrong, latter key slot unusable for segment */
 		if ((r != -EPERM) && (r != -ENOENT))
 			break;
+		/* If a previous keyslot failed with EPERM (bad password) prefer it */
+		if (r_old == -EPERM && r == -ENOENT)
+			r = -EPERM;
 	}
 
 	return r;
@@ -578,6 +575,8 @@ int LUKS2_keyslot_open(struct crypt_device *cd,
 	int r_prio, r = -EINVAL;
 
 	hdr = crypt_get_hdr(cd, CRYPT_LUKS2);
+	if (!hdr)
+		return -EINVAL;
 
 	if (keyslot == CRYPT_ANY_SLOT) {
 		r_prio = LUKS2_keyslot_open_priority(cd, hdr, CRYPT_SLOT_PRIORITY_PREFER,
@@ -676,8 +675,7 @@ int LUKS2_keyslot_store(struct crypt_device *cd,
 
 int LUKS2_keyslot_wipe(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
-	int keyslot,
-	int wipe_area_only)
+	int keyslot)
 {
 	struct device *device = crypt_metadata_device(cd);
 	uint64_t area_offset, area_length;
@@ -693,9 +691,6 @@ int LUKS2_keyslot_wipe(struct crypt_device *cd,
 	jobj_keyslot = LUKS2_get_keyslot_jobj(hdr, keyslot);
 	if (!jobj_keyslot)
 		return -ENOENT;
-
-	if (wipe_area_only)
-		log_dbg(cd, "Wiping keyslot %d area only.", keyslot);
 
 	r = LUKS2_device_write_lock(cd, hdr, device);
 	if (r)
@@ -719,9 +714,6 @@ int LUKS2_keyslot_wipe(struct crypt_device *cd,
 			goto out;
 		}
 	}
-
-	if (wipe_area_only)
-		goto out;
 
 	/* Slot specific wipe */
 	if (h) {
@@ -803,6 +795,9 @@ int placeholder_keyslot_alloc(struct crypt_device *cd,
 		return -EINVAL;
 
 	jobj_keyslot = json_object_new_object();
+	if (!jobj_keyslot)
+		return -ENOMEM;
+
 	json_object_object_add(jobj_keyslot, "type", json_object_new_string("placeholder"));
 	/*
 	 * key_size = -1 makes placeholder keyslot impossible to pass validation.
@@ -813,11 +808,19 @@ int placeholder_keyslot_alloc(struct crypt_device *cd,
 
 	/* Area object */
 	jobj_area = json_object_new_object();
+	if (!jobj_area) {
+		json_object_put(jobj_keyslot);
+		return -ENOMEM;
+	}
+
 	json_object_object_add(jobj_area, "offset", crypt_jobj_new_uint64(area_offset));
 	json_object_object_add(jobj_area, "size", crypt_jobj_new_uint64(area_length));
 	json_object_object_add(jobj_keyslot, "area", jobj_area);
 
-	json_object_object_add_by_uint(jobj_keyslots, keyslot, jobj_keyslot);
+	if (json_object_object_add_by_uint(jobj_keyslots, keyslot, jobj_keyslot)) {
+		json_object_put(jobj_keyslot);
+		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -899,7 +902,7 @@ int LUKS2_keyslots_validate(struct crypt_device *cd, json_object *hdr_jobj)
 	return 0;
 }
 
-void LUKS2_keyslots_repair(struct crypt_device *cd, json_object *jobj_keyslots)
+void LUKS2_keyslots_repair(struct crypt_device *cd __attribute__((unused)), json_object *jobj_keyslots)
 {
 	const keyslot_handler *h;
 	json_object *jobj_type;
@@ -964,14 +967,17 @@ int LUKS2_keyslot_swap(struct crypt_device *cd, struct luks2_hdr *hdr,
 	json_object_object_del_by_uint(jobj_keyslots, keyslot);
 	r = json_object_object_add_by_uint(jobj_keyslots, keyslot, jobj_keyslot2);
 	if (r < 0) {
+		json_object_put(jobj_keyslot2);
 		log_dbg(cd, "Failed to swap keyslot %d.", keyslot);
 		return r;
 	}
 
 	json_object_object_del_by_uint(jobj_keyslots, keyslot2);
 	r = json_object_object_add_by_uint(jobj_keyslots, keyslot2, jobj_keyslot);
-	if (r < 0)
+	if (r < 0) {
+		json_object_put(jobj_keyslot);
 		log_dbg(cd, "Failed to swap keyslot2 %d.", keyslot2);
+	}
 
 	return r;
 }

@@ -1,2 +1,0 @@
-# cryptsetup-suspend depends on systemd and doesn't work with sysvinit
-cryptsetup-suspend: package-supports-alternative-init-but-no-init.d-script

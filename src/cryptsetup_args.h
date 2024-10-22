@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Command line arguments helpers
  *
- * Copyright (C) 2020-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2020-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2024 Ondrej Kozina
  */
 
 #ifndef CRYPTSETUP_ARGS_H
@@ -25,57 +12,64 @@
 #include "utils_arg_names.h"
 #include "utils_arg_macros.h"
 
+#define ADDKEY_ACTION		"luksAddKey"
 #define BITLKDUMP_ACTION	"bitlkDump"
 #define BENCHMARK_ACTION	"benchmark"
+#define CHANGEKEY_ACTION	"luksChangeKey"
 #define CLOSE_ACTION		"close"
+#define CONVERTKEY_ACTION	"luksConvertKey"
 #define CONFIG_ACTION		"config"
 #define CONVERT_ACTION		"convert"
 #define ERASE_ACTION		"erase"
-#define FVAULT2DUMP_ACTION	"fvault2Dump"
-#define ISLUKS_ACTION		"isLuks"
-#define ADDKEY_ACTION		"luksAddKey"
-#define CHANGEKEY_ACTION	"luksChangeKey"
-#define CONVERTKEY_ACTION	"luksConvertKey"
-#define LUKSDUMP_ACTION		"luksDump"
 #define FORMAT_ACTION		"luksFormat"
+#define FVAULT2DUMP_ACTION	"fvault2Dump"
 #define HEADERBACKUP_ACTION	"luksHeaderBackup"
 #define HEADERRESTORE_ACTION	"luksHeaderRestore"
+#define ISLUKS_ACTION		"isLuks"
 #define KILLKEY_ACTION		"luksKillSlot"
-#define REMOVEKEY_ACTION	"luksRemoveKey"
-#define RESUME_ACTION		"luksResume"
-#define SUSPEND_ACTION		"luksSuspend"
-#define UUID_ACTION		"luksUUID"
+#define LUKSDUMP_ACTION		"luksDump"
 #define OPEN_ACTION		"open"
 #define REENCRYPT_ACTION	"reencrypt"
+#define REMOVEKEY_ACTION	"luksRemoveKey"
 #define REPAIR_ACTION		"repair"
 #define RESIZE_ACTION		"resize"
+#define RESUME_ACTION		"luksResume"
 #define STATUS_ACTION		"status"
+#define SUSPEND_ACTION		"luksSuspend"
 #define TCRYPTDUMP_ACTION	"tcryptDump"
 #define TOKEN_ACTION		"token"
+#define UUID_ACTION		"luksUUID"
 
 /* avoid unshielded commas in ARG() macros later */
 #define OPT_ALIGN_PAYLOAD_ACTIONS		{ FORMAT_ACTION, REENCRYPT_ACTION }
 #define OPT_ALLOW_DISCARDS_ACTIONS		{ OPEN_ACTION }
 #define OPT_DEFERRED_ACTIONS			{ CLOSE_ACTION }
 #define OPT_DEVICE_SIZE_ACTIONS			{ OPEN_ACTION, RESIZE_ACTION, REENCRYPT_ACTION }
+#define OPT_DISABLE_BLKID_ACTIONS		{ FORMAT_ACTION, REENCRYPT_ACTION }
 #define OPT_DISABLE_VERACRYPT_ACTIONS		{ OPEN_ACTION, TCRYPTDUMP_ACTION }
-#define OPT_HOTZONE_SIZE_ACTIONS		{ REENCRYPT_ACTION }
+#define OPT_ERASE_ACTIONS			{ ERASE_ACTION }
+#define OPT_EXTERNAL_TOKENS_PATH_ACTIONS	{ RESIZE_ACTION, OPEN_ACTION, ADDKEY_ACTION, LUKSDUMP_ACTION, RESUME_ACTION, TOKEN_ACTION }
 #define OPT_FORCE_OFFLINE_REENCRYPT_ACTIONS	{ REENCRYPT_ACTION }
-#define OPT_INTEGRITY_ACTIONS			{ FORMAT_ACTION, REENCRYPT_ACTION }
-#define OPT_INTEGRITY_NO_WIPE_ACTIONS		{ FORMAT_ACTION, REENCRYPT_ACTION }
+#define OPT_HOTZONE_SIZE_ACTIONS		{ REENCRYPT_ACTION }
+#define OPT_HW_OPAL_ACTIONS			{ FORMAT_ACTION }
+#define OPT_HW_OPAL_ONLY_ACTIONS		OPT_HW_OPAL_ACTIONS
+#define OPT_INTEGRITY_ACTIONS			{ FORMAT_ACTION }
+#define OPT_INTEGRITY_NO_WIPE_ACTIONS		{ FORMAT_ACTION }
 #define OPT_ITER_TIME_ACTIONS			{ BENCHMARK_ACTION, FORMAT_ACTION, ADDKEY_ACTION, CHANGEKEY_ACTION, CONVERTKEY_ACTION, REENCRYPT_ACTION }
 #define OPT_IV_LARGE_SECTORS_ACTIONS		{ OPEN_ACTION }
 #define OPT_KEEP_KEY_ACTIONS			{ REENCRYPT_ACTION }
+#define OPT_KEY_DESCRIPTION_ACTIONS		{ TOKEN_ACTION }
 #define OPT_KEY_SIZE_ACTIONS			{ OPEN_ACTION, BENCHMARK_ACTION, FORMAT_ACTION, REENCRYPT_ACTION, ADDKEY_ACTION }
 #define OPT_KEY_SLOT_ACTIONS			{ OPEN_ACTION, REENCRYPT_ACTION, CONFIG_ACTION, FORMAT_ACTION, ADDKEY_ACTION, CHANGEKEY_ACTION, CONVERTKEY_ACTION, LUKSDUMP_ACTION, TOKEN_ACTION, RESUME_ACTION }
 #define OPT_KEYSLOT_CIPHER_ACTIONS		{ FORMAT_ACTION, REENCRYPT_ACTION, ADDKEY_ACTION, CHANGEKEY_ACTION, CONVERTKEY_ACTION }
 #define OPT_KEYSLOT_KEY_SIZE_ACTIONS		OPT_KEYSLOT_CIPHER_ACTIONS
+#define OPT_LABEL_ACTIONS			{ CONFIG_ACTION, FORMAT_ACTION, REENCRYPT_ACTION }
+#define OPT_LINK_VK_TO_KEYRING_ACTIONS		{ OPEN_ACTION, RESUME_ACTION }
+#define OPT_LUKS2_KEYSLOTS_SIZE_ACTIONS		{ REENCRYPT_ACTION, FORMAT_ACTION }
+#define OPT_LUKS2_METADATA_SIZE_ACTIONS		{ REENCRYPT_ACTION, FORMAT_ACTION }
 #define OPT_NEW_KEYFILE_ACTIONS			{ ADDKEY_ACTION }
 #define OPT_NEW_KEY_SLOT_ACTIONS		{ ADDKEY_ACTION }
 #define OPT_NEW_TOKEN_ID_ACTIONS		{ ADDKEY_ACTION }
-#define OPT_LABEL_ACTIONS			{ CONFIG_ACTION, FORMAT_ACTION, REENCRYPT_ACTION }
-#define OPT_LUKS2_KEYSLOTS_SIZE_ACTIONS		{ REENCRYPT_ACTION, FORMAT_ACTION }
-#define OPT_LUKS2_METADATA_SIZE_ACTIONS		{ REENCRYPT_ACTION, FORMAT_ACTION }
 #define OPT_OFFSET_ACTIONS			{ OPEN_ACTION, REENCRYPT_ACTION, FORMAT_ACTION }
 #define OPT_PBKDF_ACTIONS			{ BENCHMARK_ACTION, FORMAT_ACTION, ADDKEY_ACTION, CHANGEKEY_ACTION, CONVERTKEY_ACTION, REENCRYPT_ACTION }
 #define OPT_PBKDF_FORCE_ITERATIONS_ACTIONS	{ FORMAT_ACTION, ADDKEY_ACTION, CHANGEKEY_ACTION, CONVERTKEY_ACTION, REENCRYPT_ACTION }

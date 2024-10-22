@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * cryptsetup library API test utilities
  *
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <assert.h>
@@ -201,25 +188,39 @@ int fips_mode(void)
  */
 int create_dmdevice_over_loop(const char *dm_name, const uint64_t size)
 {
+	int r;
+
+	r = create_dmdevice_over_device(dm_name, THE_LOOP_DEV, size, t_dev_offset);
+	if (r != 0)
+		return r;
+
+	t_dev_offset += size;
+
+	return r;
+}
+
+/*
+ * Creates dm-linear target over the desired block device.
+ */
+int create_dmdevice_over_device(const char *dm_name, const char *device, uint64_t size, uint64_t offset)
+{
 	char cmd[128];
 	int r;
 	uint64_t r_size;
 
-	if (t_device_size(THE_LOOP_DEV, &r_size) < 0 || r_size <= t_dev_offset || !size)
+	if (!device || t_device_size(device, &r_size) < 0 || r_size <= offset || !size)
 		return -1;
-	if ((r_size - t_dev_offset) < size) {
-		printf("No enough space on backing loop device\n.");
+	if ((r_size - offset) < size) {
+		printf("No enough space on device %s\n.", device);
 		return -2;
 	}
 	r = snprintf(cmd, sizeof(cmd),
 		     "dmsetup create %s --table \"0 %" PRIu64 " linear %s %" PRIu64 "\"",
-		     dm_name, size, THE_LOOP_DEV, t_dev_offset);
+		     dm_name, size, device, offset);
 	if (r < 0 || (size_t)r >= sizeof(cmd))
 		return -3;
 
-	if (!(r = _system(cmd, 1)))
-		t_dev_offset += size;
-	return r;
+	return _system(cmd, 1);
 }
 
 __attribute__((format(printf, 3, 4)))
@@ -450,12 +451,12 @@ void global_log_callback(int level, const char *msg, void *usrptr __attribute__(
 
 	len = strlen(global_log);
 
-	if (len + strlen(msg) > sizeof(global_log)) {
+	if (len + strlen(msg) >= sizeof(global_log)) {
 			printf("Log buffer is too small, fix the test.\n");
 			return;
 	}
 
-	strncat(global_log, msg, sizeof(global_log) - len);
+	strncat(global_log, msg, sizeof(global_log) - len - 1);
 	global_lines++;
 	if (level == CRYPT_LOG_ERROR) {
 		len = strlen(msg);

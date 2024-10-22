@@ -169,6 +169,7 @@ PKG_INIT="systemd-sysv" # default pid1
 MERGED_USR="" # use default layout for the target version
 declare -a PKGS_EXTRA=() DRIVE_SIZES=( "2G" )
 PKGS_EXTRA+=( "zstd" ) # default initrd compression, see #976054
+PKGS_EXTRA+=( "login" "passwd" ) # for login(1) and passwd(1)
 
 if [ -f "$TESTDIR/$TESTNAME.d/config" ]; then
     . "$TESTDIR/$TESTNAME.d/config" || exit 1
@@ -416,9 +417,12 @@ extract_kernel() {
     fi
 
     mkdir "$destdir"
+    mkdir "$destdir/usr" "$destdir/usr/lib"
+    ln -sT "usr/lib" "$destdir/lib"
     dpkg-deb --fsys-tarfile "$APT_CACHE/archives/$KERNEL_DEB" | tar -C "$destdir" -xf- \
+        --wildcards --wildcards-match-slash \
         "./boot/vmlinuz-$KERNEL_VERSION" \
-        "./lib/modules/$KERNEL_VERSION"
+        "*/lib/modules/$KERNEL_VERSION"
     ln -T -- "$destdir/boot/vmlinuz-$KERNEL_VERSION" "$TEMPDIR/vmlinuz-$KERNEL_VERSION"
 }
 

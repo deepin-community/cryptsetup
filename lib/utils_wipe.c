@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * utils_wipe - wipe a device
  *
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <stdlib.h>
@@ -26,6 +13,8 @@
 #include <sys/stat.h>
 #include <linux/fs.h>
 #include "internal.h"
+#include "luks2/luks2_internal.h"
+#include "luks2/hw_opal/hw_opal.h"
 
 /* block device zeroout ioctls, introduced in Linux kernel 3.7 */
 #ifndef BLKZEROOUT
@@ -308,4 +297,74 @@ int crypt_wipe(struct crypt_device *cd,
 		device_free(cd, device);
 
 	return r;
+}
+
+int crypt_wipe_hw_opal(struct crypt_device *cd,
+		       int segment,
+		       const char *password,
+		       size_t password_size,
+		       uint32_t flags)
+{
+	int r;
+	struct luks2_hdr *hdr;
+	uint32_t opal_segment_number;
+	struct crypt_lock_handle *opal_lh = NULL;
+
+	UNUSED(flags);
+
+	if (!cd)
+		return -EINVAL;
+
+	if (!password)
+		return -EINVAL;
+
+	if (segment < CRYPT_LUKS2_SEGMENT || segment > 8)
+		return -EINVAL;
+
+	r = crypt_opal_supported(cd, crypt_data_device(cd));
+	if (r < 0)
+		return r;
+
+	if (segment == CRYPT_NO_SEGMENT) {
+		r = opal_factory_reset(cd, crypt_data_device(cd), password, password_size);
+		if (r == -EPERM)
+			log_err(cd, _("Incorrect OPAL PSID."));
+		else if (r < 0)
+			log_err(cd, _("Cannot erase OPAL device."));
+		return r;
+	}
+
+	if (onlyLUKS2(cd) < 0)
+		return -EINVAL;
+
+	hdr = crypt_get_hdr(cd, CRYPT_LUKS2);
+	if (!hdr)
+		return -EINVAL;
+
+	if (segment == CRYPT_LUKS2_SEGMENT) {
+		r = LUKS2_get_opal_segment_number(hdr, CRYPT_DEFAULT_SEGMENT, &opal_segment_number);
+		if (r < 0) {
+			log_dbg(cd, "Can not get OPAL segment number.");
+			return r;
+		}
+	} else
+		opal_segment_number = segment;
+
+	r = opal_exclusive_lock(cd, crypt_data_device(cd), &opal_lh);
+	if (r < 0) {
+		log_err(cd, _("Failed to acquire OPAL lock on device %s."), device_path(crypt_data_device(cd)));
+		return -EINVAL;
+	}
+
+	r = opal_reset_segment(cd,
+			       crypt_data_device(cd),
+			       opal_segment_number,
+			       password,
+			       password_size);
+
+	opal_exclusive_unlock(cd, opal_lh);
+	if (r < 0)
+		return r;
+
+	return LUKS2_wipe_header_areas(cd, hdr);
 }

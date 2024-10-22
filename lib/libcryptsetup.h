@@ -1,24 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * libcryptsetup - cryptsetup library
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 /**
@@ -273,7 +260,7 @@ struct crypt_pbkdf_type {
 
 /** Iteration time set by crypt_set_iteration_time(), for compatibility only. */
 #define CRYPT_PBKDF_ITER_TIME_SET   (UINT32_C(1) << 0)
-/** Never run benchmarks, use pre-set value or defaults. */
+/** Never run benchmarks or limit by system resources, use pre-set values or defaults. */
 #define CRYPT_PBKDF_NO_BENCHMARK    (UINT32_C(1) << 1)
 
 /** PBKDF2 according to RFC2898, LUKS1 legacy */
@@ -451,6 +438,34 @@ const char *crypt_get_type(struct crypt_device *cd);
 const char *crypt_get_default_type(void);
 
 /**
+ * @defgroup crypt-hw-encryption-types HW encryption type
+ * @addtogroup crypt-hw-encryption-types
+ * @{
+ */
+/** SW encryption, no OPAL encryption in place (default) */
+#define CRYPT_SW_ONLY        INT16_C(0)
+/** OPAL HW encryption only (no SW encryption!) */
+#define CRYPT_OPAL_HW_ONLY   INT16_C(1)
+/** SW encryption stacked over OPAL HW encryption  */
+#define CRYPT_SW_AND_OPAL_HW INT16_C(2)
+/** @} */
+
+/**
+ * Get HW encryption type
+ *
+ * @return HW encryption type (see @link crypt-hw-encryption-types @endlink)
+ *         or negative errno otherwise.
+ */
+int crypt_get_hw_encryption_type(struct crypt_device *cd);
+
+/**
+ * Get HW encryption (like OPAL) key size (in bytes)
+ *
+ * @return key size or 0 if no HW encryption is used.
+ */
+int crypt_get_hw_encryption_key_size(struct crypt_device *cd);
+
+/**
  *
  * Structure used as parameter for PLAIN device type.
  *
@@ -609,6 +624,18 @@ struct crypt_params_luks2 {
 	const char *label;       /**< header label or @e NULL*/
 	const char *subsystem;   /**< header subsystem label or @e NULL*/
 };
+
+/**
+ * Structure used as parameter for OPAL (HW encrypted) device type.
+ *
+ * @see crypt_format_luks2_opal
+ *
+ */
+struct crypt_params_hw_opal {
+	const char *admin_key;   /**< admin key */
+	size_t admin_key_size;   /**< admin key size in bytes */
+	size_t user_key_size;    /**< user authority key size part in bytes */
+};
 /** @} */
 
 /**
@@ -647,6 +674,34 @@ int crypt_format(struct crypt_device *cd,
 	const char *volume_key,
 	size_t volume_key_size,
 	void *params);
+
+/**
+ * Create (format) new LUKS2 crypt device over HW OPAL device but do not activate it.
+ *
+ * @pre @e cd contains initialized and not formatted device context (device type must @b not be set)
+ *
+ * @param cd crypt device handle
+ * @param cipher for SW encryption (e.g. "aes") or NULL for HW encryption only
+ * @param cipher_mode including IV specification (e.g. "xts-plain") or NULL for HW encryption only
+ * @param uuid requested UUID or @e NULL if it should be generated
+ * @param volume_keys pre-generated volume keys or @e NULL if it should be generated (only for LUKS2 SW encryption)
+ * @param volume_keys_size size of volume keys in bytes (only for SW encryption).
+ * @param params LUKS2 crypt type specific parameters (see @link crypt-type @endlink)
+ * @param opal_params OPAL specific parameters
+ *
+ * @returns @e 0 on success or negative errno value otherwise.
+ *
+ * @note Note that crypt_format_luks2_opal does not create LUKS keyslot.
+ *       To create keyslot call any crypt_keyslot_add_* function.
+ */
+int crypt_format_luks2_opal(struct crypt_device *cd,
+	const char *cipher,
+	const char *cipher_mode,
+	const char *uuid,
+	const char *volume_keys,
+	size_t volume_keys_size,
+	struct crypt_params_luks2 *params,
+	struct crypt_params_hw_opal *opal_params);
 
 /**
  * Set format compatibility flags.
@@ -941,6 +996,23 @@ int crypt_resume_by_token_pin(struct crypt_device *cd,
 	const char *pin,
 	size_t pin_size,
 	void *usrptr);
+
+/**
+ * Resume crypt device using keyslot context.
+ *
+ * @param cd crypt device handle
+ * @param name name of device to resume
+ * @param keyslot requested keyslot to check or @e CRYPT_ANY_SLOT, keyslot is
+ *        ignored for unlock methods not based on passphrase
+ * @param kc keyslot context providing volume key or passphrase.
+ *
+ * @return unlocked key slot number for passphrase-based unlock, zero for other
+ *         unlock methods (e.g. volume key context) or negative errno on error.
+ */
+int crypt_resume_by_keyslot_context(struct crypt_device *cd,
+			       const char *name,
+			       int keyslot,
+			       struct crypt_keyslot_context *kc);
 /** @} */
 
 /**
@@ -1099,7 +1171,7 @@ int crypt_keyslot_add_by_volume_key(struct crypt_device *cd,
  * @warning CRYPT_VOLUME_KEY_SET flag force updates volume key. It is @b not @b reencryption!
  * 	    By doing so you will most probably destroy your ciphertext data device. It's supposed
  * 	    to be used only in wrapped keys scheme for key refresh process where real (inner) volume
- * 	    key stays untouched. It may be involed on active @e keyslot which makes the (previously
+ * 	    key stays untouched. It may be involved on active @e keyslot which makes the (previously
  * 	    unbound) keyslot new regular keyslot.
  */
 int crypt_keyslot_add_by_key(struct crypt_device *cd,
@@ -1195,6 +1267,59 @@ int crypt_keyslot_context_init_by_volume_key(struct crypt_device *cd,
 	struct crypt_keyslot_context **kc);
 
 /**
+ * Initialize keyslot context via signed key.
+ *
+ * @param cd crypt device handle initialized to device context
+ *
+ * @param volume_key provided volume key
+ * @param volume_key_size size of volume_key
+ * @param signature buffer with signature for the key
+ * @param signature_size bsize of signature buffer
+ * @param kc returns crypt keyslot context handle type CRYPT_KC_TYPE_SIGNED_KEY
+ *
+ * @return zero on success or negative errno otherwise.
+ *
+ * @note currently supported only with VERITY devices.
+ */
+int crypt_keyslot_context_init_by_signed_key(struct crypt_device *cd,
+	const char *volume_key,
+	size_t volume_key_size,
+	const char *signature,
+	size_t signature_size,
+	struct crypt_keyslot_context **kc);
+
+/**
+ * Initialize keyslot context via passphrase stored in a keyring.
+ *
+ * @param cd crypt device handle initialized to LUKS device context
+ *
+ * @param key_description kernel keyring key description library should look
+ *        for passphrase in
+ * @param kc returns crypt keyslot context handle type CRYPT_KC_TYPE_KEYRING
+ *
+ * @return zero on success or negative errno otherwise.
+ */
+int crypt_keyslot_context_init_by_keyring(struct crypt_device *cd,
+	const char *key_description,
+	struct crypt_keyslot_context **kc);
+
+/**
+ * Initialize keyslot context via volume key stored in a keyring.
+ *
+ * @param cd crypt device handle initialized to LUKS device context
+ *
+ * @param key_description kernel keyring key description library should look
+ *        for passphrase in. The key can be passed either as number in ASCII,
+ *        or a text representation in the form "%<key_type>:<key_name>"
+ * @param kc returns crypt keyslot context handle type CRYPT_KC_TYPE_KEYRING
+ *
+ * @return zero on success or negative errno otherwise.
+ */
+int crypt_keyslot_context_init_by_vk_in_keyring(struct crypt_device *cd,
+	const char *key_description,
+	struct crypt_keyslot_context **kc);
+
+/**
  * Get error code per keyslot context from last failed call.
  *
  * @note If @link crypt_keyslot_add_by_keyslot_context @endlink passed with
@@ -1225,7 +1350,7 @@ int crypt_keyslot_context_set_pin(struct crypt_device *cd,
 	struct crypt_keyslot_context *kc);
 
 /**
- * @defgroup crypt-keyslot-context-types Crypt keyslot context
+ * @defgroup crypt-keyslot-context-types Crypt keyslot context types
  * @addtogroup crypt-keyslot-context-types
  * @{
  */
@@ -1237,6 +1362,16 @@ int crypt_keyslot_context_set_pin(struct crypt_device *cd,
 #define CRYPT_KC_TYPE_TOKEN      INT16_C(3)
 /** keyslot context initialized by volume key or unbound key (@link crypt_keyslot_context_init_by_volume_key @endlink) */
 #define CRYPT_KC_TYPE_KEY        INT16_C(4)
+/** keyslot context initialized by description of a keyring key
+ * (@link crypt_keyslot_context_init_by_keyring @endlink)
+ */
+#define CRYPT_KC_TYPE_KEYRING    INT16_C(5)
+/** keyslot context initialized by description of a keyring key containing the volume key
+ * (@link crypt_keyslot_context_init_by_vk_in_keyring @endlink)
+ */
+#define CRYPT_KC_TYPE_VK_KEYRING    INT16_C(6)
+/** keyslot context initialized by signed key (@link crypt_keyslot_context_init_by_signed_key @endlink) */
+#define CRYPT_KC_TYPE_SIGNED_KEY    INT16_C(7)
 /** @} */
 
 /**
@@ -1281,7 +1416,7 @@ int crypt_keyslot_context_get_type(const struct crypt_keyslot_context *kc);
  * @warning CRYPT_VOLUME_KEY_SET flag force updates volume key. It is @b not @b reencryption!
  * 	    By doing so you will most probably destroy your ciphertext data device. It's supposed
  * 	    to be used only in wrapped keys scheme for key refresh process where real (inner) volume
- * 	    key stays untouched. It may be involed on active @e keyslot which makes the (previously
+ * 	    key stays untouched. It may be involved on active @e keyslot which makes the (previously
  * 	    unbound) keyslot new regular keyslot.
  */
 int crypt_keyslot_add_by_keyslot_context(struct crypt_device *cd,
@@ -1420,6 +1555,8 @@ uint64_t crypt_get_active_integrity_failures(struct crypt_device *cd,
 #define CRYPT_REQUIREMENT_OFFLINE_REENCRYPT	(UINT32_C(1) << 0)
 /** Online reencryption in-progress */
 #define CRYPT_REQUIREMENT_ONLINE_REENCRYPT	(UINT32_C(1) << 1)
+/** Device configured with OPAL support */
+#define CRYPT_REQUIREMENT_OPAL			(UINT32_C(1) << 2)
 /** unknown requirement in header (output only) */
 #define CRYPT_REQUIREMENT_UNKNOWN		(UINT32_C(1) << 31)
 
@@ -1472,6 +1609,39 @@ int crypt_persistent_flags_get(struct crypt_device *cd,
  * @addtogroup crypt-activation
  * @{
  */
+
+/**
+ * Activate device or check using keyslot context. In some cases (device under
+ * reencryption), more than one keyslot context is required (e.g. one for the old
+ * volume key and one for the new volume key). The order of the keyslot
+ * contexts does not matter. When less keyslot contexts are supplied than
+ * required to unlock the device an -ESRCH error code is returned and you
+ * should call the function again with an additional keyslot context specified.
+ *
+ * NOTE: the API at the moment fully works for single keyslot context only,
+ * the additional keyslot context currently works only with
+ * @e CRYPT_KC_TYPE_VK_KEYRING or @e CRYPT_KC_TYPE_KEY contexts.
+ *
+ * @param cd crypt device handle
+ * @param name name of device to create, if @e NULL only check passphrase
+ * @param keyslot requested keyslot to check or @e CRYPT_ANY_SLOT, keyslot is
+ *        ignored for unlock methods not based on passphrase
+ * @param kc keyslot context providing volume key or passphrase.
+ * @param additional_keyslot requested additional keyslot to check or @e CRYPT_ANY_SLOT
+ * @param additional_kc keyslot context providing additional volume key or
+ *        passphrase (e.g. old volume key for device under reencryption).
+ * @param flags activation flags
+ *
+ * @return unlocked key slot number for passphrase-based unlock, zero for other
+ *         unlock methods (e.g. volume key context) or negative errno on error.
+ */
+int crypt_activate_by_keyslot_context(struct crypt_device *cd,
+	const char *name,
+	int keyslot,
+	struct crypt_keyslot_context *kc,
+	int additional_keyslot,
+	struct crypt_keyslot_context *additional_kc,
+	uint32_t flags);
 
 /**
  * Activate device or check passphrase.
@@ -1553,6 +1723,9 @@ int crypt_activate_by_keyfile(struct crypt_device *cd,
  * 	 CRYPT_ACTIVATE_READONLY flag always.
  * @note For TCRYPT the volume key should be always NULL
  * 	 the key from decrypted header is used instead.
+ * @note For BITLK the name cannot be @e NULL checking volume key is not
+ * 	 supported for BITLK, the device will be activated even if the
+ * 	 provided key is not correct.
  */
 int crypt_activate_by_volume_key(struct crypt_device *cd,
 	const char *name,
@@ -2259,6 +2432,36 @@ int crypt_wipe(struct crypt_device *cd,
 
 /** Use direct-io */
 #define CRYPT_WIPE_NO_DIRECT_IO (UINT32_C(1) << 0)
+
+enum {
+	CRYPT_LUKS2_SEGMENT = -2,
+	CRYPT_NO_SEGMENT = -1,
+};
+
+/**
+ * Safe erase of a partition or an entire OPAL device. WARNING: ALL DATA ON
+ * PARTITION/DISK WILL BE LOST. If the CRYPT_NO_SEGMENT is passed as the segment
+ * parameter, the entire device will be wiped, not just what is included in the
+ * LUKS2 device/partition.
+ *
+ * @param cd crypt device handle
+ * @param segment the segment number to wipe (0..8), or CRYPT_LUKS2_SEGMENT
+ *        to wipe the segment configured in the LUKS2 header, or CRYPT_NO_SEGMENT
+ *        to wipe the entire device via a factory reset.
+ * @param password admin password/PSID (for factory reset) to wipe the
+ *        partition/device
+ * @param password_size length of password/PSID
+ * @param flags (currently unused)
+ *
+ * @return @e 0 on success or negative errno value otherwise.
+ */
+int crypt_wipe_hw_opal(struct crypt_device *cd,
+	int segment, /* 0..8, CRYPT_LUKS2_SEGMENT -2, CRYPT_NO_SEGMENT -1 */
+	const char *password, /* Admin1 PIN or PSID */
+	size_t password_size,
+	uint32_t flags /* currently unused */
+);
+
 /** @} */
 
 /**
@@ -2567,6 +2770,17 @@ int crypt_token_register(const crypt_token_handler *handler);
 const char *crypt_token_external_path(void);
 
 /**
+ * Override configured external token handlers path for the library.
+ *
+ * @param path Absolute path (starts with '/') to new external token handlers directory or @e NULL.
+ *
+ * @note if @e path is @e NULL the external token path is reset to default path.
+ *
+ * @return @e 0 on success or negative errno value otherwise.
+ */
+int crypt_token_set_external_path(const char *path);
+
+/**
  * Disable external token handlers (plugins) support
  * If disabled, it cannot be enabled again.
  */
@@ -2805,6 +3019,8 @@ __attribute__((deprecated));
  * @param usrptr progress specific data
  *
  * @return @e 0 on success or negative errno value otherwise.
+ *
+ * @note A @e progress callback can interrupt reencryption process by returning non-zero code.
  */
 int crypt_reencrypt_run(struct crypt_device *cd,
 		    int (*progress)(uint64_t size, uint64_t offset, void *usrptr),
@@ -2872,6 +3088,55 @@ void *crypt_safe_realloc(void *data, size_t size);
  * @param size size of memory in bytes
  */
 void crypt_safe_memzero(void *data, size_t size);
+
+/** @} */
+
+/**
+ * @defgroup crypt-keyring Kernel keyring manipulation
+ * @addtogroup crypt-keyring
+ * @{
+ */
+
+/**
+ * Link the volume key to the specified kernel keyring.
+ *
+ * The volume can have one or two keys. Normally, the device has one key.
+ * However if reencryption was started and not finished yet, the volume will
+ * have two volume keys (the new VK for the already reencrypted segment and old
+ * VK for the not yet reencrypted segment).
+ *
+ * The @e old_key_description argument is required only for
+ * devices that are in re-encryption and have two volume keys at the same time
+ * (old and new). You can set the @e old_key_description to NULL,
+ * but if you supply number of keys less than required, the function will
+ * return -ESRCH.  In that case you need to call the function again and set
+ * the missing key description. When supplying just one key description, make
+ * sure to supply it in the @e key_description.
+ *
+ * @param cd crypt device handle
+ * @param key_description the key description of the volume key linked in desired keyring.
+ * @param old_key_description the key description of the old volume key linked in desired keyring
+ *	  (for devices in re-encryption).
+ * @param key_type_desc the key type used for the volume key. Currently only "user" and "logon" types are
+ *	  supported. if @e NULL is specified the default "user" type is applied.
+ * @param keyring_to_link_vk the keyring description of the keyring in which volume key should
+ *	  be linked, if @e NULL is specified, linking will be disabled.
+ *
+ * @note keyring_to_link_vk may be passed in various string formats:
+ * 	 It can be kernel key numeric id of existing keyring written as a string,
+ * 	 keyring name prefixed by either "%:" or "%keyring:" substrings or keyctl
+ * 	 special values for keyrings "@t", "@p", "@s" and so on. See keyctl(1) man page,
+ * 	 section KEY IDENTIFIERS for more information. All other prefixes starting "%<type>:"
+ * 	 are ignored.
+ *
+ * @note key_description "%<type>:" prefixes are ignored. Type is applied based on key_type parameter
+ * 	 value.
+ */
+int crypt_set_keyring_to_link(struct crypt_device* cd,
+	const char* key_description,
+	const char* old_key_description,
+	const char* key_type_desc,
+	const char* keyring_to_link_vk);
 
 /** @} */
 

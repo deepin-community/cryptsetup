@@ -1,24 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * device backend utilities
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <string.h>
@@ -140,11 +127,19 @@ static size_t device_alignment_fd(int devfd)
 	return (size_t)alignment;
 }
 
-static int device_read_test(int devfd)
+static int device_read_test(struct crypt_device *cd, int devfd, struct device *device)
 {
 	char buffer[512];
 	int r = -EIO;
 	size_t minsize = 0, blocksize, alignment;
+	const char *dm_name;
+
+	/* skip check for suspended DM devices */
+	dm_name = device_dm_name(device);
+	if (dm_name && dm_status_suspended(cd, dm_name) > 0) {
+		log_dbg(cd, "Device %s is suspended, assuming direct-io is supported.", dm_name);
+		return 0;
+	}
 
 	blocksize = device_block_size_fd(devfd, &minsize);
 	alignment = device_alignment_fd(devfd);
@@ -160,6 +155,8 @@ static int device_read_test(int devfd)
 
 	if (read_blockwise(devfd, blocksize, alignment, buffer, minsize) == (ssize_t)minsize)
 		r = 0;
+
+	log_dbg(cd, "Direct-io is supported and works.");
 
 	crypt_safe_memzero(buffer, sizeof(buffer));
 	return r;
@@ -188,7 +185,7 @@ static int device_ready(struct crypt_device *cd, struct device *device)
 		device->o_direct = 0;
 		devfd = open(device_path(device), O_RDONLY | O_DIRECT);
 		if (devfd >= 0) {
-			if (device_read_test(devfd) == 0) {
+			if (device_read_test(cd, devfd, device) == 0) {
 				device->o_direct = 1;
 			} else {
 				close(devfd);
@@ -470,7 +467,7 @@ void device_free(struct crypt_device *cd, struct device *device)
 /* Get block device path */
 const char *device_block_path(const struct device *device)
 {
-	if (!device || !device->init_done)
+	if (!device)
 		return NULL;
 
 	return device->path;
@@ -482,7 +479,7 @@ const char *device_dm_name(const struct device *device)
 	const char *dmdir = dm_get_dir();
 	size_t dmdir_len = strlen(dmdir);
 
-	if (!device || !device->init_done)
+	if (!device)
 		return NULL;
 
 	if (strncmp(device->path, dmdir, dmdir_len))
@@ -983,6 +980,38 @@ int device_is_rotational(struct device *device)
 		return 0;
 
 	return crypt_dev_is_rotational(major(st.st_rdev), minor(st.st_rdev));
+}
+
+int device_is_dax(struct device *device)
+{
+	struct stat st;
+
+	if (!device)
+		return -EINVAL;
+
+	if (stat(device_path(device), &st) < 0)
+		return -EINVAL;
+
+	if (!S_ISBLK(st.st_mode))
+		return 0;
+
+	return crypt_dev_is_dax(major(st.st_rdev), minor(st.st_rdev));
+}
+
+int device_is_zoned(struct device *device)
+{
+	struct stat st;
+
+	if (!device)
+		return -EINVAL;
+
+	if (stat(device_path(device), &st) < 0)
+		return -EINVAL;
+
+	if (!S_ISBLK(st.st_mode))
+		return 0;
+
+	return crypt_dev_is_zoned(major(st.st_rdev), minor(st.st_rdev));
 }
 
 size_t device_alignment(struct device *device)

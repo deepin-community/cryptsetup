@@ -1,38 +1,25 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * kernel keyring utilities
  *
- * Copyright (C) 2016-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2016-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2024 Ondrej Kozina
  */
 
+#include <assert.h>
+#include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 
 #include "libcryptsetup.h"
 #include "libcryptsetup_macros.h"
 #include "utils_keyring.h"
-
-#ifndef HAVE_KEY_SERIAL_T
-#define HAVE_KEY_SERIAL_T
-typedef int32_t key_serial_t;
-#endif
 
 #ifdef KERNEL_KEYRING
 
@@ -42,6 +29,9 @@ static const struct {
 } key_types[] = {
 	{ LOGON_KEY,	"logon" },
 	{ USER_KEY,	"user"	},
+	{ BIG_KEY,	"big_key"	},
+	{ TRUSTED_KEY,	"trusted"	},
+	{ ENCRYPTED_KEY,	"encrypted"	},
 };
 
 #include <linux/keyctl.h>
@@ -65,16 +55,22 @@ static key_serial_t add_key(const char *type,
 	return syscall(__NR_add_key, type, description, payload, plen, keyring);
 }
 
+/* keyctl_describe */
+static long keyctl_describe(key_serial_t id, char *buffer, size_t buflen)
+{
+	return syscall(__NR_keyctl, KEYCTL_DESCRIBE, id, buffer, buflen);
+}
+
 /* keyctl_read */
 static long keyctl_read(key_serial_t key, char *buffer, size_t buflen)
 {
 	return syscall(__NR_keyctl, KEYCTL_READ, key, buffer, buflen);
 }
 
-/* keyctl_revoke */
-static long keyctl_revoke(key_serial_t key)
+/* keyctl_link */
+static long keyctl_link(key_serial_t key, key_serial_t keyring)
 {
-	return syscall(__NR_keyctl, KEYCTL_REVOKE, key);
+	return syscall(__NR_keyctl, KEYCTL_LINK, key, keyring);
 }
 
 /* keyctl_unlink */
@@ -82,156 +78,384 @@ static long keyctl_unlink(key_serial_t key, key_serial_t keyring)
 {
 	return syscall(__NR_keyctl, KEYCTL_UNLINK, key, keyring);
 }
-#endif
+
+/* inspired by keyutils written by David Howells (dhowells@redhat.com) */
+static key_serial_t keyring_process_proc_keys_line(char *line, const char *type, const char *desc,
+						   key_serial_t destringid)
+{
+	char typebuf[41], rdesc[1024], *kdesc, *cp;
+	int ndesc, n;
+	key_serial_t id;
+	int dlen;
+
+	assert(desc);
+	dlen = strlen(desc);
+	cp = line + strlen(line);
+
+	ndesc = 0;
+	n = sscanf(line, "%x %*s %*u %*s %*x %*d %*d %40s %n",
+			&id, typebuf, &ndesc);
+	if (n == 2 && ndesc > 0 && ndesc <= cp - line) {
+		if (strcmp(typebuf, type) != 0)
+			return 0;
+		kdesc = line + ndesc;
+		if (memcmp(kdesc, desc, dlen) != 0)
+			return 0;
+		if (kdesc[dlen] != ':' &&
+				kdesc[dlen] != '\0' &&
+				kdesc[dlen] != ' ')
+			return 0;
+		kdesc[dlen] = '\0';
+
+		/* The key type appends extra stuff to the end of the
+		 * description after a colon in /proc/keys.  Colons,
+		 * however, are allowed in descriptions, so we need to
+		 * make a further check. */
+		n = keyctl_describe(id, rdesc, sizeof(rdesc) - 1);
+		if (n < 0)
+			return 0;
+		if ((size_t)n >= sizeof(rdesc) - 1)
+			return 0;
+		rdesc[n] = '\0';
+
+		cp = strrchr(rdesc, ';');
+		if (!cp)
+			return 0;
+		cp++;
+		if (strcmp(cp, desc) != 0)
+			return 0;
+
+
+		if (destringid && keyctl_link(id, destringid) == -1)
+			return 0;
+
+		return id;
+	}
+
+	return 0;
+}
+
+/* inspired by keyutils written by David Howells (dhowells@redhat.com), returns 0 ID on failure */
+
+static key_serial_t find_key_by_type_and_desc(const char *type, const char *desc, key_serial_t destringid)
+{
+	key_serial_t id;
+	int f;
+	char buf[1024];
+	char *newline;
+	size_t buffer_len = 0;
+
+	ssize_t n;
+
+	do {
+		id = request_key(type, desc, NULL, 0);
+	} while (id < 0 && errno == EINTR);
+	if (id >= 0 || errno == ENOMEM)
+		return id;
+
+	f = open("/proc/keys", O_RDONLY);
+	if (f < 0)
+		return 0;
+
+	while ((n = read(f, buf + buffer_len, sizeof(buf) - buffer_len - 1)) > 0) {
+		/* coverity[overflow:FALSE] */
+		buffer_len += (size_t)n;
+		buf[buffer_len] = '\0';
+		newline = strchr(buf, '\n');
+		while (newline != NULL && buffer_len != 0) {
+			*newline = '\0';
+
+			if ((id = keyring_process_proc_keys_line(buf, type, desc, destringid))) {
+				close(f);
+				return id;
+			}
+
+			buffer_len -= newline - buf + 1;
+			if (buffer_len >= sizeof(buf)) {
+				close(f);
+				return 0;
+			}
+			memmove(buf, newline + 1, buffer_len);
+			buf[buffer_len] = '\0';
+			newline = strchr(buf, '\n');
+		}
+	}
+
+	close(f);
+	return 0;
+}
 
 int keyring_check(void)
 {
-#ifdef KERNEL_KEYRING
 	/* logon type key descriptions must be in format "prefix:description" */
 	return syscall(__NR_request_key, "logon", "dummy", NULL, 0) == -1l && errno != ENOSYS;
-#else
-	return 0;
-#endif
 }
 
-int keyring_add_key_in_thread_keyring(key_type_t ktype, const char *key_desc, const void *key, size_t key_size)
+static key_serial_t keyring_add_key_in_keyring(key_type_t ktype,
+		const char *key_desc,
+		const void *key,
+		size_t key_size,
+		key_serial_t keyring)
 {
-#ifdef KERNEL_KEYRING
-	key_serial_t kid;
 	const char *type_name = key_type_name(ktype);
 
 	if (!type_name || !key_desc)
 		return -EINVAL;
 
-	kid = add_key(type_name, key_desc, key, key_size, KEY_SPEC_THREAD_KEYRING);
-	if (kid < 0)
-		return -errno;
-
-	return 0;
-#else
-	return -ENOTSUP;
-#endif
+	return add_key(type_name, key_desc, key, key_size, keyring);
 }
 
-/* currently used in client utilities only */
-int keyring_add_key_in_user_keyring(key_type_t ktype, const char *key_desc, const void *key, size_t key_size)
+key_serial_t keyring_add_key_in_thread_keyring(key_type_t ktype, const char *key_desc, const void *key, size_t key_size)
 {
-#ifdef KERNEL_KEYRING
-	const char *type_name = key_type_name(ktype);
+	return keyring_add_key_in_keyring(ktype, key_desc, key, key_size, KEY_SPEC_THREAD_KEYRING);
+}
+
+key_serial_t keyring_request_key_id(key_type_t key_type,
+		const char *key_description)
+{
 	key_serial_t kid;
 
-	if (!type_name || !key_desc)
-		return -EINVAL;
+	do {
+		kid = request_key(key_type_name(key_type), key_description, NULL, 0);
+	} while (kid < 0 && errno == EINTR);
 
-	kid = add_key(type_name, key_desc, key, key_size, KEY_SPEC_USER_KEYRING);
-	if (kid < 0)
-		return -errno;
-
-	return 0;
-#else
-	return -ENOTSUP;
-#endif
+	return kid;
 }
 
-/* alias for the same code */
-int keyring_get_key(const char *key_desc,
-		    char **key,
-		    size_t *key_size)
+int keyring_read_key(key_serial_t kid,
+		char **key,
+		size_t *key_size)
 {
-	return keyring_get_passphrase(key_desc, key, key_size);
-}
-
-int keyring_get_passphrase(const char *key_desc,
-		      char **passphrase,
-		      size_t *passphrase_len)
-{
-#ifdef KERNEL_KEYRING
-	int err;
-	key_serial_t kid;
-	long ret;
+	long r;
 	char *buf = NULL;
 	size_t len = 0;
 
-	do
-		kid = request_key(key_type_name(USER_KEY), key_desc, NULL, 0);
-	while (kid < 0 && errno == EINTR);
-
-	if (kid < 0)
-		return -errno;
+	assert(key);
+	assert(key_size);
 
 	/* just get payload size */
-	ret = keyctl_read(kid, NULL, 0);
-	if (ret > 0) {
-		len = ret;
+	r = keyctl_read(kid, NULL, 0);
+	if (r > 0) {
+		len = r;
 		buf = crypt_safe_alloc(len);
 		if (!buf)
 			return -ENOMEM;
 
 		/* retrieve actual payload data */
-		ret = keyctl_read(kid, buf, len);
+		r = keyctl_read(kid, buf, len);
 	}
 
-	if (ret < 0) {
-		err = errno;
+	if (r < 0) {
 		crypt_safe_free(buf);
-		return -err;
+		return -EINVAL;
 	}
 
-	*passphrase = buf;
-	*passphrase_len = len;
+	*key = buf;
+	*key_size = len;
 
 	return 0;
-#else
-	return -ENOTSUP;
-#endif
 }
 
-static int keyring_revoke_and_unlink_key_type(const char *type_name, const char *key_desc)
+int keyring_unlink_key_from_keyring(key_serial_t kid, key_serial_t keyring_id)
 {
-#ifdef KERNEL_KEYRING
-	key_serial_t kid;
+	return keyctl_unlink(kid, keyring_id) < 0 ? -EINVAL : 0;
+}
 
-	if (!type_name || !key_desc)
-		return -EINVAL;
-
-	do
-		kid = request_key(type_name, key_desc, NULL, 0);
-	while (kid < 0 && errno == EINTR);
-
-	if (kid < 0)
-		return 0;
-
-	if (keyctl_revoke(kid))
-		return -errno;
-
-	/*
-	 * best effort only. the key could have been linked
-	 * in some other keyring and its payload is now
-	 * revoked anyway.
-	 */
-	keyctl_unlink(kid, KEY_SPEC_THREAD_KEYRING);
-	keyctl_unlink(kid, KEY_SPEC_PROCESS_KEYRING);
-	keyctl_unlink(kid, KEY_SPEC_USER_KEYRING);
-
-	return 0;
-#else
-	return -ENOTSUP;
-#endif
+int keyring_unlink_key_from_thread_keyring(key_serial_t kid)
+{
+	return keyctl_unlink(kid, KEY_SPEC_THREAD_KEYRING) < 0 ? -EINVAL : 0;
 }
 
 const char *key_type_name(key_type_t type)
 {
-#ifdef KERNEL_KEYRING
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(key_types); i++)
 		if (type == key_types[i].type)
 			return key_types[i].type_name;
-#endif
+
 	return NULL;
 }
 
-int keyring_revoke_and_unlink_key(key_type_t ktype, const char *key_desc)
+key_serial_t keyring_find_key_id_by_name(const char *key_name)
 {
-	return keyring_revoke_and_unlink_key_type(key_type_name(ktype), key_desc);
+	key_serial_t id = 0;
+	char *end;
+	char *name_copy, *name_copy_p;
+
+	assert(key_name);
+
+	if (key_name[0] == '@') {
+		if (strcmp(key_name, "@t" ) == 0) return KEY_SPEC_THREAD_KEYRING;
+		if (strcmp(key_name, "@p" ) == 0) return KEY_SPEC_PROCESS_KEYRING;
+		if (strcmp(key_name, "@s" ) == 0) return KEY_SPEC_SESSION_KEYRING;
+		if (strcmp(key_name, "@u" ) == 0) return KEY_SPEC_USER_KEYRING;
+		if (strcmp(key_name, "@us") == 0) return KEY_SPEC_USER_SESSION_KEYRING;
+		if (strcmp(key_name, "@g" ) == 0) return KEY_SPEC_GROUP_KEYRING;
+		if (strcmp(key_name, "@a" ) == 0) return KEY_SPEC_REQKEY_AUTH_KEY;
+
+		return 0;
+	}
+
+	/* handle a lookup-by-name request "%<type>:<desc>", eg: "%keyring:_ses" */
+	name_copy = strdup(key_name);
+	if (!name_copy)
+		goto out;
+	name_copy_p = name_copy;
+
+	if (name_copy_p[0] == '%') {
+		const char *type;
+
+		name_copy_p++;
+		if (!*name_copy_p)
+			goto out;
+
+		if (*name_copy_p == ':') {
+			type = "keyring";
+			name_copy_p++;
+		} else {
+			type = name_copy_p;
+			name_copy_p = strchr(name_copy_p, ':');
+			if (!name_copy_p)
+				goto out;
+			*(name_copy_p++) = '\0';
+		}
+
+		if (!*name_copy_p)
+			goto out;
+
+		id = find_key_by_type_and_desc(type, name_copy_p, 0);
+		goto out;
+	}
+
+	id = strtoul(key_name, &end, 0);
+	if (*end)
+		id = 0;
+
+out:
+	if (name_copy)
+		free(name_copy);
+
+	return id;
 }
+
+static bool numbered(const char *str)
+{
+	char *endp;
+
+	errno = 0;
+	(void) strtol(str, &endp, 0);
+	if (errno == ERANGE)
+		return false;
+
+	return *endp == '\0' ? true : false;
+}
+
+key_serial_t keyring_find_keyring_id_by_name(const char *keyring_name)
+{
+	assert(keyring_name);
+
+	/* "%:" is abbreviation for the type keyring */
+	if ((keyring_name[0] == '@' && keyring_name[1] != 'a') ||
+	    strstr(keyring_name, "%:") || strstr(keyring_name, "%keyring:") ||
+	    numbered(keyring_name))
+		return keyring_find_key_id_by_name(keyring_name);
+
+	return 0;
+}
+
+key_type_t key_type_by_name(const char *name)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(key_types); i++)
+		if (!strcmp(key_types[i].type_name, name))
+			return key_types[i].type;
+
+	return INVALID_KEY;
+}
+
+key_serial_t keyring_add_key_to_custom_keyring(key_type_t ktype,
+				      const char *key_desc,
+				      const void *key,
+				      size_t key_size,
+				      key_serial_t keyring_to_link)
+{
+	const char *type_name = key_type_name(ktype);
+
+	if (!type_name || !key_desc)
+		return -EINVAL;
+
+	return add_key(type_name, key_desc, key, key_size, keyring_to_link);
+}
+
+#else /* KERNEL_KEYRING */
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
+int keyring_check(void)
+{
+	return 0;
+}
+
+key_serial_t keyring_add_key_in_thread_keyring(key_type_t ktype, const char *key_desc, const void *key, size_t key_size)
+{
+	return -ENOTSUP;
+}
+
+key_serial_t keyring_request_key_id(key_type_t key_type,
+		const char *key_description)
+{
+	return -ENOTSUP;
+}
+
+int keyring_read_key(key_serial_t kid,
+		char **key,
+		size_t *key_size)
+{
+	return -ENOTSUP;
+}
+
+int keyring_read_by_id(const char *key_desc, char **passphrase, size_t *passphrase_len)
+{
+	return -ENOTSUP;
+}
+
+const char *key_type_name(key_type_t type)
+{
+	return NULL;
+}
+
+key_serial_t keyring_find_key_id_by_name(const char *key_name)
+{
+	return 0;
+}
+
+key_serial_t keyring_find_keyring_id_by_name(const char *keyring_name)
+{
+	return 0;
+}
+
+key_type_t key_type_by_name(const char *name)
+{
+	return INVALID_KEY;
+}
+
+key_serial_t keyring_add_key_to_custom_keyring(key_type_t ktype,
+				      const char *key_desc,
+				      const void *key,
+				      size_t key_size,
+				      key_serial_t keyring_to_link)
+{
+	return -ENOTSUP;
+}
+
+int keyring_unlink_key_from_keyring(key_serial_t kid, key_serial_t keyring_id)
+{
+	return -ENOTSUP;
+}
+
+int keyring_unlink_key_from_thread_keyring(key_serial_t kid)
+{
+	return -ENOTSUP;
+}
+#endif

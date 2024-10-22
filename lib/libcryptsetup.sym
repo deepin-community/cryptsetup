@@ -165,3 +165,18 @@ CRYPTSETUP_2.6 {
 		crypt_keyslot_add_by_keyslot_context;
 		crypt_volume_key_get_by_keyslot_context;
 } CRYPTSETUP_2.5;
+
+CRYPTSETUP_2.7 {
+	global:
+		crypt_activate_by_keyslot_context;
+		crypt_format_luks2_opal;
+		crypt_get_hw_encryption_type;
+		crypt_get_hw_encryption_key_size;
+		crypt_keyslot_context_init_by_keyring;
+		crypt_keyslot_context_init_by_vk_in_keyring;
+		crypt_keyslot_context_init_by_signed_key;
+		crypt_resume_by_keyslot_context;
+		crypt_token_set_external_path;
+		crypt_set_keyring_to_link;
+		crypt_wipe_hw_opal;
+} CRYPTSETUP_2.6;

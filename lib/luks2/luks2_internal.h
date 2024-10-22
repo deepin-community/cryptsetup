@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #ifndef _CRYPTSETUP_LUKS2_INTERNAL_H
@@ -62,6 +49,7 @@ uint32_t crypt_jobj_get_uint32(json_object *jobj);
 json_object *crypt_jobj_new_uint64(uint64_t value);
 
 int json_object_object_add_by_uint(json_object *jobj, unsigned key, json_object *jobj_val);
+int json_object_object_add_by_uint_by_ref(json_object *jobj, unsigned key, json_object **jobj_val_ref);
 void json_object_object_del_by_uint(json_object *jobj, unsigned key);
 int json_object_copy(json_object *jobj_src, json_object **jobj_dst);
 
@@ -295,13 +283,24 @@ uint64_t json_segment_get_iv_offset(json_object *jobj_segment);
 uint64_t json_segment_get_size(json_object *jobj_segment, unsigned blockwise);
 const char *json_segment_get_cipher(json_object *jobj_segment);
 uint32_t json_segment_get_sector_size(json_object *jobj_segment);
+int json_segment_get_opal_segment_id(json_object *jobj_segment, uint32_t *ret_opal_segment_id);
+int json_segment_get_opal_key_size(json_object *jobj_segment, size_t *ret_key_size);
 bool json_segment_is_backup(json_object *jobj_segment);
 json_object *json_segments_get_segment(json_object *jobj_segments, int segment);
 unsigned json_segments_count(json_object *jobj_segments);
 void json_segment_remove_flag(json_object *jobj_segment, const char *flag);
 uint64_t json_segments_get_minimal_offset(json_object *jobj_segments, unsigned blockwise);
 json_object *json_segment_create_linear(uint64_t offset, const uint64_t *length, unsigned reencryption);
-json_object *json_segment_create_crypt(uint64_t offset, uint64_t iv_offset, const uint64_t *length, const char *cipher, uint32_t sector_size, unsigned reencryption);
+json_object *json_segment_create_crypt(uint64_t offset, uint64_t iv_offset, const uint64_t *length,
+				       const char *cipher, const char *integrity,
+				       uint32_t sector_size, unsigned reencryption);
+json_object *json_segment_create_opal(uint64_t offset, const uint64_t *length,
+				      uint32_t segment_number, uint32_t key_size);
+json_object *json_segment_create_opal_crypt(uint64_t offset, const uint64_t *length,
+					    uint32_t segment_number, uint32_t key_size,
+					    uint64_t iv_offset, const char *cipher,
+					    const char *integrity, uint32_t sector_size,
+					    unsigned reencryption);
 int json_segments_segment_in_reencrypt(json_object *jobj_segments);
 bool json_segment_cmp(json_object *jobj_segment_1, json_object *jobj_segment_2);
 bool json_segment_contains_flag(json_object *jobj_segment, const char *flag_str, size_t len);
@@ -338,9 +337,25 @@ uint64_t LUKS2_segment_size(struct luks2_hdr *hdr,
 	int segment,
 	unsigned blockwise);
 
+bool LUKS2_segment_set_size(struct luks2_hdr *hdr,
+	int segment,
+	const uint64_t *segment_size_bytes);
+
+uint64_t LUKS2_opal_segment_size(struct luks2_hdr *hdr,
+	int segment,
+	unsigned blockwise);
+
 int LUKS2_segment_is_type(struct luks2_hdr *hdr,
 	int segment,
 	const char *type);
+
+bool LUKS2_segment_is_hw_opal(struct luks2_hdr *hdr, int segment);
+bool LUKS2_segment_is_hw_opal_crypt(struct luks2_hdr *hdr, int segment);
+bool LUKS2_segment_is_hw_opal_only(struct luks2_hdr *hdr, int segment);
+
+int LUKS2_get_opal_segment_number(struct luks2_hdr *hdr, int segment,
+				  uint32_t *ret_opal_segment_number);
+int LUKS2_get_opal_key_size(struct luks2_hdr *hdr, int segment);
 
 int LUKS2_segment_by_type(struct luks2_hdr *hdr,
 	const char *type);
@@ -350,8 +365,11 @@ int LUKS2_last_segment_by_type(struct luks2_hdr *hdr,
 
 int LUKS2_get_default_segment(struct luks2_hdr *hdr);
 
+bool LUKS2_segments_dynamic_size(struct luks2_hdr *hdr);
+
 int LUKS2_reencrypt_digest_new(struct luks2_hdr *hdr);
 int LUKS2_reencrypt_digest_old(struct luks2_hdr *hdr);
+unsigned LUKS2_reencrypt_vks_count(struct luks2_hdr *hdr);
 int LUKS2_reencrypt_data_offset(struct luks2_hdr *hdr, bool blockwise);
 
 /*

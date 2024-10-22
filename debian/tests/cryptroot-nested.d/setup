@@ -44,9 +44,9 @@ udevadm settle
 echo -n "testvg-lv0_crypt" >/keyfile
 cryptsetup open --batch-mode \
     --type=plain \
-    --cipher="aes-cbc-essiv:sha256" \
+    --cipher="aes-xts-plain64" \
     --key-size=256 \
-    --hash="ripemd160" \
+    --hash="sha256" \
     -- "/dev/testvg/lv0" "testvg-lv0_crypt" </keyfile
 udevadm settle
 

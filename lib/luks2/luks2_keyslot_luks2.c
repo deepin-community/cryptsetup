@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, LUKS2 type keyslot handler
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #include <limits.h>
@@ -307,7 +294,7 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
 	char *volume_key, size_t volume_key_len)
 {
 	struct volume_key *derived_key = NULL;
-	struct crypt_pbkdf_type pbkdf;
+	struct crypt_pbkdf_type pbkdf, *cd_pbkdf;
 	char *AfKey = NULL;
 	size_t AFEKSize;
 	const char *af_hash = NULL;
@@ -359,6 +346,16 @@ static int luks2_keyslot_get_key(struct crypt_device *cd,
 		r = -ENOMEM;
 		goto out;
 	}
+
+	/*
+	 * Print warning when keyslot requires more memory than available
+	 * (if maximum memory was adjusted - no swap, not enough memory),
+	 * but be silent if user set keyslot memory cost above default limit intentionally.
+	 */
+	cd_pbkdf = crypt_get_pbkdf(cd);
+	if (cd_pbkdf->max_memory_kb && pbkdf.max_memory_kb > cd_pbkdf->max_memory_kb &&
+	    pbkdf.max_memory_kb <= DEFAULT_LUKS2_MEMORY_KB)
+		log_std(cd, _("Warning: keyslot operation could fail as it requires more than available memory.\n"));
 
 	/*
 	 * If requested, serialize unlocking for memory-hard KDF. Usually NOOP.
@@ -512,23 +509,42 @@ static int luks2_keyslot_alloc(struct crypt_device *cd,
 	}
 
 	jobj_keyslot = json_object_new_object();
+	if (!jobj_keyslot) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(jobj_keyslot, "type", json_object_new_string("luks2"));
 	json_object_object_add(jobj_keyslot, "key_size", json_object_new_int(volume_key_len));
 
 	/* AF object */
 	jobj_af = json_object_new_object();
+	if (!jobj_af) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(jobj_af, "type", json_object_new_string("luks1"));
 	json_object_object_add(jobj_af, "stripes", json_object_new_int(params->af.luks1.stripes));
 	json_object_object_add(jobj_keyslot, "af", jobj_af);
 
 	/* Area object */
 	jobj_area = json_object_new_object();
+	if (!jobj_area) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(jobj_area, "type", json_object_new_string("raw"));
 	json_object_object_add(jobj_area, "offset", crypt_jobj_new_uint64(area_offset));
 	json_object_object_add(jobj_area, "size", crypt_jobj_new_uint64(area_length));
 	json_object_object_add(jobj_keyslot, "area", jobj_area);
 
-	json_object_object_add_by_uint(jobj_keyslots, keyslot, jobj_keyslot);
+	r = json_object_object_add_by_uint(jobj_keyslots, keyslot, jobj_keyslot);
+	if (r) {
+		json_object_put(jobj_keyslot);
+		return r;
+	}
 
 	r = luks2_keyslot_update_json(cd, jobj_keyslot, params);
 
@@ -540,6 +556,9 @@ static int luks2_keyslot_alloc(struct crypt_device *cd,
 	if (r)
 		json_object_object_del_by_uint(jobj_keyslots, keyslot);
 
+	return r;
+err:
+	json_object_put(jobj_keyslot);
 	return r;
 }
 

@@ -1,24 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * libcryptsetup - cryptsetup library internal
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #ifndef INTERNAL_H
@@ -53,6 +40,7 @@
 #define MAX_DM_DEPS		32
 
 #define CRYPT_SUBDEV           "SUBDEV" /* prefix for sublayered devices underneath public crypt types */
+#define CRYPT_LUKS2_HW_OPAL    "LUKS2-OPAL" /* dm uuid prefix used for any HW OPAL enabled LUKS2 device */
 
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0
@@ -89,6 +77,7 @@ int crypt_benchmark_pbkdf_internal(struct crypt_device *cd,
 				   struct crypt_pbkdf_type *pbkdf,
 				   size_t volume_key_size);
 const char *crypt_get_cipher_spec(struct crypt_device *cd);
+uint32_t pbkdf_adjusted_phys_memory_kb(void);
 
 /* Device backend */
 struct device;
@@ -113,6 +102,8 @@ void device_release_excl(struct crypt_device *cd, struct device *device);
 void device_disable_direct_io(struct device *device);
 int device_is_identical(struct device *device1, struct device *device2);
 int device_is_rotational(struct device *device);
+int device_is_dax(struct device *device);
+int device_is_zoned(struct device *device);
 size_t device_alignment(struct device *device);
 int device_direct_io(const struct device *device);
 int device_fallocate(struct device *device, uint64_t size);
@@ -153,21 +144,32 @@ int create_or_reload_device_with_integrity(struct crypt_device *cd, const char *
 struct device *crypt_metadata_device(struct crypt_device *cd);
 struct device *crypt_data_device(struct crypt_device *cd);
 
+uint64_t crypt_get_metadata_size_bytes(struct crypt_device *cd);
+uint64_t crypt_get_keyslots_size_bytes(struct crypt_device *cd);
+uint64_t crypt_get_data_offset_sectors(struct crypt_device *cd);
+int crypt_opal_supported(struct crypt_device *cd, struct device *opal_device);
+
 int crypt_confirm(struct crypt_device *cd, const char *msg);
 
 char *crypt_lookup_dev(const char *dev_id);
 int crypt_dev_is_rotational(int major, int minor);
+int crypt_dev_is_dax(int major, int minor);
+int crypt_dev_is_zoned(int major, int minor);
 int crypt_dev_is_partition(const char *dev_path);
 char *crypt_get_partition_device(const char *dev_path, uint64_t offset, uint64_t size);
+int crypt_dev_get_partition_number(const char *dev_path);
 char *crypt_get_base_device(const char *dev_path);
 uint64_t crypt_dev_partition_offset(const char *dev_path);
 int lookup_by_disk_id(const char *dm_uuid);
 int lookup_by_sysfs_uuid_field(const char *dm_uuid);
 int crypt_uuid_cmp(const char *dm_uuid, const char *hdr_uuid);
+int crypt_uuid_type_cmp(const char *dm_uuid, const char *type);
 
 size_t crypt_getpagesize(void);
 unsigned crypt_cpusonline(void);
 uint64_t crypt_getphysmemory_kb(void);
+uint64_t crypt_getphysmemoryfree_kb(void);
+bool crypt_swapavailable(void);
 
 int init_crypto(struct crypt_device *ctx);
 
@@ -202,7 +204,7 @@ void crypt_set_luks2_reencrypt(struct crypt_device *cd, struct luks2_reencrypt *
 struct luks2_reencrypt *crypt_get_luks2_reencrypt(struct crypt_device *cd);
 
 int onlyLUKS2(struct crypt_device *cd);
-int onlyLUKS2mask(struct crypt_device *cd, uint32_t mask);
+int onlyLUKS2reencrypt(struct crypt_device *cd);
 
 int crypt_wipe_device(struct crypt_device *cd,
 	struct device *device,
@@ -221,6 +223,14 @@ int crypt_get_integrity_tag_size(struct crypt_device *cd);
 int crypt_key_in_keyring(struct crypt_device *cd);
 void crypt_set_key_in_keyring(struct crypt_device *cd, unsigned key_in_keyring);
 int crypt_volume_key_load_in_keyring(struct crypt_device *cd, struct volume_key *vk);
+int crypt_keyring_get_user_key(struct crypt_device *cd,
+		const char *key_description,
+		char **key,
+		size_t *key_size);
+int crypt_keyring_get_key_by_name(struct crypt_device *cd,
+		const char *key_description,
+		char **key,
+		size_t *key_size);
 int crypt_use_keyring_for_vk(struct crypt_device *cd);
 void crypt_drop_keyring_key_by_description(struct crypt_device *cd, const char *key_description, key_type_t ktype);
 void crypt_drop_keyring_key(struct crypt_device *cd, struct volume_key *vks);
@@ -245,9 +255,15 @@ static inline void *crypt_zalloc(size_t size) { return calloc(1, size); }
 static inline bool uint64_mult_overflow(uint64_t *u, uint64_t b, size_t size)
 {
 	*u = (uint64_t)b * size;
+	if (size == 0)
+		return true;
 	if ((uint64_t)(*u / size) != b)
 		return true;
 	return false;
 }
+
+#define KEY_NOT_VERIFIED -2
+#define KEY_EXTERNAL_VERIFICATION -1
+#define KEY_VERIFIED 0
 
 #endif /* INTERNAL_H */

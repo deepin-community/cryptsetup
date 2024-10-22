@@ -1,24 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * devname - search for device name
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <string.h>
@@ -210,6 +197,41 @@ static int _path_get_uint64(const char *sysfs_path, uint64_t *value, const char 
 	return _read_uint64(path, value);
 }
 
+static int _sysfs_get_string(int major, int minor, char *buf, size_t buf_size, const char *attr)
+{
+	char path[PATH_MAX];
+	int fd, r;
+
+	if (snprintf(path, sizeof(path), "/sys/dev/block/%d:%d/%s",
+		     major, minor, attr) < 0)
+		return 0;
+
+	if ((fd = open(path, O_RDONLY)) < 0)
+		return 0;
+	r = read(fd, buf, buf_size);
+	close(fd);
+
+	return r < 0 ? 0 : r;
+}
+
+int crypt_dev_get_partition_number(const char *dev_path)
+{
+	uint64_t partno;
+	struct stat st;
+
+	if (stat(dev_path, &st) < 0)
+		return 0;
+
+	if (!S_ISBLK(st.st_mode))
+		return 0;
+
+	if (!_sysfs_get_uint64(major(st.st_rdev), minor(st.st_rdev),
+			      &partno, "partition"))
+		return -EINVAL;
+
+	return (int)partno;
+}
+
 int crypt_dev_is_rotational(int major, int minor)
 {
 	uint64_t val;
@@ -218,6 +240,26 @@ int crypt_dev_is_rotational(int major, int minor)
 		return 1; /* if failed, expect rotational disk */
 
 	return val ? 1 : 0;
+}
+
+int crypt_dev_is_dax(int major, int minor)
+{
+	uint64_t val;
+
+	if (!_sysfs_get_uint64(major, minor, &val, "queue/dax"))
+		return 0; /* if failed, expect non-DAX device */
+
+	return val ? 1 : 0;
+}
+
+int crypt_dev_is_zoned(int major, int minor)
+{
+	char buf[32] = {};
+
+	if (!_sysfs_get_string(major, minor, buf, sizeof(buf), "queue/zoned"))
+		return 0; /* if failed, expect non-zoned device */
+
+	return strncmp(buf, "none", 4) ? 1 : 0;
 }
 
 int crypt_dev_is_partition(const char *dev_path)
@@ -253,6 +295,7 @@ uint64_t crypt_dev_partition_offset(const char *dev_path)
 			      &val, "start"))
 		return 0;
 
+	/* coverity[tainted_data_return:FALSE] */
 	return val;
 }
 

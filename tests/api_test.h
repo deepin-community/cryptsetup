@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * cryptsetup library API check functions
  *
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- * Copyright (C) 2016-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2016-2024 Ondrej Kozina
  */
 
 #ifndef API_TEST_H
@@ -44,6 +31,8 @@ int t_dm_capi_string_supported(void);
 int t_set_readahead(const char *device, unsigned value);
 
 int fips_mode(void);
+
+int create_dmdevice_over_device(const char *dm_name, const char *device, uint64_t size, uint64_t offset);
 
 int create_dmdevice_over_loop(const char *dm_name, const uint64_t size);
 
@@ -138,7 +127,7 @@ void xlog(const char *msg, const char *tst, const char *func, int line, const ch
 #define T_DM_INTEGRITY_DISCARDS_SUPPORTED (1 << 23) /* dm-integrity discards/TRIM option is supported */
 #define T_DM_INTEGRITY_RESIZE_SUPPORTED (1 << 23) /* dm-integrity resize of the integrity device supported (introduced in the same version as discards)*/
 #define T_DM_VERITY_PANIC_CORRUPTION_SUPPORTED (1 << 24) /* dm-verity panic on corruption  */
-#define T_DM_CRYPT_NO_WORKQUEUE_SUPPORTED (1 << 25) /* dm-crypt suppot for bypassing workqueues  */
+#define T_DM_CRYPT_NO_WORKQUEUE_SUPPORTED (1 << 25) /* dm-crypt support for bypassing workqueues  */
 #define T_DM_INTEGRITY_FIX_HMAC_SUPPORTED (1 << 26) /* hmac covers also superblock */
 #define T_DM_INTEGRITY_RESET_RECALC_SUPPORTED (1 << 27) /* dm-integrity automatic recalculation supported */
 #define T_DM_VERITY_TASKLETS_SUPPORTED (1 << 28) /* dm-verity tasklets supported */

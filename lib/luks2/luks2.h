@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #ifndef _CRYPTSETUP_LUKS2_ONDISK_H
@@ -158,6 +145,8 @@ struct luks2_keyslot_params {
 
 #define LUKS2_HDR_OFFSET_MAX 0x400000 /* 4 MiB */
 
+#define LUKS2_HDR_MAX_MDA_SIZE 2 * LUKS2_HDR_OFFSET_MAX + LUKS2_MAX_KEYSLOTS_SIZE
+
 /* Offsets for secondary header (for scan if primary header is corrupted). */
 #define LUKS2_HDR2_OFFSETS { 0x04000, 0x008000, 0x010000, 0x020000, \
                              0x40000, 0x080000, 0x100000, 0x200000, LUKS2_HDR_OFFSET_MAX }
@@ -224,8 +213,7 @@ int LUKS2_keyslot_store(struct crypt_device *cd,
 
 int LUKS2_keyslot_wipe(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
-	int keyslot,
-	int wipe_area_only);
+	int keyslot);
 
 crypt_keyslot_priority LUKS2_keyslot_priority_get(struct luks2_hdr *hdr, int keyslot);
 
@@ -277,6 +265,7 @@ crypt_token_info LUKS2_token_status(struct crypt_device *cd,
 
 int LUKS2_token_open_and_activate(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
+	int keyslot,
 	int token,
 	const char *name,
 	const char *type,
@@ -287,6 +276,7 @@ int LUKS2_token_open_and_activate(struct crypt_device *cd,
 
 int LUKS2_token_unlock_key(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
+	int keyslot,
 	int token,
 	const char *type,
 	const char *pin,
@@ -359,7 +349,8 @@ int LUKS2_digest_create(struct crypt_device *cd,
  */
 int LUKS2_activate(struct crypt_device *cd,
 	const char *name,
-	struct volume_key *vk,
+	struct volume_key *crypt_key,
+	struct volume_key *opal_key,
 	uint32_t flags);
 
 int LUKS2_activate_multi(struct crypt_device *cd,
@@ -378,22 +369,29 @@ int LUKS2_generate_hdr(
 	struct crypt_device *cd,
 	struct luks2_hdr *hdr,
 	const struct volume_key *vk,
-	const char *cipherName,
-	const char *cipherMode,
+	const char *cipher_spec,
 	const char *integrity,
 	const char *uuid,
 	unsigned int sector_size,
 	uint64_t data_offset,
-	uint64_t align_offset,
-	uint64_t required_alignment,
-	uint64_t metadata_size,
-	uint64_t keyslots_size);
+	uint64_t metadata_size_bytes,
+	uint64_t keyslots_size_bytes,
+	uint64_t device_size_bytes,
+	uint32_t opal_segment_number,
+	uint32_t opal_key_size);
+
+int LUKS2_hdr_get_storage_params(struct crypt_device *cd,
+			    uint64_t alignment_offset_bytes,
+			    uint64_t alignment_bytes,
+			    uint64_t *ret_metadata_size_bytes,
+			    uint64_t *ret_keyslots_size_bytes,
+			    uint64_t *ret_data_offset_bytes);
 
 int LUKS2_check_metadata_area_size(uint64_t metadata_size);
 int LUKS2_check_keyslots_area_size(uint64_t keyslots_size);
 
 int LUKS2_wipe_header_areas(struct crypt_device *cd,
-	struct luks2_hdr *hdr, bool detached_header);
+	struct luks2_hdr *hdr);
 
 uint64_t LUKS2_get_data_offset(struct luks2_hdr *hdr);
 int LUKS2_get_data_size(struct luks2_hdr *hdr, uint64_t *size, bool *dynamic);
@@ -413,6 +411,12 @@ int LUKS2_keyslot_area(struct luks2_hdr *hdr,
 	uint64_t *offset,
 	uint64_t *length);
 int LUKS2_keyslot_pbkdf(struct luks2_hdr *hdr, int keyslot, struct crypt_pbkdf_type *pbkdf);
+
+int LUKS2_split_crypt_and_opal_keys(struct crypt_device *cd,
+		struct luks2_hdr *hdr,
+		const struct volume_key *vk,
+		struct volume_key **ret_crypt_key,
+		struct volume_key **ret_opal_key);
 
 /*
  * Permanent activation flags stored in header
@@ -457,6 +461,9 @@ int LUKS2_reencrypt_locked_recovery_by_passphrase(struct crypt_device *cd,
 	size_t passphrase_size,
 	struct volume_key **vks);
 
+int LUKS2_reencrypt_locked_recovery_by_vks(struct crypt_device *cd,
+	struct volume_key *vks);
+
 void LUKS2_reencrypt_free(struct crypt_device *cd,
 	struct luks2_reencrypt *rh);
 
@@ -479,8 +486,12 @@ int LUKS2_reencrypt_check_device_size(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
 	uint64_t check_size,
 	uint64_t *dev_size,
-	bool activation,
+	bool device_exclusive_check,
 	bool dynamic);
+
+void LUKS2_reencrypt_lookup_key_ids(struct crypt_device *cd,
+        struct luks2_hdr *hdr,
+        struct volume_key *vk);
 
 int LUKS2_reencrypt_digest_verify(struct crypt_device *cd,
 	struct luks2_hdr *hdr,

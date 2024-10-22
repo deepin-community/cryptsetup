@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Password quality check wrapper
  *
- * Copyright (C) 2012-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2024 Milan Broz
  */
 
 #include "cryptsetup.h"
@@ -98,6 +85,7 @@ static int tools_check_password(const char *password)
 #elif defined ENABLE_PASSWDQC
 	return tools_check_passwdqc(password);
 #else
+	UNUSED(password);
 	return 0;
 #endif
 }
@@ -108,8 +96,10 @@ static int tools_check_password(const char *password)
 static ssize_t read_tty_eol(int fd, char *pass, size_t maxlen)
 {
 	bool eol = false;
-	size_t read_size = 0;
-	ssize_t r;
+	ssize_t r, read_size = 0;
+
+	if (maxlen > SSIZE_MAX)
+		return -1;
 
 	do {
 		r = read(fd, pass, maxlen - read_size);
@@ -118,12 +108,13 @@ static ssize_t read_tty_eol(int fd, char *pass, size_t maxlen)
 		if (r >= 0) {
 			if (!r || pass[r-1] == '\n')
 				eol = true;
-			read_size += (size_t)r;
+			/* coverity[overflow:FALSE] */
+			read_size += r;
 			pass = pass + r;
 		}
-	} while (!eol && read_size != maxlen);
+	} while (!eol && (size_t)read_size != maxlen);
 
-	return (ssize_t)read_size;
+	return read_size;
 }
 
 /* The pass buffer is zeroed and has trailing \0 already " */
@@ -169,6 +160,7 @@ static int interactive_pass(const char *prompt, char *pass, size_t maxlen,
 	int failed = -1;
 	int infd, outfd;
 	size_t realsize = 0;
+	bool close_fd = false;
 
 	if (maxlen < 1)
 		return failed;
@@ -178,8 +170,10 @@ static int interactive_pass(const char *prompt, char *pass, size_t maxlen,
 	if (infd == -1) {
 		infd = STDIN_FILENO;
 		outfd = STDERR_FILENO;
-	} else
+	} else {
 		outfd = infd;
+		close_fd = true;
+	}
 
 	if (tcgetattr(infd, &orig))
 		goto out;
@@ -202,7 +196,7 @@ out:
 	if (realsize == maxlen)
 		log_dbg("Read stopped at maximal interactive input length, passphrase can be trimmed.");
 
-	if (infd != STDIN_FILENO)
+	if (close_fd)
 		close(infd);
 	return failed;
 }

@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, LUKS1 conversion code
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Ondrej Kozina
- * Copyright (C) 2015-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Ondrej Kozina
+ * Copyright (C) 2015-2024 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -67,11 +54,21 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 	int r;
 
 	keyslot_obj = json_object_new_object();
+	if (!keyslot_obj) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(keyslot_obj, "type", json_object_new_string("luks2"));
 	json_object_object_add(keyslot_obj, "key_size", json_object_new_int64(hdr_v1->keyBytes));
 
 	/* KDF */
 	jobj_kdf = json_object_new_object();
+	if (!jobj_kdf) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(jobj_kdf, "type", json_object_new_string(CRYPT_KDF_PBKDF2));
 	json_object_object_add(jobj_kdf, "hash", json_object_new_string(hdr_v1->hashSpec));
 	json_object_object_add(jobj_kdf, "iterations", json_object_new_int64(hdr_v1->keyblock[keyslot].passwordIterations));
@@ -89,6 +86,11 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 
 	/* AF */
 	jobj_af = json_object_new_object();
+	if (!jobj_af) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(jobj_af, "type", json_object_new_string("luks1"));
 	json_object_object_add(jobj_af, "hash", json_object_new_string(hdr_v1->hashSpec));
 	/* stripes field ignored, fixed to LUKS_STRIPES (4000) */
@@ -97,6 +99,11 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 
 	/* Area */
 	jobj_area = json_object_new_object();
+	if (!jobj_area) {
+		r = -ENOMEM;
+		goto err;
+	}
+
 	json_object_object_add(jobj_area, "type", json_object_new_string("raw"));
 
 	/* encryption algorithm field */
@@ -124,6 +131,9 @@ static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struc
 
 	*keyslot_object = keyslot_obj;
 	return 0;
+err:
+	json_object_put(keyslot_obj);
+	return r;
 }
 
 static int json_luks1_keyslots(const struct luks_phdr *hdr_v1, struct json_object **keyslots_object)
@@ -143,7 +153,12 @@ static int json_luks1_keyslots(const struct luks_phdr *hdr_v1, struct json_objec
 			json_object_put(keyslot_obj);
 			return r;
 		}
-		json_object_object_add_by_uint(keyslot_obj, keyslot, field);
+		r = json_object_object_add_by_uint(keyslot_obj, keyslot, field);
+		if (r) {
+			json_object_put(field);
+			json_object_put(keyslot_obj);
+			return r;
+		}
 	}
 
 	*keyslots_object = keyslot_obj;
@@ -238,7 +253,12 @@ static int json_luks1_segments(const struct luks_phdr *hdr_v1, struct json_objec
 		json_object_put(segments_obj);
 		return r;
 	}
-	json_object_object_add_by_uint(segments_obj, 0, field);
+	r = json_object_object_add_by_uint(segments_obj, 0, field);
+	if (r) {
+		json_object_put(field);
+		json_object_put(segments_obj);
+		return r;
+	}
 
 	*segments_object = segments_obj;
 	return 0;
@@ -587,6 +607,10 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 
 	if (max_size < required_size)
 		max_size = required_size;
+
+	/* fix coverity false positive integer underflow */
+	if (max_size < 2 * LUKS2_HDR_16K_LEN)
+		return -EINVAL;
 
 	r = json_luks1_object(hdr1, &jobj, max_size - 2 * LUKS2_HDR_16K_LEN);
 	if (r < 0)

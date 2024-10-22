@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * loopback block device utilities
  *
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <stdlib.h>
@@ -125,10 +112,10 @@ int crypt_loop_attach(char **loop, const char *file, int offset,
 
 	*loop = NULL;
 
-	file_fd = open(file, (*readonly ? O_RDONLY : O_RDWR) | O_EXCL);
+	file_fd = open(file, *readonly ? O_RDONLY : O_RDWR);
 	if (file_fd < 0 && (errno == EROFS || errno == EACCES) && !*readonly) {
 		*readonly = 1;
-		file_fd = open(file, O_RDONLY | O_EXCL);
+		file_fd = open(file, O_RDONLY);
 	}
 	if (file_fd < 0)
 		goto out;
@@ -282,7 +269,7 @@ static char *_sysfs_backing_file(const char *loop)
 {
 	struct stat st;
 	char buf[PATH_MAX];
-	size_t len;
+	ssize_t len;
 	int fd;
 
 	if (stat(loop, &st) || !S_ISBLK(st.st_mode))

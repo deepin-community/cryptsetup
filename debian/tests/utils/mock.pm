@@ -25,7 +25,7 @@ our $PS1 = qr/root\@[\-\.0-9A-Z_a-z]+ : [~\/][\-\.\/0-9A-Z_a-z]* [\#\$]\ /aax;
 package CryptrootTest::Utils;
 
 use Socket qw/PF_UNIX SOCK_STREAM SOCK_CLOEXEC SOCK_NONBLOCK SHUT_RD SHUT_WR/;
-use Errno qw/EINTR ENOENT ECONNREFUSED/;
+use Errno qw/EINTR ENOENT ECONNREFUSED ECONNRESET/;
 use Time::HiRes ();
 
 my (%SOCKET, %BUFFER, $WBITS, $RBITS);
@@ -62,11 +62,12 @@ sub read_data($) {
     my $bits = shift;
     while (my ($chan, $fh) = each %SOCKET) {
         next unless vec($bits, fileno($fh), 1); # nothing to read here
-        my $n = sysread($fh, my $buf, 4096) // die "read: $!";
-        if ($n > 0) {
+        my $n = sysread($fh, my $buf, 4096);
+        if (defined $n and $n > 0) {
             STDOUT->printflush($buf);
             $BUFFER{$chan} .= $buf;
         } else {
+            die "read: $!" unless defined $n or $! == ECONNRESET;
             #print STDERR "INFO done reading from $chan\n";
             shutdown($fh, SHUT_RD) or die "shutdown: $!";
             vec($RBITS, fileno($fh), 1) = 0;
@@ -199,7 +200,7 @@ sub login($;$) {
 
     if (defined $password) {
         expect($CONSOLE => qr/\A[\r\n]*Password: \z/aams);
-        write_data($CONSOLE => $username, echo => 0, reol => "\r");
+        write_data($CONSOLE => $password, echo => 0, reol => "\r");
     }
 
     # consume motd(5) or similar
@@ -228,6 +229,8 @@ sub shell($%) {
 
 # enter S3 sleep state (suspend to ram aka standby)
 sub suspend() {
+    @QMP::EVENTS = (); # flush the event queue
+
     write_data($CONSOLE => q{systemctl suspend});
     # while the command is asynchronous the system might suspend before
     # we have a chance to read the next $PS1
@@ -242,6 +245,8 @@ sub suspend() {
 }
 
 sub wakeup() {
+    @QMP::EVENTS = (); # flush the event queue
+
     my $r = QMP::command(q{system_wakeup});
     die if %$r;
 
@@ -256,6 +261,8 @@ sub wakeup() {
 
 # enter S4 sleep state (suspend to disk aka hibernate)
 sub hibernate() {
+    @QMP::EVENTS = (); # flush the event queue
+
     # an alternative is to send {"execute":"guest-suspend-disk"} on the
     # guest agent socket, but we don't want to require qemu-guest-agent
     # on the guest so this will have to do
@@ -267,6 +274,8 @@ sub hibernate() {
 }
 
 sub poweroff() {
+    @QMP::EVENTS = (); # flush the event queue
+
     # XXX would be nice to use the QEMU monitor here but the guest
     # doesn't seem to respond to system_powerdown QMP commands
     write_data($CONSOLE => q{poweroff});
@@ -283,6 +292,7 @@ package QMP;
 # https://qemu.readthedocs.io/en/latest/interop/qemu-qmp-ref.html
 
 use JSON ();
+our @EVENTS;
 
 # read and decode a QMP server line
 sub getline() {
@@ -305,6 +315,7 @@ sub command($;$) {
         my $resp = QMP::getline() // next;
         # ignore unsolicited server responses (such as events)
         return $resp->{return} if exists $resp->{return};
+        push @EVENTS, $resp;
     }
 }
 
@@ -330,9 +341,16 @@ BEGIN {
 
 sub wait_for_event($) {
     my $event_name = shift;
+    my @events2;
     while(1) {
-        my $resp = QMP::getline() // next;
-        return if exists $resp->{event} and $resp->{event} eq $event_name;
+        my $resp = @EVENTS ? shift @EVENTS : QMP::getline();
+        next unless defined $resp;
+        if (exists $resp->{event} and $resp->{event} eq $event_name) {
+            @EVENTS = @events2;
+            return;
+        } else {
+            push @events2, $resp;
+        }
     }
 }
 

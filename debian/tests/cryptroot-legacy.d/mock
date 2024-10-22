@@ -17,7 +17,7 @@ die unless $out =~ m#^\s{2}[`|]-cryptvg-swap\s+lvm\s+\[SWAP\]\s*$#m;
 
 # assume MODULES=dep won't add too many modules
 # XXX lsinitramfs doesn't work on /initrd.img with COMPRESS=zstd, cf. #1015954
-$out = shell(q{lsinitramfs /boot/initrd.img-`uname -r` | grep -Ec "^(usr/)?lib/modules/.*\.ko$"});
+$out = shell(q{lsinitramfs /boot/initrd.img-`uname -r` | grep -Ec "^(usr/)?lib/modules/.*\.ko(\.[a-z]+)?$"});
 die "$out == 0 or $out > 50" unless $out =~ s/\r?\n\z// and $out =~ /\A([0-9]+)\z/ and $out > 0 and $out <= 50;
 
 # check cipher and key size

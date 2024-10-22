@@ -1,26 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2
  *
- * Copyright (C) 2015-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2023 Milan Broz
- * Copyright (C) 2015-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2024 Milan Broz
+ * Copyright (C) 2015-2024 Ondrej Kozina
  */
 
 #include "luks2_internal.h"
+#include "luks2/hw_opal/hw_opal.h"
 #include "../integrity/integrity.h"
 #include <ctype.h>
 #include <uuid/uuid.h>
@@ -88,6 +76,9 @@ struct json_object *LUKS2_array_remove(struct json_object *array, const char *nu
 
 	/* Create new array without jobj_removing. */
 	array_new = json_object_new_array();
+	if (!array_new)
+		return NULL;
+
 	for (i = 0; i < (int) json_object_array_length(array); i++) {
 		jobj1 = json_object_array_get_idx(array, i);
 		if (jobj1 != jobj_removing)
@@ -478,6 +469,9 @@ static int hdr_validate_json_size(struct crypt_device *cd, json_object *hdr_jobj
 
 	json = json_object_to_json_string_ext(hdr_jobj,
 		JSON_C_TO_STRING_PLAIN | JSON_C_TO_STRING_NOSLASHESCAPE);
+	if (!json)
+		return 1;
+
 	json_area_size = crypt_jobj_get_uint64(jobj1);
 	json_size = (uint64_t)strlen(json);
 
@@ -637,6 +631,11 @@ static int reqs_reencrypt_online(uint32_t reqs)
 	return reqs & CRYPT_REQUIREMENT_ONLINE_REENCRYPT;
 }
 
+static int reqs_opal(uint32_t reqs)
+{
+	return reqs & CRYPT_REQUIREMENT_OPAL;
+}
+
 /*
  * Config section requirements object must be valid.
  * Also general segments section must be validated first.
@@ -697,7 +696,7 @@ static int validate_reencrypt_segments(struct crypt_device *cd, json_object *hdr
 static int hdr_validate_segments(struct crypt_device *cd, json_object *hdr_jobj)
 {
 	json_object *jobj_segments, *jobj_digests, *jobj_offset, *jobj_size, *jobj_type, *jobj_flags, *jobj;
-	uint64_t offset, size;
+	uint64_t offset, size, opal_segment_size;
 	int i, r, count, first_backup = -1;
 	struct interval *intervals = NULL;
 
@@ -777,6 +776,32 @@ static int hdr_validate_segments(struct crypt_device *cd, json_object *hdr_jobj)
 		if (!strcmp(json_object_get_string(jobj_type), "crypt") &&
 		    hdr_validate_crypt_segment(cd, val, key, jobj_digests, size))
 			return 1;
+
+		/* opal */
+		if (!strncmp(json_object_get_string(jobj_type), "hw-opal", 7)) {
+			if (!size) {
+				log_dbg(cd, "segment type %s does not support dynamic size.",
+					json_object_get_string(jobj_type));
+				return 1;
+			}
+			if (!json_contains(cd, val, key, "Segment", "opal_segment_number", json_type_int) ||
+			    !json_contains(cd, val, key, "Segment", "opal_key_size", json_type_int) ||
+			    !(jobj_size = json_contains_string(cd, val, key, "Segment", "opal_segment_size")))
+				return 1;
+			if (!numbered(cd, "opal_segment_size", json_object_get_string(jobj_size)))
+				return 1;
+			if (!json_str_to_uint64(jobj_size, &opal_segment_size) || !opal_segment_size) {
+				log_dbg(cd, "Illegal OPAL segment size value.");
+				return 1;
+			}
+			if (size > opal_segment_size) {
+				log_dbg(cd, "segment size overflows OPAL locking range size.");
+				return 1;
+			}
+			if (!strcmp(json_object_get_string(jobj_type), "hw-opal-crypt") &&
+			    hdr_validate_crypt_segment(cd, val, key, jobj_digests, size))
+				return 1;
+		}
 	}
 
 	if (first_backup == 0) {
@@ -1575,6 +1600,8 @@ int LUKS2_config_set_flags(struct crypt_device *cd, struct luks2_hdr *hdr, uint3
 		return 0;
 
 	jobj_flags = json_object_new_array();
+	if (!jobj_flags)
+		return -ENOMEM;
 
 	for (i = 0; persistent_flags[i].description; i++) {
 		if (flags & persistent_flags[i].flag) {
@@ -1615,6 +1642,7 @@ static const struct requirement_flag requirements_flags[] = {
 	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 2, "online-reencrypt-v2" },
 	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 3, "online-reencrypt-v3" },
 	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 1, "online-reencrypt" },
+	{ CRYPT_REQUIREMENT_OPAL,	      1, "opal" },
 	{ 0, 0, NULL }
 };
 
@@ -1707,7 +1735,7 @@ int LUKS2_config_get_reencrypt_version(struct luks2_hdr *hdr, uint8_t *version)
 	return -ENOENT;
 }
 
-static const struct requirement_flag *stored_requirement_name_by_id(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t req_id)
+static const struct requirement_flag *stored_requirement_name_by_id(struct luks2_hdr *hdr, uint32_t req_id)
 {
 	json_object *jobj_mandatory, *jobj;
 	int i, len;
@@ -1786,7 +1814,7 @@ int LUKS2_config_set_requirements(struct crypt_device *cd, struct luks2_hdr *hdr
 		req_id = reqs & requirements_flags[i].flag;
 		if (req_id) {
 			/* retain already stored version of requirement flag */
-			req = stored_requirement_name_by_id(cd, hdr, req_id);
+			req = stored_requirement_name_by_id(hdr, req_id);
 			if (req)
 				jobj = json_object_new_string(req->description);
 			else
@@ -2090,6 +2118,8 @@ static void hdr_dump_segments(struct crypt_device *cd, json_object *hdr_jobj)
 
 		if (json_object_object_get_ex(jobj_segment, "encryption", &jobj1))
 			log_std(cd, "\tcipher: %s\n", json_object_get_string(jobj1));
+		else
+			log_std(cd, "\tcipher: (no SW encryption)\n");
 
 		if (json_object_object_get_ex(jobj_segment, "sector_size", &jobj1))
 			log_std(cd, "\tsector: %" PRIu32 " [bytes]\n", crypt_jobj_get_uint32(jobj1));
@@ -2107,6 +2137,18 @@ static void hdr_dump_segments(struct crypt_device *cd, json_object *hdr_jobj)
 				log_std(cd, ", %s", json_object_get_string(jobj2));
 			}
 			log_std(cd, "\n");
+		}
+
+		json_object_object_get_ex(jobj_segment, "type", &jobj1);
+		if (!strncmp(json_object_get_string(jobj1), "hw-opal", 7)) {
+			log_std(cd, "\tHW OPAL encryption:\n");
+			json_object_object_get_ex(jobj_segment, "opal_segment_number", &jobj1);
+			log_std(cd, "\t\tOPAL segment number: %" PRIu32 "\n", crypt_jobj_get_uint32(jobj1));
+			json_object_object_get_ex(jobj_segment, "opal_key_size", &jobj1);
+			log_std(cd, "\t\tOPAL key: %" PRIu32 " bits\n", crypt_jobj_get_uint32(jobj1) * 8);
+			json_object_object_get_ex(jobj_segment, "opal_segment_size", &jobj1);
+			json_str_to_uint64(jobj1, &value);
+			log_std(cd, "\t\tOPAL segment length: %" PRIu64 " [bytes]\n", value);
 		}
 
 		log_std(cd, "\n");
@@ -2584,25 +2626,103 @@ int LUKS2_activate_multi(struct crypt_device *cd,
 
 int LUKS2_activate(struct crypt_device *cd,
 	const char *name,
-	struct volume_key *vk,
+	struct volume_key *crypt_key,
+	struct volume_key *opal_key,
 	uint32_t flags)
 {
 	int r;
+	bool dynamic, read_lock, write_lock, opal_lock_on_error = false;
+	uint32_t opal_segment_number;
+	uint64_t range_offset_sectors, range_length_sectors, device_length_bytes;
 	struct luks2_hdr *hdr = crypt_get_hdr(cd, CRYPT_LUKS2);
 	struct crypt_dm_active_device dmdi = {}, dmd = {
 		.uuid   = crypt_get_uuid(cd)
 	};
+	struct crypt_lock_handle *opal_lh = NULL;
 
 	/* do not allow activation when particular requirements detected */
-	if ((r = LUKS2_unmet_requirements(cd, hdr, 0, 0)))
+	if ((r = LUKS2_unmet_requirements(cd, hdr, CRYPT_REQUIREMENT_OPAL, 0)))
 		return r;
 
-	r = dm_crypt_target_set(&dmd.segment, 0, dmd.size, crypt_data_device(cd),
-			vk, crypt_get_cipher_spec(cd), crypt_get_iv_offset(cd),
-			crypt_get_data_offset(cd), crypt_get_integrity(cd) ?: "none",
-			crypt_get_integrity_tag_size(cd), crypt_get_sector_size(cd));
-	if (r < 0)
+	/* Check that cipher is in compatible format */
+	if (!crypt_get_cipher(cd)) {
+		log_err(cd, _("No known cipher specification pattern detected in LUKS2 header."));
+		return -EINVAL;
+	}
+
+	if ((r = LUKS2_get_data_size(hdr, &device_length_bytes, &dynamic)))
 		return r;
+
+	if (dynamic && opal_key) {
+		log_err(cd, _("OPAL device must have static device size."));
+		return -EINVAL;
+	}
+
+	if (!dynamic)
+		dmd.size = device_length_bytes / SECTOR_SIZE;
+
+	if (opal_key) {
+		r = crypt_opal_supported(cd, crypt_data_device(cd));
+		if (r < 0)
+			return r;
+
+		r = LUKS2_get_opal_segment_number(hdr, CRYPT_DEFAULT_SEGMENT, &opal_segment_number);
+		if (r < 0)
+			return -EINVAL;
+
+		range_length_sectors = LUKS2_opal_segment_size(hdr, CRYPT_DEFAULT_SEGMENT, 1);
+
+		if (crypt_get_integrity_tag_size(cd)) {
+			if (dmd.size >= range_length_sectors) {
+				log_err(cd, _("Encrypted OPAL device with integrity must be smaller than locking range."));
+				return -EINVAL;
+			}
+		} else {
+			if (range_length_sectors != dmd.size) {
+				log_err(cd, _("OPAL device must have same size as locking range."));
+				return -EINVAL;
+			}
+		}
+
+		range_offset_sectors = crypt_get_data_offset(cd) + crypt_dev_partition_offset(device_path(crypt_data_device(cd)));
+		r = opal_exclusive_lock(cd, crypt_data_device(cd), &opal_lh);
+		if (r < 0) {
+			log_err(cd, _("Failed to acquire OPAL lock on device %s."), device_path(crypt_data_device(cd)));
+			return -EINVAL;
+		}
+
+		r = opal_range_check_attributes_and_get_lock_state(cd, crypt_data_device(cd), opal_segment_number,
+						opal_key, &range_offset_sectors, &range_length_sectors,
+						&read_lock, &write_lock);
+		if (r < 0)
+			goto out;
+
+		opal_lock_on_error = read_lock && write_lock;
+		if (!opal_lock_on_error && !(flags & CRYPT_ACTIVATE_REFRESH))
+			log_std(cd, _("OPAL device is %s already unlocked.\n"),
+				    device_path(crypt_data_device(cd)));
+
+		r = opal_unlock(cd, crypt_data_device(cd), opal_segment_number, opal_key);
+		if (r < 0)
+			goto out;
+	}
+
+	if (LUKS2_segment_is_type(hdr, CRYPT_DEFAULT_SEGMENT, "crypt") ||
+	    LUKS2_segment_is_type(hdr, CRYPT_DEFAULT_SEGMENT, "hw-opal-crypt")) {
+		r = dm_crypt_target_set(&dmd.segment, 0,
+					dmd.size, crypt_data_device(cd),
+					crypt_key, crypt_get_cipher_spec(cd),
+					crypt_get_iv_offset(cd), crypt_get_data_offset(cd),
+					crypt_get_integrity(cd) ?: "none",
+					crypt_get_integrity_tag_size(cd),
+					crypt_get_sector_size(cd));
+	} else
+		r = dm_linear_target_set(&dmd.segment, 0,
+					 dmd.size, crypt_data_device(cd),
+					 crypt_get_data_offset(cd));
+
+	if (r < 0)
+		goto out;
 
 	/* Add persistent activation flags */
 	if (!(flags & CRYPT_ACTIVATE_IGNORE_PERSISTENT))
@@ -2613,29 +2733,47 @@ int LUKS2_activate(struct crypt_device *cd,
 	if (crypt_get_integrity_tag_size(cd)) {
 		if (!LUKS2_integrity_compatible(hdr)) {
 			log_err(cd, _("Unsupported device integrity configuration."));
-			return -EINVAL;
+			r = -EINVAL;
+			goto out;
 		}
 
 		if (dmd.flags & CRYPT_ACTIVATE_ALLOW_DISCARDS) {
 			log_err(cd, _("Discard/TRIM is not supported."));
-			return -EINVAL;
+			r = -EINVAL;
+			goto out;
 		}
 
 		r = INTEGRITY_create_dmd_device(cd, NULL, NULL, NULL, NULL, &dmdi, dmd.flags, 0);
 		if (r)
-			return r;
+			goto out;
+
+		if (!dynamic && dmdi.size != dmd.size) {
+			log_err(cd, _("Underlying dm-integrity device with unexpected provided data sectors."));
+			r = -EINVAL;
+			goto out;
+		}
 
 		dmdi.flags |= CRYPT_ACTIVATE_PRIVATE;
 		dmdi.uuid = dmd.uuid;
 		dmd.segment.u.crypt.offset = 0;
-		dmd.segment.size = dmdi.segment.size;
+		if (dynamic)
+			dmd.segment.size = dmdi.segment.size;
 
-		r = create_or_reload_device_with_integrity(cd, name, CRYPT_LUKS2, &dmd, &dmdi);
+		r = create_or_reload_device_with_integrity(cd, name,
+							   opal_key ? CRYPT_LUKS2_HW_OPAL : CRYPT_LUKS2,
+							   &dmd, &dmdi);
 	} else
-		r = create_or_reload_device(cd, name, CRYPT_LUKS2, &dmd);
+		r = create_or_reload_device(cd, name,
+					    opal_key ? CRYPT_LUKS2_HW_OPAL : CRYPT_LUKS2,
+					    &dmd);
 
 	dm_targets_free(cd, &dmd);
 	dm_targets_free(cd, &dmdi);
+out:
+	if (r < 0 && opal_lock_on_error)
+		opal_lock(cd, crypt_data_device(cd), opal_segment_number);
+
+	opal_exclusive_unlock(cd, opal_lh);
 
 	return r;
 }
@@ -2665,13 +2803,15 @@ static bool contains_reencryption_helper(char **names)
 
 int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr *hdr, struct crypt_dm_active_device *dmd, uint32_t flags)
 {
+	bool dm_opal_uuid;
 	int r, ret;
 	struct dm_target *tgt;
 	crypt_status_info ci;
 	struct crypt_dm_active_device dmdc;
+	uint32_t opal_segment_number;
 	char **dep, deps_uuid_prefix[40], *deps[MAX_DM_DEPS+1] = { 0 };
 	const char *namei = NULL;
-	struct crypt_lock_handle *reencrypt_lock = NULL;
+	struct crypt_lock_handle *reencrypt_lock = NULL, *opal_lh = NULL;
 
 	if (!dmd || !dmd->uuid || strncmp(CRYPT_LUKS2, dmd->uuid, sizeof(CRYPT_LUKS2)-1))
 		return -EINVAL;
@@ -2682,6 +2822,11 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 
 	r = snprintf(deps_uuid_prefix, sizeof(deps_uuid_prefix), CRYPT_SUBDEV "-%.32s", dmd->uuid + 6);
 	if (r < 0 || (size_t)r != (sizeof(deps_uuid_prefix) - 1))
+		return -EINVAL;
+
+	/* check if active device has LUKS2-OPAL dm uuid prefix */
+	dm_opal_uuid = !crypt_uuid_type_cmp(dmd->uuid, CRYPT_LUKS2_HW_OPAL);
+	if (dm_opal_uuid && hdr && !LUKS2_segment_is_hw_opal(hdr, CRYPT_DEFAULT_SEGMENT))
 		return -EINVAL;
 
 	tgt = &dmd->segment;
@@ -2726,7 +2871,8 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 		tgt = &dmdc.segment;
 		while (tgt) {
 			if (tgt->type == DM_CRYPT)
-				crypt_drop_keyring_key_by_description(cd, tgt->u.crypt.vk->key_description, LOGON_KEY);
+				crypt_drop_keyring_key_by_description(cd, tgt->u.crypt.vk->key_description,
+					LOGON_KEY);
 			tgt = tgt->next;
 		}
 	}
@@ -2761,7 +2907,8 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 				tgt = &dmdc.segment;
 				while (tgt) {
 					if (tgt->type == DM_CRYPT)
-						crypt_drop_keyring_key_by_description(cd, tgt->u.crypt.vk->key_description, LOGON_KEY);
+						crypt_drop_keyring_key_by_description(cd, tgt->u.crypt.vk->key_description,
+							LOGON_KEY);
 					tgt = tgt->next;
 				}
 			}
@@ -2773,7 +2920,35 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 		r = ret;
 	}
 
+	if (!r && dm_opal_uuid) {
+		if (hdr) {
+			if (LUKS2_get_opal_segment_number(hdr, CRYPT_DEFAULT_SEGMENT, &opal_segment_number)) {
+				log_err(cd, _("Device %s was deactivated but hardware OPAL device cannot be locked."),
+					name);
+				r = -EINVAL;
+				goto out;
+			}
+		} else {
+			/* Guess OPAL range number for LUKS2-OPAL device with missing header */
+			opal_segment_number = 1;
+			ret = crypt_dev_get_partition_number(device_path(crypt_data_device(cd)));
+			if (ret > 0)
+				opal_segment_number = ret;
+		}
+
+		if (crypt_data_device(cd)) {
+			r = opal_exclusive_lock(cd, crypt_data_device(cd), &opal_lh);
+			if (r < 0) {
+				log_err(cd, _("Failed to acquire OPAL lock on device %s."), device_path(crypt_data_device(cd)));
+				goto out;
+			}
+		}
+
+		if (!crypt_data_device(cd) || opal_lock(cd, crypt_data_device(cd), opal_segment_number))
+			log_err(cd, _("Device %s was deactivated but hardware OPAL device cannot be locked."), name);
+	}
 out:
+	opal_exclusive_unlock(cd, opal_lh);
 	LUKS2_reencrypt_unlock(cd, reencrypt_lock);
 	dep = deps;
 	while (*dep)
@@ -2807,6 +2982,8 @@ int LUKS2_unmet_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uin
 		log_err(cd, _("Operation incompatible with device marked for legacy reencryption. Aborting."));
 	if (reqs_reencrypt_online(reqs) && !quiet)
 		log_err(cd, _("Operation incompatible with device marked for LUKS2 reencryption. Aborting."));
+	if (reqs_opal(reqs) && !quiet)
+		log_err(cd, _("Operation incompatible with device using OPAL. Aborting."));
 
 	/* any remaining unmasked requirement fails the check */
 	return reqs ? -EINVAL : 0;
@@ -2859,6 +3036,20 @@ int json_object_object_add_by_uint(json_object *jobj, unsigned key, json_object 
 #endif
 }
 
+int json_object_object_add_by_uint_by_ref(json_object *jobj, unsigned key, json_object **jobj_val_ref)
+{
+	int r;
+
+	assert(jobj);
+	assert(jobj_val_ref);
+
+	r = json_object_object_add_by_uint(jobj, key, *jobj_val_ref);
+	if (!r)
+		*jobj_val_ref = NULL;
+
+	return r;
+}
+
 /* jobj_dst must contain pointer initialized to NULL (see json-c json_object_deep_copy API) */
 int json_object_copy(json_object *jobj_src, json_object **jobj_dst)
 {
@@ -2871,4 +3062,59 @@ int json_object_copy(json_object *jobj_src, json_object **jobj_dst)
 	*jobj_dst = json_tokener_parse(json_object_get_string(jobj_src));
 	return *jobj_dst ? 0 : -1;
 #endif
+}
+
+int LUKS2_split_crypt_and_opal_keys(struct crypt_device *cd __attribute__((unused)),
+		struct luks2_hdr *hdr,
+		const struct volume_key *vk,
+		struct volume_key **ret_crypt_key,
+		struct volume_key **ret_opal_key)
+{
+	int r;
+	uint32_t opal_segment_number;
+	size_t opal_user_key_size;
+	json_object *jobj_segment;
+	struct volume_key *opal_key, *crypt_key;
+
+	assert(vk);
+	assert(ret_crypt_key);
+	assert(ret_opal_key);
+
+	jobj_segment = LUKS2_get_segment_jobj(hdr, CRYPT_DEFAULT_SEGMENT);
+	if (!jobj_segment)
+		return -EINVAL;
+
+	r = json_segment_get_opal_segment_id(jobj_segment, &opal_segment_number);
+	if (r < 0)
+		return -EINVAL;
+
+	r = json_segment_get_opal_key_size(jobj_segment, &opal_user_key_size);
+	if (r < 0)
+		return -EINVAL;
+
+	if (vk->keylength < opal_user_key_size)
+		return -EINVAL;
+
+	/* OPAL SEGMENT only */
+	if (vk->keylength == opal_user_key_size) {
+		*ret_crypt_key = NULL;
+		*ret_opal_key = NULL;
+		return 0;
+	}
+
+	opal_key = crypt_alloc_volume_key(opal_user_key_size, vk->key);
+	if (!opal_key)
+		return -ENOMEM;
+
+	crypt_key = crypt_alloc_volume_key(vk->keylength - opal_user_key_size,
+					   vk->key + opal_user_key_size);
+	if (!crypt_key) {
+		crypt_free_volume_key(opal_key);
+		return -ENOMEM;
+	}
+
+	*ret_opal_key = opal_key;
+	*ret_crypt_key = crypt_key;
+
+	return 0;
 }

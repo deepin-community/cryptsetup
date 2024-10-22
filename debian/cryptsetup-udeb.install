@@ -1,7 +1,7 @@
-debian/askpass              /lib/cryptsetup/
-debian/checks/*             /lib/cryptsetup/checks/
-debian/cryptdisks-functions /lib/cryptsetup/
-debian/functions            /lib/cryptsetup/
-debian/scripts/decrypt_*    /lib/cryptsetup/scripts/
-debian/scripts/passdev      /lib/cryptsetup/scripts/
-sbin/cryptsetup
+debian/askpass              /usr/lib/cryptsetup/
+debian/checks/*             /usr/lib/cryptsetup/checks/
+debian/cryptdisks-functions /usr/lib/cryptsetup/
+debian/functions            /usr/lib/cryptsetup/
+debian/scripts/decrypt_*    /usr/lib/cryptsetup/scripts/
+debian/scripts/passdev      /usr/lib/cryptsetup/scripts/
+usr/sbin/cryptsetup

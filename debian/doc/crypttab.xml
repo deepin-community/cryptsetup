@@ -469,8 +469,7 @@
      </simpara>
      <simpara>
       This option is ignored for <emphasis>initramfs</emphasis> devices and
-      specific to the Debian <emphasis>crypttab</emphasis> format. It's not
-      supported by <emphasis>systemd</emphasis>.
+      specific to the Debian <emphasis>crypttab</emphasis> format.
      </simpara>
     </listitem>
    </varlistentry>

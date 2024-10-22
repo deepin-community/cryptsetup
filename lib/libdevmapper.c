@@ -1,24 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * libdevmapper - device-mapper backend for cryptsetup
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2023 Milan Broz
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2024 Milan Broz
  */
 
 #include <stdio.h>
@@ -602,7 +589,8 @@ static char *get_dm_crypt_params(const struct dm_target *tgt, uint32_t flags)
 		hexkey = crypt_safe_alloc(keystr_len);
 		if (!hexkey)
 			goto out;
-		r = snprintf(hexkey, keystr_len, ":%zu:logon:%s", tgt->u.crypt.vk->keylength, tgt->u.crypt.vk->key_description);
+		r = snprintf(hexkey, keystr_len, ":%zu:logon:%s", tgt->u.crypt.vk->keylength,
+			     tgt->u.crypt.vk->key_description);
 		if (r < 0 || r >= keystr_len)
 			goto out;
 	} else
@@ -1280,6 +1268,48 @@ err:
 	return r;
 }
 
+static bool device_disappeared(struct crypt_device *cd, struct device *device, const char *type)
+{
+	struct stat st;
+
+	if (!device)
+		return false;
+
+	/*
+	 * Cannot use device_check_access(cd, device, DEV_OK) as it always accesses block device,
+	 * we want to check for underlying file presence (if device is an image).
+	 */
+	if (stat(device_path(device), &st) < 0) {
+		log_dbg(cd, "%s device %s disappeared.", type, device_path(device));
+		return true;
+	}
+
+	log_dbg(cd, "%s device %s is OK.", type, device_path(device));
+	return false;
+}
+
+static bool dm_table_devices_disappeared(struct crypt_device *cd, struct crypt_dm_active_device *dmd)
+{
+	struct dm_target *tgt = &dmd->segment;
+
+	do {
+		if (device_disappeared(cd, tgt->data_device, "Data"))
+			return true;
+		if (tgt->type == DM_VERITY) {
+			if (device_disappeared(cd, tgt->u.verity.hash_device, "Hash"))
+				return true;
+			if (device_disappeared(cd, tgt->u.verity.fec_device, "FEC"))
+				return true;
+		} else if (tgt->type == DM_INTEGRITY) {
+			if (device_disappeared(cd, tgt->u.integrity.meta_device, "Integrity meta"))
+				return true;
+		}
+		tgt = tgt->next;
+	} while (tgt);
+
+	return false;
+}
+
 static int _dm_create_device(struct crypt_device *cd, const char *name, const char *type,
 			     struct crypt_dm_active_device *dmd)
 {
@@ -1330,11 +1360,43 @@ static int _dm_create_device(struct crypt_device *cd, const char *name, const ch
 		goto out;
 
 	if (!dm_task_run(dmt)) {
-		r = dm_status_device(cd, name);;
-		if (r >= 0)
+		r = -dm_task_get_errno(dmt);
+		log_dbg(cd, "DM create task failed, dm_task errno: %i.", r);
+		if (r == -ENOKEY || r == -EKEYREVOKED || r == -EKEYEXPIRED) {
+			/* propagate DM errors around key management as such */
+			r = -ENOKEY;
+			goto out;
+		}
+
+		r = dm_status_device(cd, name);
+		log_dbg(cd, "Device status returned %i.", r);
+		if (r >= 0 || r == -EEXIST) {
 			r = -EEXIST;
-		if (r != -EEXIST && r != -ENODEV)
+			goto out;
+		}
+
+		/* EEXIST above has priority */
+		if (dm_task_get_errno(dmt) == EBUSY) {
+			r = -EBUSY;
+			goto out;
+		}
+
+		if (r != -ENODEV) {
 			r = -EINVAL;
+			goto out;
+		}
+
+		/* dm-ioctl failed => -ENODEV */
+		if (dm_task_get_errno(dmt) == ENXIO)
+			goto out;
+
+		/* Some device or file node disappeared => -ENODEV */
+		if (dm_table_devices_disappeared(cd, dmd))
+			goto out;
+
+		/* Bail out with EBUSY better than sleep and retry. */
+		log_dbg(cd, "No referenced device missing, some device in use.");
+		r = -EBUSY;
 		goto out;
 	}
 
@@ -1663,6 +1725,11 @@ int dm_create_device(struct crypt_device *cd, const char *name,
 			log_err(cd, _("Requested sector_size option is not supported."));
 			r = -EINVAL;
 		}
+		if (dmd->segment.u.crypt.sector_size > SECTOR_SIZE &&
+		    dmd->size % dmd->segment.u.crypt.sector_size) {
+			log_err(cd, _("The device size is not multiple of the requested sector size."));
+			r = -EINVAL;
+		}
 	}
 
 	if (dmd->segment.type == DM_INTEGRITY && (dmd->flags & CRYPT_ACTIVATE_RECALCULATE) &&
@@ -1830,7 +1897,7 @@ int dm_status_suspended(struct crypt_device *cd, const char *name)
 	r = dm_status_dmi(name, &dmi, NULL, NULL);
 	dm_exit_context();
 
-	if (r < 0)
+	if (r < 0 && r != -EEXIST)
 		return r;
 
 	return dmi.suspended ? 1 : 0;
@@ -2829,7 +2896,7 @@ static int _process_deps(struct crypt_device *cd, const char *prefix, struct dm_
 int dm_device_deps(struct crypt_device *cd, const char *name, const char *prefix,
 		   char **names, size_t names_length)
 {
-	struct dm_task *dmt;
+	struct dm_task *dmt = NULL;
 	struct dm_info dmi;
 	struct dm_deps *deps;
 	int r = -EINVAL;
@@ -2989,7 +3056,8 @@ int dm_resume_and_reinstate_key(struct crypt_device *cd, const char *name,
 	}
 
 	if (vk->key_description) {
-		r = snprintf(msg, msg_size, "key set :%zu:logon:%s", vk->keylength, vk->key_description);
+		r = snprintf(msg, msg_size, "key set :%zu:logon:%s", vk->keylength,
+			     vk->key_description);
 	} else  {
 		key = crypt_bytes_to_hex(vk->keylength, vk->key);
 		if (!key) {
@@ -3024,6 +3092,18 @@ int dm_cancel_deferred_removal(const char *name)
 const char *dm_get_dir(void)
 {
 	return dm_dir();
+}
+
+int dm_get_iname(const char *name, char **iname, bool with_path)
+{
+	int r;
+
+	if (with_path)
+		r = asprintf(iname, "%s/%s_dif", dm_get_dir(), name);
+	else
+		r = asprintf(iname, "%s_dif", name);
+
+	return r < 0 ? -ENOMEM : 0;
 }
 
 int dm_is_dm_device(int major)

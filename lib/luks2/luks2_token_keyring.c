@@ -1,22 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * LUKS - Linux Unified Key Setup v2, kernel keyring token
  *
- * Copyright (C) 2016-2023 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2023 Ondrej Kozina
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * Copyright (C) 2016-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2024 Ondrej Kozina
  */
 
 #include "luks2_internal.h"
@@ -40,14 +27,11 @@ int keyring_open(struct crypt_device *cd,
 
 	json_object_object_get_ex(jobj_token, "key_description", &jobj_key);
 
-	r = keyring_get_passphrase(json_object_get_string(jobj_key), buffer, buffer_len);
-	if (r == -ENOTSUP) {
-		log_dbg(cd, "Kernel keyring features disabled.");
+	r = crypt_keyring_get_user_key(cd, json_object_get_string(jobj_key), buffer, buffer_len);
+	if (r == -ENOTSUP)
 		return -ENOENT;
-	} else if (r < 0) {
-		log_dbg(cd, "keyring_get_passphrase failed (error %d)", r);
+	else if (r < 0)
 		return -EPERM;
-	}
 
 	return 0;
 }

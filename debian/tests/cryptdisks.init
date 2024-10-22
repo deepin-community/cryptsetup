@@ -23,7 +23,7 @@ dmsetup create disk12 <<-EOF
 	$((64 * 2*1024)) $((64 * 2*1024)) linear /dev/mapper/disk2 0
 EOF
 
-cipher="aes-cbc-essiv:sha256"
+cipher="aes-xts-plain64"
 size=32 # bytes
 cat >/etc/crypttab <<-EOF
 	crypt_disk0   /dev/mapper/disk0        /dev/urandom plain,cipher=$cipher,size=$((8*size))

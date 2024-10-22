@@ -42,14 +42,17 @@ in_oss_fuzz && LIBFUZZER_PATCH="$PWD/cryptsetup/tests/fuzz/unpoison-mutated-buff
 in_oss_fuzz && apt-get update && apt-get install -y \
     make autoconf automake autopoint libtool pkg-config \
     sharutils gettext expect keyutils ninja-build \
-    bison
+    bison flex
 
 [ ! -d zlib ]   && git clone --depth 1 https://github.com/madler/zlib.git
-[ ! -d xz ]     && git clone https://git.tukaani.org/xz.git
+# Upstream repo has disabled cloning https://git.tukaani.org/xz.git
+[ ! -d xz ]     && git clone --depth 1 https://github.com/tukaani-project/xz
 [ ! -d json-c ] && git clone --depth 1 https://github.com/json-c/json-c.git
-[ ! -d lvm2 ]   && git clone --depth 1 https://sourceware.org/git/lvm2.git
+[ ! -d lvm2 ]   && git clone --depth 1 https://gitlab.com/lvmteam/lvm2
 [ ! -d popt ]   && git clone --depth 1 https://github.com/rpm-software-management/popt.git
-[ ! -d libprotobuf-mutator ] && git clone --depth 1 https://github.com/google/libprotobuf-mutator.git \
+# FIXME: temporary fix until libprotobuf stops shuffling C++ requirements
+# [ ! -d libprotobuf-mutator ] && git clone --depth 1 https://github.com/google/libprotobuf-mutator.git \
+[ ! -d libprotobuf-mutator ] && git clone --depth 1 --branch v1.1 https://github.com/google/libprotobuf-mutator.git \
                              && [ "$SANITIZER" == "memory" ] && ( cd libprotobuf-mutator; patch -p1 < $LIBFUZZER_PATCH )
 [ ! -d openssl ]    && git clone --depth 1 https://github.com/openssl/openssl
 [ ! -d util-linux ] && git clone --depth 1 https://github.com/util-linux/util-linux
@@ -76,8 +79,8 @@ make install
 cd ..
 
 cd xz
-./autogen.sh --no-po4a
-./configure --prefix="$DEPS_PATH" --enable-static --disable-shared
+./autogen.sh --no-po4a --no-doxygen
+./configure --prefix="$DEPS_PATH" --enable-static --disable-shared --disable-ifunc --disable-sandbox
 make -j
 make install
 cd ..
@@ -94,16 +97,14 @@ cd ../..
 cd lvm2
 ./configure --prefix="$DEPS_PATH" --enable-static_link --disable-udev_sync --enable-pkgconfig --disable-selinux
 make -j libdm.device-mapper
-# build of dmsetup.static is broken
-# make install_device-mapper
-cp ./libdm/ioctl/libdevmapper.a "$DEPS_PATH"/lib/
-cp ./libdm/libdevmapper.h "$DEPS_PATH"/include/
-cp ./libdm/libdevmapper.pc "$PKG_CONFIG_PATH"
+make -C libdm install_static install_pkgconfig install_include
 cd ..
 
 cd popt
 # --no-undefined is incompatible with sanitizers
 sed -i -e 's/-Wl,--no-undefined //' src/CMakeLists.txt
+# force static build of popt
+sed -i 's/add_library(popt SHARED/add_library(popt STATIC/' src/CMakeLists.txt
 mkdir -p build
 rm -fr build/*
 cd build

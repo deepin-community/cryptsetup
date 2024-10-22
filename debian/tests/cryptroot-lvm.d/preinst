@@ -1,5 +1,5 @@
 cat >/etc/crypttab <<-EOF
-	vda3_crypt PARTUUID=$(blkid -s PARTUUID -o value /dev/vda3) none luks,discard
+	vda3_crypt PARTUUID=$(blkid -s PARTUUID -o value /dev/vda3) none luks,discard,x-initrd.attach
 EOF
 
 cat >/etc/fstab <<-EOF
