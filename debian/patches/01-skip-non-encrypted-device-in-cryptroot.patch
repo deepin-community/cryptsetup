@@ -1,0 +1,56 @@
+diff --git a/debian/changelog b/debian/changelog
+index d873981..2ceb35e 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++cryptsetup (2:2.7.5-1deepin1) unstable; urgency=medium
++
++  * skip non-encrypted source device in cryptroot
++
++ -- Liang Bo <liangbo@uniontech.com>  Mon, 28 Oct 2024 15:05:46 +0800
++
+ cryptsetup (2:2.7.5-1) unstable; urgency=medium
+ 
+   * New bugfix upstream release.
+diff --git a/debian/functions b/debian/functions
+index 63ecf5d..1d21fa0 100644
+--- a/debian/functions
++++ b/debian/functions
+@@ -365,6 +365,10 @@ unlock_mapping() {
+         unset -v CRYPTTAB_OPTION_keyslot
+     fi
+ 
++    if [ "$CRYPTTAB_KEY" = "none" ]; then
++        unset -v keyfile
++    fi
++
+     /sbin/cryptsetup -T1 \
+         ${CRYPTTAB_OPTION_header:+--header="$CRYPTTAB_OPTION_header"} \
+         ${CRYPTTAB_OPTION_cipher:+--cipher="$CRYPTTAB_OPTION_cipher"} \
+@@ -385,7 +389,8 @@ unlock_mapping() {
+         ${CRYPTTAB_OPTION_submit_from_crypt_cpus:+--perf-submit_from_crypt_cpus} \
+         ${CRYPTTAB_OPTION_no_read_workqueue:+--perf-no_read_workqueue} \
+         ${CRYPTTAB_OPTION_no_write_workqueue:+--perf-no_write_workqueue} \
+-        --type="$CRYPTTAB_TYPE" --key-file="$keyfile" \
++        --type="$CRYPTTAB_TYPE" \
++        ${keyfile:+--key-file="$keyfile"} \
+         open -- "$CRYPTTAB_SOURCE" "$CRYPTTAB_NAME"
+ }
+ 
+diff --git a/debian/initramfs/scripts/local-top/cryptroot b/debian/initramfs/scripts/local-top/cryptroot
+index 90b521b..ce8aa22 100644
+--- a/debian/initramfs/scripts/local-top/cryptroot
++++ b/debian/initramfs/scripts/local-top/cryptroot
+@@ -124,6 +124,12 @@ setup_mapping() {
+         fi
+     fi
+ 
++    # skip non-crypted source on luks type
++    if [ "$CRYPTTAB_TYPE" = "luks" ] && [ "$(blkid -o value -s TYPE $CRYPTTAB_SOURCE)" != "crypto_LUKS" ]; then
++        echo " ALERT! $CRYPTTAB_SOURCE is not encrypted source device."
++        return 0;
++    fi
++
+     # our `cryptroot-unlock` script searches for cryptsetup processes
+     # with a given CRYPTTAB_NAME it their environment
+     export CRYPTTAB_NAME
