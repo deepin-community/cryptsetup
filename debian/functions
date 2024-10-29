@@ -365,6 +365,10 @@ unlock_mapping() {
         unset -v CRYPTTAB_OPTION_keyslot
     fi
 
+    if [ "$CRYPTTAB_KEY" = "none" ]; then
+        unset -v keyfile
+    fi
+
     /sbin/cryptsetup -T1 \
         ${CRYPTTAB_OPTION_header:+--header="$CRYPTTAB_OPTION_header"} \
         ${CRYPTTAB_OPTION_cipher:+--cipher="$CRYPTTAB_OPTION_cipher"} \
@@ -385,7 +389,8 @@ unlock_mapping() {
         ${CRYPTTAB_OPTION_submit_from_crypt_cpus:+--perf-submit_from_crypt_cpus} \
         ${CRYPTTAB_OPTION_no_read_workqueue:+--perf-no_read_workqueue} \
         ${CRYPTTAB_OPTION_no_write_workqueue:+--perf-no_write_workqueue} \
-        --type="$CRYPTTAB_TYPE" --key-file="$keyfile" \
+        --type="$CRYPTTAB_TYPE" \
+        ${keyfile:+--key-file="$keyfile"} \
         open -- "$CRYPTTAB_SOURCE" "$CRYPTTAB_NAME"
 }
 
