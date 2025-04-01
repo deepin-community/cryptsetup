@@ -1,3 +1,9 @@
+cryptsetup (2:2.7.5-1deepin2.1) unstable; urgency=medium
+ 
+  * revert to 2:2.7.5-1
+ 
+ -- Liang Bo <liangbo@uniontech.com>  Tue, 01 Apr 2024 14:52:13 +0800
+
 cryptsetup (2:2.7.5-1) unstable; urgency=medium
 
   * New bugfix upstream release.
