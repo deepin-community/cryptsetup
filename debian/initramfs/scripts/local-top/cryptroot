@@ -124,12 +124,6 @@ setup_mapping() {
         fi
     fi
 
-    # skip non-crypted source on luks type
-    if [ "$CRYPTTAB_TYPE" = "luks" ] && [ "$(blkid -o value -s TYPE $CRYPTTAB_SOURCE)" != "crypto_LUKS" ]; then
-        echo " ALERT! $CRYPTTAB_SOURCE is not encrypted source device."
-        return 0;
-    fi
-
     # our `cryptroot-unlock` script searches for cryptsetup processes
     # with a given CRYPTTAB_NAME it their environment
     export CRYPTTAB_NAME
