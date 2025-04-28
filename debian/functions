@@ -595,9 +595,11 @@ _resolve_device() {
         MAJ="$maj"
         MIN="$min"
         return 0
-    else
-        cryptsetup_message "ERROR: Couldn't resolve device $spec"
     fi
+    case $spec in
+        overlay|usr-overlay) ;;
+        *) cryptsetup_message "ERROR: Couldn't resolve device $spec";;
+    esac
     return 1
 }
 
