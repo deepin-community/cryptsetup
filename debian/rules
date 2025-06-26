@@ -51,6 +51,7 @@ endif
 
 	# generate gettext po files (for luksformat)
 	$(MAKE) -C debian/scripts/po all luksformat.pot
+	$(MAKE) -C debian/initramfs/po all cryptroot.pot
 
 execute_before_dh_auto_test:
 	# tests/fake_token_path.so is built without global $(CFLAGS)
@@ -59,6 +60,7 @@ execute_before_dh_auto_test:
 execute_after_dh_auto_install:
 	# install gettext po files (for luksformat)
 	$(MAKE) -C debian/scripts/po DESTDIR=$(CURDIR)/debian/cryptsetup-bin install
+	$(MAKE) -C debian/initramfs/po DESTDIR=$(CURDIR)/debian/cryptsetup-initramfs install
 
 execute_after_dh_install:
 	# install apport files when building on Ubuntu
@@ -74,6 +76,7 @@ override_dh_installinit:
 
 execute_after_dh_auto_clean:
 	$(MAKE) -C debian/scripts/po update clean
+	$(MAKE) -C debian/initramfs/po update clean
 	if [ -f $(CURDIR)/debian/cryptsetup-initramfs.preinst.in ]; then \
 		mv -fT $(CURDIR)/debian/cryptsetup-initramfs.preinst.in $(CURDIR)/debian/cryptsetup-initramfs.preinst; \
 	fi

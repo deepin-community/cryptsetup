@@ -29,6 +29,19 @@ esac
 [ -f /lib/cryptsetup/functions ] || return 0
 . /lib/cryptsetup/functions
 
+if [ -f /etc/default/locale ]; then
+	. /etc/default/locale
+fi
+if [ -z $LANG ]; then
+    if [ -n "$locales" ]; then
+        LANG=$locales
+        LANGUAGE=${locales%.*}
+    fi
+fi
+export LANG
+export LANGUAGE
+
+alias get_loc_str='gettext "cryptroot"'
 
 # wait_for_source()
 #   Wait for encrypted $CRYPTTAB_SOURCE . Set $CRYPTTAB_SOURCE
@@ -148,7 +161,7 @@ setup_mapping() {
         fi
     fi
 
-    local count=0 maxtries="${CRYPTTAB_OPTION_tries:-3}" fstype vg rv
+    local count=0 maxtries="${CRYPTTAB_OPTION_tries:-10}" recovery_tries=5 fstype vg rv
     while [ $maxtries -le 0 ] || [ $count -lt $maxtries ]; do
         if [ -z "${CRYPTTAB_OPTION_keyscript+x}" ] && [ "$CRYPTTAB_KEY" != "none" ]; then
             # unlock via keyfile
@@ -161,8 +174,29 @@ setup_mapping() {
         count=$(( $count + 1 ))
 
         if [ $rv -ne 0 ]; then
-            cryptsetup_message "ERROR: $CRYPTTAB_NAME: cryptsetup failed, bad password or options?"
-            sleep 1
+            left_count=$(( $maxtries - $count))
+            if [ -f "/tmp/crypt_mode" ]; then
+                if [ $left_count -ge $recovery_tries ]; then
+                    left_count=$(($left_count - $recovery_tries))
+                    crypt_mode=$(cat /tmp/crypt_mode)
+                    if [ "$crypt_mode" = "tpm" ]; then
+                        count=5
+                        # make askpass accept recovery key
+                        echo "$CRYPTTAB_NAME 6" > /tmp/crypt-tries.cache
+                        pattern=$(get_loc_str "Failed to unlock automatically, please check TPM or input recovery key.")
+                    else
+                        pattern=$(get_loc_str "Wrong password! You have %s input chances more.")
+                    fi
+                else
+                    pattern=$(get_loc_str "Wrong recovery key! You have %s input chances more")
+                fi
+            else
+                pattern=$(get_loc_str "Wrong password! You have %s input chances more")
+            fi
+            wrong_pass_tip=$(printf $pattern $left_count)
+            plymouth message --text="$wrong_pass_tip"
+            sleep 2
+            plymouth message --text=""
             continue
         elif ! dev="$(dm_blkdevname "$CRYPTTAB_NAME")"; then
             cryptsetup_message "ERROR: $CRYPTTAB_NAME: unknown error setting up device mapping"
@@ -180,12 +214,15 @@ setup_mapping() {
             fi
         fi
 
-        cryptsetup_message "$CRYPTTAB_NAME: set up successfully"
+        plymouth message --text="$(get_loc_str "Unlocking successfully!")"
         wait_for_udev 10
         return 0
     done
 
-    cryptsetup_message "ERROR: $CRYPTTAB_NAME: maximum number of tries exceeded"
+    plymouth message --text="$(get_loc_str "Please reboot!")"
+    while true; do
+        sleep 100
+    done
     exit 1
 }
 
