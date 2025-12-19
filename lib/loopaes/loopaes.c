@@ -2,8 +2,8 @@
 /*
  * loop-AES compatible volume handling
  *
- * Copyright (C) 2011-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2011-2024 Milan Broz
+ * Copyright (C) 2011-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2011-2025 Milan Broz
  */
 
 #include <errno.h>
@@ -69,6 +69,7 @@ static int hash_keys(struct crypt_device *cd,
 	char tweak, *key_ptr;
 	unsigned int i;
 	int r = 0;
+	void *key = NULL;
 
 	hash_name = hash_override ?: get_hash(key_len_output);
 	tweak = get_tweak(keys_count);
@@ -79,24 +80,30 @@ static int hash_keys(struct crypt_device *cd,
 		return -EINVAL;
 	}
 
-	*vk = crypt_alloc_volume_key((size_t)key_len_output * keys_count, NULL);
-	if (!*vk)
+	key = crypt_safe_alloc((size_t)key_len_output * keys_count);
+	if (!key)
 		return -ENOMEM;
 
 	for (i = 0; i < keys_count; i++) {
-		key_ptr = &(*vk)->key[i * key_len_output];
+		key_ptr = &((char *)key)[i * key_len_output];
 		r = hash_key(input_keys[i], key_len_input, key_ptr,
 			     key_len_output, hash_name);
 		if (r < 0)
-			break;
+			goto err;
 
 		key_ptr[0] ^= tweak;
 	}
 
-	if (r < 0 && *vk) {
-		crypt_free_volume_key(*vk);
-		*vk = NULL;
+	*vk = crypt_alloc_volume_key_by_safe_alloc(&key);
+	if (!*vk) {
+		r = -ENOMEM;
+		goto err;
 	}
+
+	return 0;
+err:
+	crypt_safe_free(key);
+	*vk = NULL;
 	return r;
 }
 
@@ -191,7 +198,7 @@ int LOOPAES_activate(struct crypt_device *cd,
 		     uint32_t flags)
 {
 	int r;
-	uint32_t req_flags, dmc_flags;
+	uint64_t req_flags, dmc_flags;
 	char *cipher = NULL;
 	struct crypt_dm_active_device dmd = {
 		.flags = flags,
@@ -213,9 +220,8 @@ int LOOPAES_activate(struct crypt_device *cd,
 		return -ENOMEM;
 
 	r = dm_crypt_target_set(&dmd.segment, 0, dmd.size, crypt_data_device(cd),
-			vk, cipher, crypt_get_iv_offset(cd),
-			crypt_get_data_offset(cd), crypt_get_integrity(cd),
-			crypt_get_integrity_tag_size(cd), crypt_get_sector_size(cd));
+			vk, cipher, crypt_get_iv_offset(cd), crypt_get_data_offset(cd),
+			NULL, 0, 0, crypt_get_sector_size(cd));
 
 	if (r) {
 		free(cipher);

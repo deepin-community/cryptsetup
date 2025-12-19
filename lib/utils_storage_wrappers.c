@@ -3,7 +3,7 @@
  * Generic wrapper for storage functions
  * (experimental only)
  *
- * Copyright (C) 2018-2024 Ondrej Kozina
+ * Copyright (C) 2018-2025 Ondrej Kozina
  */
 
 #include <errno.h>
@@ -49,7 +49,9 @@ static int crypt_storage_backend_init(struct crypt_device *cd,
 	struct crypt_storage *s;
 
 	/* iv_start, sector_size */
-	r = crypt_storage_init(&s, sector_size, cipher, cipher_mode, vk->key, vk->keylength, flags & LARGE_IV);
+	r = crypt_storage_init(&s, sector_size, cipher, cipher_mode,
+			       crypt_volume_key_get_key(vk),
+			       crypt_volume_key_length(vk), flags & LARGE_IV);
 	if (r)
 		return r;
 
@@ -103,18 +105,11 @@ static int crypt_storage_dmcrypt_init(
 	if (dmd.flags & CRYPT_ACTIVATE_READONLY)
 		mode = (open_flags & ~O_ACCMODE) | O_RDONLY;
 
-	if (vk->key_description)
+	if (crypt_volume_key_description(vk))
 		dmd.flags |= CRYPT_ACTIVATE_KEYRING_KEY;
 
-	r = dm_crypt_target_set(&dmd.segment, 0, dmd.size,
-			    device,
-			    vk,
-			    cipher_spec,
-			    iv_start,
-			    device_offset,
-			    NULL,
-			    0,
-			    sector_size);
+	r = dm_crypt_target_set(&dmd.segment, 0, dmd.size, device, vk, cipher_spec, iv_start,
+				device_offset, NULL, 0, 0, sector_size);
 	if (r)
 		return r;
 

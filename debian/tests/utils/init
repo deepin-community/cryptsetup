@@ -245,6 +245,13 @@ if [ -f /init.postinst ]; then
     rm -f "$ROOT/init.postinst"
 fi
 
+# These break 'expect' so remove it from the image under test
+if [ -f "$ROOT/usr/lib/tmpfiles.d/20-systemd-osc-context.conf" ]; then
+    rm -f "$ROOT/etc/profile.d/80-systemd-osc-context.sh"
+    mkdir -p "$ROOT/etc/tmpfiles.d"
+    ln -s /dev/null "$ROOT/etc/tmpfiles.d/20-systemd-osc-context.conf"
+fi
+
 # allow service startup again
 mv "$ROOT/sbin/start-stop-daemon.REAL" "$ROOT/sbin/start-stop-daemon"
 rm "$ROOT/usr/sbin/policy-rc.d"

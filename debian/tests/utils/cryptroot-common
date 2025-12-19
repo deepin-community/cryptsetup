@@ -81,6 +81,7 @@ load_os_release() {
 }
 case "${DISTRIBUTOR_ID:="$(load_os_release && printf "%s" "${ID,,[A-Z]}")"}" in
     debian) APT_REPO_ORIGIN="Debian"; APT_REPO_URI="http://deb.debian.org/debian";;
+    ubuntu) APT_REPO_ORIGIN="Ubuntu"; APT_REPO_URI="http://archive.ubuntu.com/ubuntu";;
     # suitable values for derivative can be added here
     *) echo "ERROR: Unknown distributor ID '$DISTRIBUTOR_ID', can't extract APT origin" >&2;
        exit 1;;
@@ -164,6 +165,12 @@ case "$BOOT" in
     efi) PKG_BOOTLOADER="grub-efi";;
     *) echo "ERROR unknown boot method '$BOOT'" >&2; exit 1;;
 esac
+
+if [ "$DISTRIBUTOR_ID" = "ubuntu" ]; then
+    echo "Overriding kernel arch to generic"
+    KERNEL_ARCH="generic"
+fi
+
 PKG_KERNEL="linux-image-$KERNEL_ARCH"
 PKG_INIT="systemd-sysv" # default pid1
 MERGED_USR="" # use default layout for the target version
@@ -300,6 +307,12 @@ setup_apt() {
 			EOF
             ;;
         esac >"$TEMPDIR/apt/sources.list"
+    fi
+
+    # ubuntu CI populates sources.list.d with PPA source, append them to the list
+    if [ "$DISTRIBUTOR_ID" = "ubuntu" ] && [ -d /etc/apt/sources.list.d ]; then
+        echo "Append contents of /etc/apt/sources.list.d to $TEMPDIR/apt/sources.list"
+        find /etc/apt/sources.list.d -type f -name "*.list" -execdir cat {} + >> "$TEMPDIR/apt/sources.list"
     fi
 
     local apt_repo

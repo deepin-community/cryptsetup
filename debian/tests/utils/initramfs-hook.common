@@ -41,22 +41,36 @@ cat >"$TMPDIR/initramfs-tools/initramfs.conf" <<-EOF
 EOF
 
 INITRD_IMG="$TMPDIR/initrd.img"
-INITRD_DIR="$TMPDIR/initrd"
+UNMKINITRAMFS_DESTDIR="$TMPDIR/initrd"
+unset INITRD_DIR
 cleanup_initrd_dir() {
     local d
-    for d in dev proc sys; do
-        mountpoint -q "$INITRD_DIR/$d" && umount "$INITRD_DIR/$d" || true
-    done
-    rm -rf --one-file-system -- "$INITRD_DIR"
+    if [ -n "${INITRD_DIR+x}" ] && [ -d "$INITRD_DIR" ]; then
+        for d in dev proc sys; do
+            mountpoint -q "$INITRD_DIR/$d" && umount "$INITRD_DIR/$d" || true
+        done
+        rm -rf --one-file-system -- "$INITRD_DIR"
+    fi
+    rm -rf --one-file-system -- "$UNMKINITRAMFS_DESTDIR"
+    unset INITRD_DIR
 }
 trap cleanup_initrd_dir EXIT INT TERM
 
 mkinitramfs() {
-    local d
+    local d p
     command mkinitramfs -d "$TMPDIR/initramfs-tools" -o "$INITRD_IMG"
     # `mkinitramfs -k` would be better but we can't set $DESTDIR in advance
     cleanup_initrd_dir
-    command unmkinitramfs "$INITRD_IMG" "$INITRD_DIR"
+    command unmkinitramfs "$INITRD_IMG" "$UNMKINITRAMFS_DESTDIR"
+    if [ -f "$UNMKINITRAMFS_DESTDIR/sbin/cryptsetup" ]; then
+        INITRD_DIR="$UNMKINITRAMFS_DESTDIR"
+    else
+        for p in "$UNMKINITRAMFS_DESTDIR"/*/sbin/cryptsetup; do
+            if [ -f "$p" ] && [ -d "${p%"/sbin/cryptsetup"}/usr" ]; then
+                INITRD_DIR="${p%"/sbin/cryptsetup"}"
+            fi
+        done
+    fi
     for d in dev proc sys; do
         mkdir -p "$INITRD_DIR/$d"
         mount --bind "/$d" "$INITRD_DIR/$d"

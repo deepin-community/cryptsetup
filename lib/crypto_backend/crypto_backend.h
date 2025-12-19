@@ -2,8 +2,8 @@
 /*
  * crypto backend implementation
  *
- * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2024 Milan Broz
+ * Copyright (C) 2010-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2025 Milan Broz
  */
 
 #ifndef _CRYPTO_BACKEND_H
@@ -14,12 +14,16 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
-#ifdef HAVE_UCHAR_H
+#if HAVE_UCHAR_H
 #include <uchar.h>
 #else
 #define char32_t uint32_t
 #define char16_t uint16_t
 #endif
+
+# ifdef __cplusplus
+extern "C" {
+# endif
 
 struct crypt_hash;
 struct crypt_hmac;
@@ -89,6 +93,7 @@ int crypt_base64_decode(char **out, size_t *out_length, const char *in, size_t i
 /* UTF8/16 */
 int crypt_utf16_to_utf8(char **out, const char16_t *s, size_t length /* bytes! */);
 int crypt_utf8_to_utf16(char16_t **out, const char *s, size_t length);
+size_t crypt_char16_strlen(const char16_t *s);
 
 /* Block ciphers */
 int crypt_cipher_ivsize(const char *name, const char *mode);
@@ -132,20 +137,19 @@ int crypt_bitlk_decrypt_key(const void *key, size_t key_length,
 			    const char *tag, size_t tag_length);
 
 /* Memzero helper (memset on stack can be optimized out) */
-static inline void crypt_backend_memzero(void *s, size_t n)
-{
-#ifdef HAVE_EXPLICIT_BZERO
-	explicit_bzero(s, n);
-#else
-	volatile uint8_t *p = (volatile uint8_t *)s;
-	while(n--) *p++ = 0;
-#endif
-}
+void crypt_backend_memzero(void *s, size_t n);
+
+/* Memcpy helper to avoid spilling sensitive data through additional registers */
+void *crypt_backend_memcpy(void *dst, const void *src, size_t n);
 
 /* Memcmp helper (memcmp in constant time) */
 int crypt_backend_memeq(const void *m1, const void *m2, size_t n);
 
 /* crypto backend running in FIPS mode */
 bool crypt_fips_mode(void);
+
+# ifdef __cplusplus
+}
+# endif
 
 #endif /* _CRYPTO_BACKEND_H */

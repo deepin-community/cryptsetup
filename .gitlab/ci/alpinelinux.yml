@@ -1,14 +1,16 @@
 .alpinelinux-dependencies:
-  after_script:
-    - sudo dmesg > /mnt/artifacts/dmesg.log
-    - sudo cp /var/log/messages /mnt/artifacts/
-    - '[ "$(ls -A /var/coredumps)" ] && exit 1 || true'
+  variables:
+    DISTRO: cryptsetup-alpine-edge
+  extends:
+    - .fail_if_coredump_generated
   before_script:
     - >
       sudo apk add
-      lvm2-dev openssl1.1-compat-dev popt-dev util-linux-dev json-c-dev
-      argon2-dev device-mapper which sharutils gettext gettext-dev automake
+      lvm2-dev openssl-dev popt-dev util-linux-dev json-c-dev
+      argon2-dev device-mapper which sharutils gettext-dev argp-standalone automake
       autoconf libtool build-base keyutils tar jq expect git asciidoctor
+    # Be sure we have updated basic tools and system
+    - sudo apk upgrade gcc binutils build-base musl
     - ./autogen.sh
     - ./configure --prefix=/usr --libdir=/lib --sbindir=/sbin --disable-static --enable-libargon2 --with-crypto_backend=openssl --disable-external-tokens --disable-ssh-token --enable-asciidoc
 
@@ -17,7 +19,7 @@ test-main-commit-job-alpinelinux:
     - .alpinelinux-dependencies
   tags:
     - libvirt
-    - alpinelinux
+    - cryptsetup-alpine-edge
   stage: test
   interruptible: true
   variables:
@@ -38,7 +40,7 @@ test-mergerq-job-alpinelinux:
     - .alpinelinux-dependencies
   tags:
     - libvirt
-    - alpinelinux
+    - cryptsetup-alpine-edge
   stage: test
   interruptible: true
   variables:

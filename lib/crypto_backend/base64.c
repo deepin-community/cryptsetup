@@ -5,7 +5,7 @@
  * Copyright (C) 2010 Lennart Poettering
  *
  * cryptsetup related changes
- * Copyright (C) 2021-2024 Milan Broz
+ * Copyright (C) 2021-2025 Milan Broz
  */
 
 #include <errno.h>
@@ -19,7 +19,7 @@
 /* https://tools.ietf.org/html/rfc4648#section-4 */
 static char base64char(int x)
 {
-	static const char table[64] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	static const char table[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 				      "abcdefghijklmnopqrstuvwxyz"
 				      "0123456789+/";
 	return table[x & 63];

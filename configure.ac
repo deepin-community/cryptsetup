@@ -1,9 +1,9 @@
 AC_PREREQ([2.67])
-AC_INIT([cryptsetup],[2.7.5])
+AC_INIT([cryptsetup],[2.8.2])
 
 dnl library version from <major>.<minor>.<release>[-<suffix>]
 LIBCRYPTSETUP_VERSION=$(echo $PACKAGE_VERSION | cut -f1 -d-)
-LIBCRYPTSETUP_VERSION_INFO=22:0:10
+LIBCRYPTSETUP_VERSION_INFO=23:0:11
 
 AM_SILENT_RULES([yes])
 AC_CONFIG_SRCDIR(src/cryptsetup.c)
@@ -399,6 +399,23 @@ AC_DEFUN([CONFIGURE_NETTLE], [
 	NO_FIPS([])
 ])
 
+AC_DEFUN([CONFIGURE_MBEDTLS], [
+	AC_CHECK_HEADERS(mbedtls/version.h,,
+		[AC_MSG_ERROR([You need mbedTLS cryptographic library.])])
+
+	saved_LIBS=$LIBS
+	AC_CHECK_LIB(mbedcrypto, mbedtls_md_init,,
+		[AC_MSG_ERROR([You need mbedTLS cryptographic library.])])
+	AC_CHECK_FUNCS(mbedtls_pkcs5_pbkdf2_hmac_ext)
+	CRYPTO_LIBS=$LIBS
+	LIBS=$saved_LIBS
+
+	CRYPTO_STATIC_LIBS=$CRYPTO_LIBS
+	use_internal_pbkdf2=0
+	use_internal_argon2=1
+	NO_FIPS([])
+])
+
 dnl ==========================================================================
 saved_LIBS=$LIBS
 
@@ -481,7 +498,7 @@ fi
 
 dnl Crypto backend configuration.
 AC_ARG_WITH([crypto_backend],
-	AS_HELP_STRING([--with-crypto_backend=BACKEND], [crypto backend (gcrypt/openssl/nss/kernel/nettle) [openssl]]),
+	AS_HELP_STRING([--with-crypto_backend=BACKEND], [crypto backend (gcrypt/openssl/nss/kernel/nettle/mbedtls) [openssl]]),
 	[], [with_crypto_backend=openssl])
 
 dnl Kernel crypto API backend needed for benchmark and tcrypt
@@ -501,6 +518,7 @@ case $with_crypto_backend in
 	nss)     CONFIGURE_NSS([]) ;;
 	kernel)  CONFIGURE_KERNEL([]) ;;
 	nettle)  CONFIGURE_NETTLE([]) ;;
+	mbedtls) CONFIGURE_MBEDTLS([]) ;;
 	*) AC_MSG_ERROR([Unknown crypto backend.]) ;;
 esac
 AM_CONDITIONAL(CRYPTO_BACKEND_GCRYPT,  test "$with_crypto_backend" = "gcrypt")
@@ -508,6 +526,7 @@ AM_CONDITIONAL(CRYPTO_BACKEND_OPENSSL, test "$with_crypto_backend" = "openssl")
 AM_CONDITIONAL(CRYPTO_BACKEND_NSS,     test "$with_crypto_backend" = "nss")
 AM_CONDITIONAL(CRYPTO_BACKEND_KERNEL,  test "$with_crypto_backend" = "kernel")
 AM_CONDITIONAL(CRYPTO_BACKEND_NETTLE,  test "$with_crypto_backend" = "nettle")
+AM_CONDITIONAL(CRYPTO_BACKEND_MBEDTLS, test "$with_crypto_backend" = "mbedtls")
 
 AM_CONDITIONAL(CRYPTO_INTERNAL_PBKDF2, test $use_internal_pbkdf2 = 1)
 AC_DEFINE_UNQUOTED(USE_INTERNAL_PBKDF2, [$use_internal_pbkdf2], [Use internal PBKDF2])
@@ -661,8 +680,36 @@ AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
 ])
 CFLAGS=$saved_CFLAGS
 
+dnl Force compiler to use zero_call_used_regs("used") to check for the function attribute support.
+dnl Otherwise the compiler may falsely advertise it with __has_attribute operator, even though
+dnl it does not implement it on some archs.
+AC_MSG_CHECKING([for zero_call_used_regs(user)])
+saved_CFLAGS=$CFLAGS
+CFLAGS="-O0 -Werror"
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+	void _test_function(void);
+	__attribute__((zero_call_used_regs("used"))) void _test_function(void) {
+		volatile int *i; volatile int j = 0; if (j) *i = 0;
+	}
+]],
+[[ _test_function() ]]
+)],[
+	AC_DEFINE([HAVE_ATTRIBUTE_ZEROCALLUSEDREGS], 1, [Define to 1 to use __attribute__((zero_call_used_regs("used")))])
+	AC_MSG_RESULT([yes])
+], [
+	AC_MSG_RESULT([no])
+])
+CFLAGS=$saved_CFLAGS
+
 AC_MSG_CHECKING([for systemd tmpfiles config directory])
-PKG_CHECK_VAR([systemd_tmpfilesdir], [systemd], [tmpfilesdir], [], [systemd_tmpfilesdir=no])
+if test "x$prefix" != "xNONE"; then
+	saved_PKG_CONFIG=$PKG_CONFIG
+	PKG_CONFIG="$PKG_CONFIG --define-variable=prefix='${prefix}'"
+	PKG_CHECK_VAR([systemd_tmpfilesdir], [systemd], [tmpfilesdir], [], [systemd_tmpfilesdir=no])
+	PKG_CONFIG=$saved_PKG_CONFIG
+else
+	PKG_CHECK_VAR([systemd_tmpfilesdir], [systemd], [tmpfilesdir], [], [systemd_tmpfilesdir=no])
+fi
 AC_MSG_RESULT([$systemd_tmpfilesdir])
 
 AC_SUBST([DEVMAPPER_LIBS])
@@ -776,8 +823,9 @@ CS_NUM_WITH([verity-hash-block], [hash block size for verity mode], [4096])
 CS_NUM_WITH([verity-salt-size],  [salt size for verity mode], [32])
 CS_NUM_WITH([verity-fec-roots],  [parity bytes for verity FEC], [2])
 
-CS_STR_WITH([tmpfilesdir], [override default path to directory with systemd temporary files], [])
-test -z "$with_tmpfilesdir" && with_tmpfilesdir=$systemd_tmpfilesdir
+AC_ARG_WITH([tmpfilesdir],
+	AS_HELP_STRING([--with-tmpfilesdir=DIR], [override default path to directory with systemd temporary files]),
+	[], [with_tmpfilesdir=$systemd_tmpfilesdir])
 test "x$with_tmpfilesdir" = "xno" || {
 	CS_ABSPATH([${with_tmpfilesdir}],[with-tmpfilesdir])
 	DEFAULT_TMPFILESDIR=$with_tmpfilesdir
@@ -796,7 +844,9 @@ test -z "$with_luks2_lock_dir_perms" && with_luks2_lock_dir_perms=0700
 DEFAULT_LUKS2_LOCK_DIR_PERMS=$with_luks2_lock_dir_perms
 AC_SUBST(DEFAULT_LUKS2_LOCK_DIR_PERMS)
 
-CS_STR_WITH([luks2-external-tokens-path], [path to directory with LUKSv2 external token handlers (plugins)], [LIBDIR/cryptsetup])
+AC_ARG_WITH([luks2-external-tokens-path],
+	AS_HELP_STRING([--with-luks2-external-tokens-path=DIR], [path to directory with LUKSv2 external token handlers (plugins)]),
+	[], [with_luks2_external_tokens_path=""])
 if test -n "$with_luks2_external_tokens_path"; then
 	CS_ABSPATH([${with_luks2_external_tokens_path}],[with-luks2-external-tokens-path])
 	EXTERNAL_LUKS2_TOKENS_PATH=$with_luks2_external_tokens_path
@@ -804,6 +854,17 @@ else
 	EXTERNAL_LUKS2_TOKENS_PATH="\${libdir}/cryptsetup"
 fi
 AC_SUBST(EXTERNAL_LUKS2_TOKENS_PATH)
+dnl We need to define expanded EXTERNAL_LUKS2_TOKENS_PATH, but some other code can depend on prefix=NONE.
+dnl Pretend you do not see this hack :-)
+saved_prefix=$prefix
+saved_exec_prefix=$exec_prefix
+test "x$prefix" = "xNONE" && prefix="$ac_default_prefix"
+test "x$exec_prefix" = "xNONE" && exec_prefix="$prefix"
+expanded_EXTERNAL_LUKS2_TOKENS_PATH=$(eval echo "$EXTERNAL_LUKS2_TOKENS_PATH")
+expanded_EXTERNAL_LUKS2_TOKENS_PATH=$(eval echo "$expanded_EXTERNAL_LUKS2_TOKENS_PATH")
+AC_DEFINE_UNQUOTED([EXTERNAL_LUKS2_TOKENS_PATH], ["$expanded_EXTERNAL_LUKS2_TOKENS_PATH"], [path to directory with LUKSv2 external token handlers (plugins)])
+prefix=$saved_prefix
+exec_prefix=$saved_exec_prefix
 
 dnl Override default LUKS format version (for cryptsetup or cryptsetup-reencrypt format actions only).
 AC_ARG_WITH([default_luks_format],

@@ -2,9 +2,9 @@ project('cryptsetup',
     'c',
     default_options: [ 'prefix=/usr' ],
     meson_version: '>=0.64',
-    version: '2.7.5')
+    version: '2.8.2')
 
-libcryptsetup_version = '12.10.0'
+libcryptsetup_version = '12.11.0'
 
 includes_root = include_directories('.')
 includes_lib = include_directories('lib')
@@ -31,7 +31,6 @@ default_string_options = [
     'default-luks1-cipher',
     'default-luks1-hash',
     'default-luks1-mode',
-    'default-luks2-external-tokens-path',
     'default-luks2-keyslot-cipher',
     'default-luks2-lock-path',
     'default-luks2-pbkdf',
@@ -98,6 +97,7 @@ required_headers = [
     'locale.h',
     'malloc.h',
     'stdint.h',
+    'sys/endian.h',
     'sys/ioctl.h',
     'sys/mman.h',
     'sys/statvfs.h',
@@ -555,6 +555,28 @@ elif get_option('crypto-backend') == 'nettle'
     assert(cc.has_function('nettle_pbkdf2_hmac_sha256',
             dependencies: crypto_backend_library),
         'You need Nettle library version 2.6 or more recent.')
+elif get_option('crypto-backend') == 'mbedtls'
+    if get_option('fips')
+        error('mbedtls crypto backend is not supported with FIPS enabled')
+    endif
+
+    assert(cc.has_header('mbedtls/version.h'),
+        'You need mbedTLS cryptographic library.')
+
+    mbedcrypto = cc.find_library('mbedcrypto',
+        static: enable_static)
+    assert(cc.has_function('mbedtls_md_init',
+            prefix: '#include <mbedtls/md.h>', dependencies: mbedcrypto),
+        'You need mbedcrypto library.')
+
+    conf.set10('HAVE_MBEDTLS_PKCS5_PBKDF2_HMAC_EXT',
+        cc.has_function('mbedtls_pkcs5_pbkdf2_hmac_ext',
+            prefix: '#include <mbedtls/pkcs5.h>', dependencies: mbedcrypto),
+        description: 'Define to 1 if you have the `mbedtls_pkcs5_pbkdf2_hmac_ext\' function.')
+
+    crypto_backend_library = mbedcrypto
+    use_internal_pbkdf2 = false
+    use_internal_argon2 = true
 endif
 conf.set10('USE_INTERNAL_PBKDF2', use_internal_pbkdf2)
 
@@ -676,6 +698,21 @@ if cc.links(
 endif
 
 # ==========================================================================
+# Check compiler support for zero_called_used_regs("used") function attribute
+if cc.links(
+        '''void _test_fn(void);
+
+        __attribute__((zero_call_used_regs("used"))) void _test_fn(void) {
+		volatile int *i; volatile int j = 0; if (j) *i = 0;
+        }
+        int main(void) { _test_fn(); return 0; }''',
+        args: ['-O0', '-Werror' ],
+        name: 'for zero_call_used_regs("used") attribute support')
+    conf.set10('HAVE_ATTRIBUTE_ZEROCALLUSEDREGS', true,
+        description: 'Define to 1 to use __attribute__((zero_call_used_regs("used")))')
+endif
+
+# ==========================================================================
 
 if get_option('dev-random')
     conf.set_quoted('DEFAULT_RNG', '/dev/random')
@@ -689,7 +726,9 @@ if tmpfilesdir == ''
         method: 'pkg-config',
         required: false)
     if systemd.found()
-        tmpfilesdir = systemd.get_variable(pkgconfig: 'tmpfilesdir', default_value: '')
+        tmpfilesdir = systemd.get_variable('tmpfilesdir',
+                        pkgconfig_define: ['prefix', get_option('prefix')],
+                        default_value: '')
     endif
 endif
 
@@ -708,12 +747,12 @@ endif
 assert(get_option('default-luks2-lock-path').startswith('/'),
     'default-luks2-lock-path has to be an absolute path')
 
-luks2_external_tokens_path = get_option('default-luks2-external-tokens-path')
-if luks2_external_tokens_path == 'LIBDIR/cryptsetup'
+luks2_external_tokens_path = get_option('luks2-external-tokens-path')
+if luks2_external_tokens_path == ''
     luks2_external_tokens_path = join_paths(get_option('prefix'), get_option('libdir'), 'cryptsetup')
 endif
 assert(luks2_external_tokens_path.startswith('/'),
-    'default-luks2-external-tokens-path has to be an absolute path')
+    'luks2-external-tokens-path has to be an absolute path')
 conf.set_quoted('EXTERNAL_LUKS2_TOKENS_PATH', luks2_external_tokens_path,
     description: 'path to directory with LUKSv2 external token handlers (plugins)')
 

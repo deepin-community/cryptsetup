@@ -25,10 +25,9 @@ EXTRA="\
  -Wswitch \
  -Wmissing-format-attribute \
  -Winit-self \
- -Wdeclaration-after-statement \
  -Wold-style-definition \
  -Wno-missing-field-initializers \
- -Wno-unused-parameter \
+ -Wunused-parameter \
  -Wno-long-long"
 
 exec $CLANG $PEDANTIC $CONVERSION \

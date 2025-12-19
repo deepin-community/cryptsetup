@@ -4,7 +4,6 @@ Priority: optional
 Maintainer: Debian Cryptsetup Team <pkg-cryptsetup-devel@alioth-lists.debian.net>
 Uploaders: Jonas Meurer <jonas@freesources.org>,
            Guilhem Moulin <guilhem@debian.org>
-Rules-Requires-Root: no
 Build-Depends: asciidoctor <!nodoc>,
                autoconf,
                automake (>= 1:1.12),
@@ -24,13 +23,14 @@ Build-Depends: asciidoctor <!nodoc>,
                libssh-dev,
                libssl-dev (>> 3.2~),
                libtool,
+               openssl-provider-legacy <!nocheck>,
                pkgconf,
                po-debconf,
                procps <!nocheck>,
                uuid-dev,
                xsltproc <!nodoc>,
                xxd <!nocheck>
-Standards-Version: 4.7.0
+Standards-Version: 4.7.2
 Homepage: https://gitlab.com/cryptsetup/cryptsetup
 Vcs-Browser: https://salsa.debian.org/cryptsetup-team/cryptsetup
 Vcs-Git: https://salsa.debian.org/cryptsetup-team/cryptsetup.git -b debian/latest

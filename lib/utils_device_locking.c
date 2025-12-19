@@ -2,8 +2,8 @@
 /*
  * Metadata on-disk locking for processes serialization
  *
- * Copyright (C) 2016-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2024 Ondrej Kozina
+ * Copyright (C) 2016-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2025 Ondrej Kozina
  */
 
 #include <errno.h>
@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#ifdef HAVE_SYS_SYSMACROS_H
+#if HAVE_SYS_SYSMACROS_H
 # include <sys/sysmacros.h>     /* for major, minor */
 #endif
 #include <libgen.h>

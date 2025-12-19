@@ -4,8 +4,8 @@
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
  */
 
 #ifndef CRYPTSETUP_H
@@ -90,6 +90,7 @@ struct tools_progress_params {
 
 int tools_progress(uint64_t size, uint64_t offset, void *usrptr);
 const char *tools_get_device_name(const char *device, char **r_backing_file);
+int tools_check_newname(const char *name);
 
 int tools_read_vk(const char *file, char **key, int keysize);
 int tools_write_mk(const char *file, const char *key, int keysize);
@@ -115,6 +116,13 @@ int tools_lookup_crypt_device(struct crypt_device *cd, const char *type,
 
 /* each utility is required to implement it */
 void tools_cleanup(void);
+
+/* keyring helpers */
+int tools_parse_vk_description(const char *key_description, char **ret_key_description);
+int tools_parse_vk_and_keyring_description(
+	struct crypt_device *cd,
+	char **keyring_key_descriptions,
+	int keyring_key_links_count);
 
 /* Log */
 #define log_dbg(x...) crypt_logf(NULL, CRYPT_LOG_DEBUG, x)

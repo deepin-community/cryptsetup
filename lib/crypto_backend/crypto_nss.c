@@ -2,8 +2,8 @@
 /*
  * NSS crypto backend implementation
  *
- * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2024 Milan Broz
+ * Copyright (C) 2010-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2025 Milan Broz
  */
 
 #include <stdio.h>
@@ -164,7 +164,7 @@ int crypt_hash_final(struct crypt_hash *ctx, char *buffer, size_t length)
 	if (PK11_DigestFinal(ctx->md, tmp, &tmp_len, length) != SECSuccess)
 		return -EINVAL;
 
-	memcpy(buffer, tmp, length);
+	crypt_backend_memcpy(buffer, tmp, length);
 	crypt_backend_memzero(tmp, sizeof(tmp));
 
 	if (tmp_len < length)
@@ -264,7 +264,7 @@ int crypt_hmac_final(struct crypt_hmac *ctx, char *buffer, size_t length)
 	if (PK11_DigestFinal(ctx->md, tmp, &tmp_len, length) != SECSuccess)
 		return -EINVAL;
 
-	memcpy(buffer, tmp, length);
+	crypt_backend_memcpy(buffer, tmp, length);
 	crypt_backend_memzero(tmp, sizeof(tmp));
 
 	if (tmp_len < length)

@@ -2,8 +2,8 @@
 /*
  * cryptsetup library API test utilities
  *
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
  */
 
 #include <assert.h>
@@ -17,11 +17,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 # include <linux/keyctl.h>
 # include <sys/syscall.h>
 #endif
-#ifdef HAVE_SYS_SYSMACROS_H
+#if HAVE_SYS_SYSMACROS_H
 # include <sys/sysmacros.h>
 #endif
 #include <linux/loop.h>
@@ -41,7 +41,7 @@ struct loop_config {
 
 static char last_error[256];
 static char global_log[4096];
-static uint32_t t_dm_crypt_flags = 0;
+static uint64_t t_dm_crypt_flags = 0;
 
 char *THE_LOOP_DEV = NULL;
 int _debug   = 0;
@@ -486,7 +486,7 @@ int _system(const char *command, int warn)
 
 static int _keyring_check(void)
 {
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	return syscall(__NR_request_key, "logon", "dummy", NULL, 0) == -1l && errno != ENOSYS;
 #else
 	return 0;
@@ -555,6 +555,12 @@ static void t_dm_set_crypt_compat(const char *dm_version, unsigned crypt_maj,
 
 	if (t_dm_satisfies_version(1, 22, 0, crypt_maj, crypt_min, crypt_patch))
 		t_dm_crypt_flags |= T_DM_CRYPT_NO_WORKQUEUE_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 26, 0, crypt_maj, crypt_min, crypt_patch))
+		t_dm_crypt_flags |= T_DM_CRYPT_HIGH_PRIORITY_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 28, 0, crypt_maj, crypt_min, crypt_patch))
+		t_dm_crypt_flags |= T_DM_CRYPT_INTEGRITY_KEY_SIZE_OPT_SUPPORTED;
 }
 
 static void t_dm_set_verity_compat(const char *dm_version __attribute__((unused)),
@@ -585,6 +591,10 @@ static void t_dm_set_verity_compat(const char *dm_version __attribute__((unused)
 
 	if (t_dm_satisfies_version(1, 9, 0, verity_maj, verity_min, verity_patch))
 		t_dm_crypt_flags |= T_DM_VERITY_TASKLETS_SUPPORTED;
+
+	/* There is actually no correct version set, just use the last available */
+	if (t_dm_satisfies_version(1, 10, 0, verity_maj, verity_min, verity_patch))
+		t_dm_crypt_flags |= T_DM_VERITY_ERROR_AS_CORRUPTION_SUPPORTED;
 }
 
 static void t_dm_set_integrity_compat(const char *dm_version __attribute__((unused)),
@@ -612,6 +622,9 @@ static void t_dm_set_integrity_compat(const char *dm_version __attribute__((unus
 
 	if (t_dm_satisfies_version(1, 8, 0, integrity_maj, integrity_min, integrity_patch))
 		t_dm_crypt_flags |= T_DM_INTEGRITY_RESET_RECALC_SUPPORTED;
+
+	if (t_dm_satisfies_version(1, 12, 0, integrity_maj, integrity_min, integrity_patch))
+		t_dm_crypt_flags |= T_DM_INTEGRITY_INLINE_MODE_SUPPORTED;
 }
 
 int t_dm_check_versions(void)

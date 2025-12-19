@@ -1,20 +1,19 @@
 .dnf-openssl-backend:
-  extends:
-    - .dump_kernel_log
-  before_script:
-    - >
-      [ -z "$RUN_SYSTEMD_PLUGIN_TEST" ] ||
-      sudo dnf -y -q install
-      swtpm meson ninja-build python3-jinja2 gperf libcap-devel tpm2-tss-devel
-      libmount-devel swtpm-tools
-    - >
-      sudo dnf -y -q install
+  variables:
+    DISTRO: cryptsetup-fedora-rawhide
+    PKGS: >-
       autoconf automake device-mapper-devel gcc gettext-devel json-c-devel
       libargon2-devel libblkid-devel libpwquality-devel libselinux-devel
       libssh-devel libtool libuuid-devel make popt-devel
       libsepol-devel.x86_64 netcat openssh-clients passwd pkgconfig sharutils
       sshpass tar uuid-devel vim-common device-mapper expect gettext git jq
-      keyutils openssl-devel openssl asciidoctor
+      keyutils openssl-devel openssl asciidoctor swtpm meson ninja-build
+      python3-jinja2 gperf libcap-devel tpm2-tss-devel libmount-devel swtpm-tools
+  extends:
+    - .fail_if_coredump_generated
+  before_script:
+    - sudo dnf clean all
+    - (r=3;while ! sudo dnf -y -q install $PKGS ; do ((--r))||exit;sleep 5;echo "Retrying";done)
     - sudo -E git clean -xdf
     - ./autogen.sh
     - ./configure --enable-fips --enable-pwquality --enable-libargon2 --with-crypto_backend=openssl --enable-asciidoc
@@ -24,12 +23,14 @@ test-main-commit-job-rawhide:
     - .dnf-openssl-backend
   tags:
     - libvirt
-    - fedora-rawhide
+    - cryptsetup-fedora-rawhide
   stage: test
   interruptible: true
   allow_failure: true
   variables:
     RUN_SSH_PLUGIN_TEST: "1"
+    RUN_KEYRING_TRUSTED_TEST: "1"
+    RUN_SYSTEMD_PLUGIN_TEST: "1"
   rules:
     - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
       when: never
@@ -44,12 +45,14 @@ test-mergerq-job-rawhide:
     - .dnf-openssl-backend
   tags:
     - libvirt
-    - fedora-rawhide
+    - cryptsetup-fedora-rawhide
   stage: test
   interruptible: true
   allow_failure: true
   variables:
     RUN_SSH_PLUGIN_TEST: "1"
+    RUN_KEYRING_TRUSTED_TEST: "1"
+    RUN_SYSTEMD_PLUGIN_TEST: "1"
   rules:
     - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
       when: never

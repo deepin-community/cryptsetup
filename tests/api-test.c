@@ -2,9 +2,9 @@
 /*
  * cryptsetup library API check functions
  *
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
- * Copyright (C) 2016-2024 Ondrej Kozina
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
+ * Copyright (C) 2016-2025 Ondrej Kozina
  */
 
 #include <stdlib.h>
@@ -323,7 +323,7 @@ static void AddDevicePlain(void)
 
 	uint64_t size, r_size;
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 	FAIL_(crypt_init(&cd, ""), "empty device string");
 	FAIL_(crypt_init(&cd, DEVICE_WRONG), "nonexistent device name ");
 	FAIL_(crypt_init(&cd, DEVICE_CHAR), "character device as backing device");
@@ -806,8 +806,8 @@ static void AddDeviceLuks(void)
 	uint64_t r_payload_offset, r_header_size, r_size_1;
 	struct crypt_pbkdf_type pbkdf;
 
-	crypt_decode_key(key, vk_hex, key_size);
-	crypt_decode_key(key3, vk_hex2, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key3, vk_hex2, key_size));
 
 	// init test devices
 	OK_(get_luks_offsets(1, key_size, 0, 0, &r_header_size, &r_payload_offset));
@@ -1139,7 +1139,7 @@ static void LuksHeaderRestore(void)
 	const char *cipher_mode = "cbc-essiv:sha256";
 	uint64_t r_payload_offset;
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	OK_(get_luks_offsets(0, key_size, params.data_alignment, 0, NULL, &r_payload_offset));
 	OK_(create_dmdevice_over_loop(L_DEVICE_OK, r_payload_offset + 5000));
@@ -1227,7 +1227,7 @@ static void LuksHeaderLoad(void)
 	uint64_t r_payload_offset, r_header_size;
 	uint64_t mdata_size, keyslots_size;
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	// prepare test env
 	OK_(get_luks_offsets(0, key_size, params.data_alignment, 0, &r_header_size, &r_payload_offset));
@@ -1340,7 +1340,7 @@ static void LuksHeaderBackup(void)
 
 	const char *passphrase = PASSPHRASE;
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	OK_(get_luks_offsets(0, key_size, params.data_alignment, 0, NULL, &r_payload_offset));
 	OK_(create_dmdevice_over_loop(L_DEVICE_OK, r_payload_offset + 1));
@@ -1420,7 +1420,7 @@ static void ResizeDeviceLuks(void)
 	const char *cipher_mode = "cbc-essiv:sha256";
 	uint64_t r_payload_offset, r_header_size, r_size;
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	// prepare env
 	OK_(get_luks_offsets(0, key_size, params.data_alignment, 0, NULL, &r_payload_offset));
@@ -1517,7 +1517,7 @@ static void HashDevicePlain(void)
 	//         0 1 2 3 4 5 6 7 8 9 a b c d e f
 	vk_hex = "caffeecaffeecaffeecaffeecaffee88";
 	key_size = 16;
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 	OK_(prepare_keyfile(KEYFILE1, key, key_size));
 	OK_(crypt_activate_by_keyfile(cd, CDEVICE_1, CRYPT_ANY_SLOT, KEYFILE1, key_size, 0));
 	OK_(get_key_dm(CDEVICE_1, key, sizeof(key)));
@@ -1537,7 +1537,7 @@ static void HashDevicePlain(void)
 	//         0 1 2 3 4 5 6 7 8 9 a b c d e f
 	vk_hex = "caffeecaffeecaffeecaffeecaffee88babebabe";
 	key_size = 16;
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, strlen(vk_hex) / 2));
 	OK_(prepare_keyfile(KEYFILE1, key, strlen(vk_hex) / 2));
 	OK_(crypt_activate_by_keyfile(cd, CDEVICE_1, CRYPT_ANY_SLOT, KEYFILE1, key_size, 0));
 	OK_(get_key_dm(CDEVICE_1, key, sizeof(key)));
@@ -1560,7 +1560,7 @@ static void HashDevicePlain(void)
 	//         0 1 2 3 4 5 6 7 8 9 a b c d e f
 	vk_hex = "aabbcaffeecaffeecaffeecaffeecaff";
 	key_size = 16;
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 	OK_(prepare_keyfile(KEYFILE1, key, strlen(vk_hex) / 2));
 	OK_(crypt_init(&cd, DEVICE_1));
 	OK_(crypt_format(cd, CRYPT_PLAIN, "aes", "cbc-essiv:sha256", NULL, NULL, 16, &params));
@@ -1631,8 +1631,8 @@ static void VerityTest(void)
 		.flags = CRYPT_VERITY_CREATE_HASH,
 	};
 
-	crypt_decode_key(salt, salt_hex, strlen(salt_hex) / 2);
-	crypt_decode_key(root_hash, root_hex, strlen(root_hex) / 2);
+	OK_(crypt_decode_key(salt, salt_hex, strlen(salt_hex) / 2));
+	OK_(crypt_decode_key(root_hash, root_hex, strlen(root_hex) / 2));
 
 	/* Format */
 	OK_(crypt_init(&cd, DEVICE_2));
@@ -1762,7 +1762,7 @@ static void TcryptTest(void)
 		"3979531d1cdc18af62757cf22286f16f8583d848524f128d7594ac2082668c73";
 	int r;
 
-	crypt_decode_key(key_def, key_hex, strlen(key_hex) / 2);
+	OK_(crypt_decode_key(key_def, key_hex, strlen(key_hex) / 2));
 
 	// First ensure we can use af_alg skcipher interface
 	r = crypt_benchmark(NULL, "aes", "xts", 512, 16, 1024, &enc_mbr, &dec_mbr);
@@ -1846,6 +1846,15 @@ static void TcryptTest(void)
 		return;
 	}
 	OK_(crypt_activate_by_volume_key(cd, CDEVICE_1, NULL, 0, CRYPT_ACTIVATE_READONLY));
+	CRYPT_FREE(cd);
+
+	// Check tcrypt can correctly parse parameters from active stacked cipher device
+	OK_(crypt_init_by_name(&cd, CDEVICE_1));
+	OK_(strcmp(crypt_get_cipher(cd), "aes-twofish-serpent"));
+	OK_(strcmp(crypt_get_cipher_mode(cd), "xts-plain64"));
+	EQ_(crypt_get_volume_key_size(cd), 192);
+	/* just check if it correctly parsed data device down to a loopback device */
+	OK_(strncmp(crypt_get_device_name(cd) ?: "", "/dev/loop", 9));
 	CRYPT_FREE(cd);
 
 	// Deactivate the whole chain
@@ -1936,9 +1945,9 @@ static void ResizeIntegrityWithKey(void)
 	size_t journal_integrity_key_size = strlen(key_journal_integrity_hex) / 2;
 	size_t journal_crypt_key_size = strlen(key_journal_crypt_hex) / 2;
 
-	crypt_decode_key(integrity_key, key_integrity_hex, integrity_key_size);
-	crypt_decode_key(journal_integrity_key, key_journal_integrity_hex, journal_integrity_key_size);
-	crypt_decode_key(journal_crypt_key, key_journal_crypt_hex, journal_crypt_key_size);
+	OK_(crypt_decode_key(integrity_key, key_integrity_hex, integrity_key_size));
+	OK_(crypt_decode_key(journal_integrity_key, key_journal_integrity_hex, journal_integrity_key_size));
+	OK_(crypt_decode_key(journal_crypt_key, key_journal_crypt_hex, journal_crypt_key_size));
 
 	params.integrity_key_size = integrity_key_size;
 
@@ -2004,15 +2013,24 @@ static void IntegrityTest(void)
 		.tag_size = 4,
 		.integrity = "crc32c",
 		.sector_size = 4096,
-	}, ip = {};
+	}, ip = {}, params2 = {
+		.tag_size = 32,
+		.integrity = "hmac(sha256)",
+		.sector_size = 4096,
+	};
 	struct crypt_active_device cad;
 	int ret;
 
-	// FIXME: this should be more detailed
+	const char *key_integrity_hex = "e9668637426e277d126fe848e47417953701a511eee43b53c671342cec400d6e";
+	size_t integrity_key_size = strlen(key_integrity_hex) / 2;
+	char integrity_key[128];
 
-	OK_(crypt_init(&cd,DEVICE_1));
-	FAIL_(crypt_format(cd,CRYPT_INTEGRITY,NULL,NULL,NULL,NULL,0,NULL), "params field required");
-	ret = crypt_format(cd,CRYPT_INTEGRITY,NULL,NULL,NULL,NULL,0,&params);
+	OK_(crypt_decode_key(integrity_key, key_integrity_hex, integrity_key_size));
+	params2.integrity_key_size = integrity_key_size;
+
+	OK_(crypt_init(&cd, DEVICE_1));
+	FAIL_(crypt_format(cd, CRYPT_INTEGRITY, NULL, NULL, NULL, NULL, 0, NULL), "params field required");
+	ret = crypt_format(cd, CRYPT_INTEGRITY, NULL, NULL, NULL, NULL, 0, &params);
 	if (ret < 0) {
 		printf("WARNING: cannot format integrity device, skipping test.\n");
 		CRYPT_FREE(cd);
@@ -2027,7 +2045,7 @@ static void IntegrityTest(void)
 	EQ_(ip.journal_watermark, params.journal_watermark);
 	EQ_(ip.integrity_key_size, 0);
 	OK_(strcmp(ip.integrity,params.integrity));
-	FAIL_(crypt_set_uuid(cd,DEVICE_1_UUID),"can't set uuid to integrity device");
+	FAIL_(crypt_set_uuid(cd,DEVICE_1_UUID), "can't set uuid to integrity device");
 	CRYPT_FREE(cd);
 
 	OK_(crypt_init(&cd, DEVICE_1));
@@ -2047,8 +2065,8 @@ static void IntegrityTest(void)
 	OK_(crypt_init_by_name(&cd, CDEVICE_1));
 	OK_(crypt_get_integrity_info(cd, &ip));
 	EQ_(ip.tag_size, params.tag_size);
-	OK_(strcmp(ip.integrity,params.integrity));
-	OK_(strcmp(CRYPT_INTEGRITY,crypt_get_type(cd)));
+	OK_(strcmp(ip.integrity, params.integrity));
+	OK_(strcmp(CRYPT_INTEGRITY, crypt_get_type(cd)));
 
 	if (t_dm_integrity_recalculate_support()) {
 		OK_(crypt_get_active_device(cd, CDEVICE_1, &cad));
@@ -2058,6 +2076,31 @@ static void IntegrityTest(void)
 		EQ_(cad.flags & CRYPT_ACTIVATE_RECALCULATE, CRYPT_ACTIVATE_RECALCULATE);
 	}
 
+	OK_(crypt_deactivate(cd, CDEVICE_1));
+	CRYPT_FREE(cd);
+
+	// legacy format with NULL
+	OK_(crypt_init(&cd, DEVICE_1));
+	OK_(crypt_format(cd, CRYPT_INTEGRITY, NULL, NULL, NULL, NULL, 0, &params2));
+	OK_(crypt_get_integrity_info(cd, &ip));
+	EQ_(ip.tag_size, params2.tag_size);
+	EQ_(ip.integrity_key_size, integrity_key_size);
+	OK_(strcmp(ip.integrity, params2.integrity));
+	CRYPT_FREE(cd);
+
+	// provide specific key
+	OK_(crypt_init(&cd, DEVICE_1));
+	OK_(crypt_format(cd, CRYPT_INTEGRITY, NULL, NULL, NULL, integrity_key, integrity_key_size, &params2));
+	OK_(crypt_get_integrity_info(cd, &ip));
+	EQ_(ip.tag_size, params2.tag_size);
+	EQ_(ip.integrity_key_size, integrity_key_size);
+	OK_(strcmp(ip.integrity, params2.integrity));
+	CRYPT_FREE(cd);
+
+	OK_(crypt_init(&cd, DEVICE_1));
+	OK_(crypt_load(cd, CRYPT_INTEGRITY, NULL));
+	OK_(crypt_activate_by_volume_key(cd, CDEVICE_1, NULL, 0, 0));
+	GE_(crypt_status(cd, CDEVICE_1), CRYPT_ACTIVE);
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 	CRYPT_FREE(cd);
 }
@@ -2105,8 +2148,8 @@ static void LuksKeyslotAdd(void)
 	uint64_t r_payload_offset;
 	struct crypt_keyslot_context *um1, *um2;
 
-	crypt_decode_key(key, vk_hex, key_size);
-	crypt_decode_key(key3, vk_hex2, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key3, vk_hex2, key_size));
 
 	// init test devices
 	OK_(get_luks_offsets(0, key_size, params.data_alignment, 0, NULL, &r_payload_offset));
@@ -2211,7 +2254,7 @@ static void VolumeKeyGet(void)
 	uint64_t r_payload_offset;
 	struct crypt_keyslot_context *um1, *um2;
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	OK_(prepare_keyfile(KEYFILE1, PASSPHRASE1, strlen(PASSPHRASE1)));
 
