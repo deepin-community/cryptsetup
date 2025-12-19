@@ -13,7 +13,8 @@ libcrypto_backend_la_SOURCES = \
 	lib/crypto_backend/utf8.c \
 	lib/crypto_backend/argon2_generic.c \
 	lib/crypto_backend/cipher_generic.c \
-	lib/crypto_backend/cipher_check.c
+	lib/crypto_backend/cipher_check.c \
+	lib/crypto_backend/memutils.c
 
 if CRYPTO_BACKEND_GCRYPT
 libcrypto_backend_la_SOURCES += lib/crypto_backend/crypto_gcrypt.c
@@ -29,6 +30,9 @@ libcrypto_backend_la_SOURCES += lib/crypto_backend/crypto_kernel.c
 endif
 if CRYPTO_BACKEND_NETTLE
 libcrypto_backend_la_SOURCES += lib/crypto_backend/crypto_nettle.c
+endif
+if CRYPTO_BACKEND_MBEDTLS
+libcrypto_backend_la_SOURCES += lib/crypto_backend/crypto_mbedtls.c
 endif
 
 if CRYPTO_INTERNAL_PBKDF2

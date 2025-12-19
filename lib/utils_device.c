@@ -4,8 +4,8 @@
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
  */
 
 #include <string.h>
@@ -16,10 +16,10 @@
 #include <sys/ioctl.h>
 #include <linux/fs.h>
 #include <unistd.h>
-#ifdef HAVE_SYS_SYSMACROS_H
+#if HAVE_SYS_SYSMACROS_H
 # include <sys/sysmacros.h>     /* for major, minor */
 #endif
-#ifdef HAVE_SYS_STATVFS_H
+#if HAVE_SYS_STATVFS_H
 # include <sys/statvfs.h>
 #endif
 #include "internal.h"
@@ -48,19 +48,19 @@ struct device {
 
 static size_t device_fs_block_size_fd(int fd)
 {
-	size_t page_size = crypt_getpagesize();
+	size_t max_size = MAX_SECTOR_SIZE;
 
-#ifdef HAVE_SYS_STATVFS_H
+#if HAVE_SYS_STATVFS_H
 	struct statvfs buf;
 
 	/*
 	 * NOTE: some filesystems (NFS) returns bogus blocksize (1MB).
 	 * Page-size io should always work and avoids increasing IO beyond aligned LUKS header.
 	 */
-	if (!fstatvfs(fd, &buf) && buf.f_bsize && buf.f_bsize <= page_size)
+	if (!fstatvfs(fd, &buf) && buf.f_bsize && buf.f_bsize <= max_size)
 		return (size_t)buf.f_bsize;
 #endif
-	return page_size;
+	return max_size;
 }
 
 static size_t device_block_size_fd(int fd, size_t *min_size)
@@ -127,19 +127,19 @@ static size_t device_alignment_fd(int devfd)
 	return (size_t)alignment;
 }
 
-static int device_read_test(struct crypt_device *cd, int devfd, struct device *device)
+static int device_read_test(struct crypt_device *cd, int devfd)
 {
 	char buffer[512];
-	int r = -EIO;
+	int r;
 	size_t minsize = 0, blocksize, alignment;
-	const char *dm_name;
+	struct stat st;
 
-	/* skip check for suspended DM devices */
-	dm_name = device_dm_name(device);
-	if (dm_name && dm_status_suspended(cd, dm_name) > 0) {
-		log_dbg(cd, "Device %s is suspended, assuming direct-io is supported.", dm_name);
+	/* skip check for block devices, direct-io must work there  */
+	if (fstat(devfd, &st) < 0)
+		return -EINVAL;
+
+	if (S_ISBLK(st.st_mode))
 		return 0;
-	}
 
 	blocksize = device_block_size_fd(devfd, &minsize);
 	alignment = device_alignment_fd(devfd);
@@ -153,10 +153,13 @@ static int device_read_test(struct crypt_device *cd, int devfd, struct device *d
 	if (minsize > sizeof(buffer))
 		minsize = sizeof(buffer);
 
-	if (read_blockwise(devfd, blocksize, alignment, buffer, minsize) == (ssize_t)minsize)
+	if (read_blockwise(devfd, blocksize, alignment, buffer, minsize) == (ssize_t)minsize) {
+		log_dbg(cd, "Direct-io read works.");
 		r = 0;
-
-	log_dbg(cd, "Direct-io is supported and works.");
+	} else {
+		log_dbg(cd, "Direct-io read failed.");
+		r = -EIO;
+	}
 
 	crypt_safe_memzero(buffer, sizeof(buffer));
 	return r;
@@ -180,12 +183,12 @@ static int device_ready(struct crypt_device *cd, struct device *device)
 		return -EINVAL;
 
 	if (device->o_direct) {
-		log_dbg(cd, "Trying to open and read device %s with direct-io.",
+		log_dbg(cd, "Trying to open device %s with direct-io.",
 			device_path(device));
 		device->o_direct = 0;
 		devfd = open(device_path(device), O_RDONLY | O_DIRECT);
 		if (devfd >= 0) {
-			if (device_read_test(cd, devfd, device) == 0) {
+			if (device_read_test(cd, devfd) == 0) {
 				device->o_direct = 1;
 			} else {
 				close(devfd);
@@ -473,21 +476,6 @@ const char *device_block_path(const struct device *device)
 	return device->path;
 }
 
-/* Get device-mapper name of device (if possible) */
-const char *device_dm_name(const struct device *device)
-{
-	const char *dmdir = dm_get_dir();
-	size_t dmdir_len = strlen(dmdir);
-
-	if (!device)
-		return NULL;
-
-	if (strncmp(device->path, dmdir, dmdir_len))
-		return NULL;
-
-	return &device->path[dmdir_len+1];
-}
-
 /* Get path to device / file */
 const char *device_path(const struct device *device)
 {
@@ -530,7 +518,7 @@ void device_topology_alignment(struct crypt_device *cd,
 
 	/* minimum io size */
 	if (ioctl(fd, BLKIOMIN, &min_io_size) == -1) {
-		log_dbg(cd, "Topology info for %s not supported, using default offset %lu bytes.",
+		log_dbg(cd, "Topology info for %s not supported, using default alignment %lu bytes.",
 			device->path, default_alignment);
 		goto out;
 	}
@@ -1012,6 +1000,36 @@ int device_is_zoned(struct device *device)
 		return 0;
 
 	return crypt_dev_is_zoned(major(st.st_rdev), minor(st.st_rdev));
+}
+
+int device_is_nop_dif(struct device *device, uint32_t *tag_size)
+{
+	char *base_device_path;
+	int r;
+	struct stat st;
+
+	if (!device)
+		return -EINVAL;
+
+	/*
+	 * For partition devices, check integrity profile on the base device.
+	 * Partition device nodes don't advertise integrity profile directly
+	 * via sysfs attributes.
+	 */
+	base_device_path = crypt_get_base_device(device_path(device));
+	if (base_device_path) {
+		r = stat(base_device_path, &st);
+		free(base_device_path);
+	} else
+		r = stat(device_path(device), &st);
+
+	if (r < 0)
+		return -EINVAL;
+
+	if (!S_ISBLK(st.st_mode))
+		return 0;
+
+	return crypt_dev_is_nop_dif(major(st.st_rdev), minor(st.st_rdev), tag_size);
 }
 
 size_t device_alignment(struct device *device)

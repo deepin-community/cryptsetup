@@ -2,8 +2,8 @@
 /*
  * Definitions of common constant and generic macros of libcryptsetup
  *
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
  */
 
 #ifndef _LIBCRYPTSETUP_MACROS_H
@@ -49,9 +49,17 @@
 #define DEFAULT_MEM_ALIGNMENT	4096
 
 #define DM_UUID_LEN		129
+#define DM_NAME_LEN		128
 #define DM_BY_ID_PREFIX		"dm-uuid-"
 #define DM_BY_ID_PREFIX_LEN	8
 #define DM_UUID_PREFIX		"CRYPT-"
 #define DM_UUID_PREFIX_LEN	6
+
+#define OPAL_PSID_LEN		32
+
+/* LUKS AF stripes, never set to any other value than 4000 */
+#ifndef LUKS_STRIPES
+# define LUKS_STRIPES 4000
+#endif
 
 #endif /* _LIBCRYPTSETUP_MACROS_H */

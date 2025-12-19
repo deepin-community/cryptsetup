@@ -2,8 +2,8 @@
 /*
  * Command line arguments helpers
  *
- * Copyright (C) 2020-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2024 Ondrej Kozina
+ * Copyright (C) 2020-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2025 Ondrej Kozina
  */
 
 #ifndef VERITYSETUP_ARGS_H
@@ -24,6 +24,7 @@
 #define OPT_IGNORE_ZERO_BLOCKS_ACTIONS		{ OPEN_ACTION }
 #define OPT_PANIC_ON_CORRUPTION_ACTIONS		{ OPEN_ACTION }
 #define OPT_RESTART_ON_CORRUPTION_ACTIONS	{ OPEN_ACTION }
+#define OPT_ERROR_AS_CORRUPTION_ACTIONS		{ OPEN_ACTION }
 #define OPT_ROOT_HASH_FILE_ACTIONS		{ FORMAT_ACTION, OPEN_ACTION, VERIFY_ACTION }
 #define OPT_ROOT_HASH_SIGNATURE_ACTIONS		{ OPEN_ACTION }
 #define OPT_USE_TASKLETS_ACTIONS		{ OPEN_ACTION }

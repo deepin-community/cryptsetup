@@ -2,7 +2,7 @@
 /*
  * Test utility checking symbol versions in libcryptsetup.
  *
- * Copyright (C) 2021-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2021-2025 Red Hat, Inc. All rights reserved.
  */
 
 #include <dlfcn.h>
@@ -57,7 +57,7 @@ static void test_logf(int level, const char *format, ...)
 
 static int check_dlvsym(void *h, const char *symbol, const char *version)
 {
-#ifdef HAVE_DLVSYM
+#if HAVE_DLVSYM
 	void *sym;
 	char *err;
 

@@ -1,0 +1,49 @@
+From: Guilhem Moulin <guilhem@debian.org>
+Date: Thu, 11 Dec 2025 23:23:36 +0100
+Subject: Exclude `reencryption-compat-test` from Makefile.localtest
+
+On Debian unstable (linux 6.17.11+deb14-amd64, udev 259~rc3-1) the test
+appears to fail with
+
+    $ sudo make -f Makefile.localtest -j tests CRYPTSETUP_PATH=/sbin TESTSUITE_NOSKIP=y
+    […]
+    [reencryption-compat-test]
+    [1] Reencryption
+    [2] Reencryption with data shift
+    [3] Reencryption with keyfile
+    [4] Encryption of not yet encrypted device
+    [5] Reencryption using specific keyslot
+    [6] Reencryption using all active keyslots
+    [7] Reencryption of block devices with different block size
+    [512 sector]Cannot use scsi_debug module (in use or compiled-in), test skipped.
+    make: *** [Makefile.localtest:56: tests] Error 1
+
+or (linux 6.17.9+deb14-amd64, udev 259~rc2-1)
+
+    […]
+    [reencryption-compat-test]
+    [1] Reencryption
+    [2] Reencryption with data shift
+    [3] Reencryption with keyfile
+    [4] Encryption of not yet encrypted device
+    [5] Reencryption using specific keyslot
+    losetup: reenc-data: failed to set up loop device: Device or resource busy
+
+Bug-Debian: https://bugs.debian.org/1122539
+---
+ tests/Makefile.localtest | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/Makefile.localtest b/tests/Makefile.localtest
+index 89ce2c3..22d0d7e 100644
+--- a/tests/Makefile.localtest
++++ b/tests/Makefile.localtest
+@@ -7,7 +7,7 @@ CPPFLAGS=-I../lib/ -I../lib/luks1 -DHAVE_DECL_DM_TASK_RETRY_REMOVE -DKERNEL_KEYR
+ 	-DHAVE_SYS_SYSMACROS_H -DNO_CRYPTSETUP_PATH
+ CFLAGS=-O2 -g -Wall -D_GNU_SOURCE
+ LDLIBS=-lcryptsetup -ldevmapper
+-TESTS=$(wildcard *-test *-test2) api-test api-test-2 all-symbols-test unit-utils-crypt-test
++TESTS=$(filter-out reencryption-compat-test,$(wildcard *-test *-test2)) api-test api-test-2 all-symbols-test unit-utils-crypt-test
+ TESTS_UTILS=differ unit-utils-io unit-wipe
+ 
+ ifneq ($(RUN_SSH_PLUGIN_TEST),)

@@ -247,13 +247,13 @@ this limitation:
 
 [#671037]: https://bugs.debian.org/671037
 
-12. Storing keyfiles directly in the initrd
--------------------------------------------
+12. Storing keyfiles directly in the initramfs
+----------------------------------------------
 
 Normally devices using a keyfile are ignored (with a loud warning), and
-the key file itself is not included in the initrd, because the initramfs
+the key file itself is not included in the initramfs, because the initramfs
 image typically lives on an unencrypted `/boot` partition. However in
-some cases it is desirable to include the key file in the initrd; for
+some cases it is desirable to include the key file in the initramfs; for
 instance recent versions of GRUB support booting from encrypted block
 devices, allowing an encrypted `/boot` partition.
 
@@ -262,7 +262,7 @@ of the environment variable KEYFILE_PATTERN (interpreted as a shell
 pattern) will be included in the initramfs image. For instance if
 `/etc/crypttab` lists two key files `/etc/keys/{root,swap}.key`, you can
 add the following to `/etc/cryptsetup-initramfs/conf-hook` to add them to
-the initrd.
+the initramfs.
 
     KEYFILE_PATTERN="/etc/keys/*.key"
 
@@ -272,6 +272,17 @@ non-privileged users at bay.  This can be achieved by adding the
 following to `/etc/initramfs-tools/initramfs.conf`.
 
     UMASK=0077
+
+13. The stages in the initramfs at which dm-crypt devices are mapped
+--------------------------------------------------------------------
+
+The devices necessary for the root filesystem, /usr, any resume swap device and
+any device with the `initramfs`-option in `crypttab` are first tried to be
+mapped (that is: "opened" or "decrypted") in `initramfs-tools`'s `local-top`-
+phase.
+Any which couldn't be mapped there are retried in the `local-block`-phase.
+
+This may be subject to change.
 
  -- David Härdeman <david@hardeman.nu>
 

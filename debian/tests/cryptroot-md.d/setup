@@ -55,9 +55,9 @@ for d in vda3 vda4 vdb3 vdb4; do
     udevadm settle
 done
 
-mdadm --create /dev/md0 --metadata=default --level=1 --raid-devices=2 /dev/vda2 /dev/vdb2
+mdadm --create /dev/md0 --metadata=default --level=1 --raid-devices=2 --bitmap=internal /dev/vda2 /dev/vdb2
 mdadm --create /dev/md1 --metadata=default --level=0 --raid-devices=2 /dev/mapper/vda3_crypt /dev/mapper/vdb3_crypt
-mdadm --create /dev/md2 --metadata=default --level=1 --raid-devices=2 /dev/mapper/vda4_crypt /dev/mapper/vdb4_crypt
+mdadm --create /dev/md2 --metadata=default --level=1 --raid-devices=2 --bitmap=internal /dev/mapper/vda4_crypt /dev/mapper/vdb4_crypt
 udevadm settle
 
 lvm pvcreate /dev/md2

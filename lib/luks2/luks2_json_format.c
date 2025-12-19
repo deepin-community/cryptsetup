@@ -2,8 +2,8 @@
 /*
  * LUKS - Linux Unified Key Setup v2, LUKS2 header format code
  *
- * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2024 Milan Broz
+ * Copyright (C) 2015-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2025 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -193,6 +193,7 @@ int LUKS2_generate_hdr(
 	const struct volume_key *vk,
 	const char *cipher_spec,
 	const char *integrity,
+	uint32_t integrity_key_size, /* in bytes, only if separate (HMAC) */
 	const char *uuid,
 	unsigned int sector_size,  /* in bytes */
 	uint64_t data_offset,      /* in bytes */
@@ -279,8 +280,8 @@ int LUKS2_generate_hdr(
 	if (!opal_key_size)
 		jobj_segment = json_segment_create_crypt(data_offset, 0,
 							 NULL, cipher_spec,
-							 integrity, sector_size,
-							 0);
+							 integrity, integrity_key_size,
+							 sector_size, 0);
 	else if (opal_key_size && cipher_spec)
 		jobj_segment = json_segment_create_opal_crypt(data_offset, &device_size_bytes,
 							      opal_segment_number, opal_key_size, 0,

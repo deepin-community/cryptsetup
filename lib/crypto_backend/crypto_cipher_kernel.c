@@ -2,8 +2,8 @@
 /*
  * Linux kernel userspace API crypto backend implementation (skcipher)
  *
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2024 Milan Broz
+ * Copyright (C) 2012-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2025 Milan Broz
  */
 
 #include <stdlib.h>
@@ -14,7 +14,7 @@
 #include <sys/stat.h>
 #include "crypto_backend_internal.h"
 
-#ifdef ENABLE_AF_ALG
+#if ENABLE_AF_ALG
 
 #include <linux/if_alg.h>
 
@@ -40,6 +40,8 @@ static int _crypt_cipher_init(struct crypt_cipher_kernel *ctx,
 			      const void *key, size_t key_length,
 			      size_t tag_length, struct sockaddr_alg *sa)
 {
+	void *optval = NULL;
+
 	if (!ctx)
 		return -EINVAL;
 
@@ -60,7 +62,7 @@ static int _crypt_cipher_init(struct crypt_cipher_kernel *ctx,
 		return -EINVAL;
 	}
 
-	if (tag_length && setsockopt(ctx->tfmfd, SOL_ALG, ALG_SET_AEAD_AUTHSIZE, NULL, tag_length) < 0) {
+	if (tag_length && setsockopt(ctx->tfmfd, SOL_ALG, ALG_SET_AEAD_AUTHSIZE, &optval, tag_length) < 0) {
 		crypt_cipher_destroy_kernel(ctx);
 		return -EINVAL;
 	}
@@ -95,6 +97,20 @@ int crypt_cipher_init_kernel(struct crypt_cipher_kernel *ctx, const char *name,
 	}
 
 	return _crypt_cipher_init(ctx, key, key_length, 0, &sa);
+}
+
+/* musl has broken CMSG_NXTHDR macro in system headers */
+static inline struct cmsghdr *_CMSG_NXTHDR(struct msghdr* mhdr, struct cmsghdr* cmsg)
+{
+#if !defined(__GLIBC__) && defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-align"
+#pragma clang diagnostic ignored "-Wsign-compare"
+	return CMSG_NXTHDR(mhdr, cmsg);
+#pragma clang diagnostic pop
+#else
+	return CMSG_NXTHDR(mhdr, cmsg);
+#endif
 }
 
 /* The in/out should be aligned to page boundary */
@@ -144,7 +160,7 @@ static int _crypt_cipher_crypt(struct crypt_cipher_kernel *ctx,
 
 	/* Set IV */
 	if (iv) {
-		header = CMSG_NXTHDR(&msg, header);
+		header = _CMSG_NXTHDR(&msg, header);
 		if (!header)
 			return -EINVAL;
 
@@ -153,7 +169,7 @@ static int _crypt_cipher_crypt(struct crypt_cipher_kernel *ctx,
 		header->cmsg_len = iv_msg_size;
 		alg_iv = (void*)CMSG_DATA(header);
 		alg_iv->ivlen = iv_length;
-		memcpy(alg_iv->iv, iv, iv_length);
+		crypt_backend_memcpy(alg_iv->iv, iv, iv_length);
 	}
 
 	len = sendmsg(ctx->opfd, &msg, 0);
@@ -200,8 +216,8 @@ int crypt_cipher_check_kernel(const char *name, const char *mode,
 			      const char *integrity, size_t key_length)
 {
 	struct crypt_cipher_kernel c;
-	char mode_name[64], tmp_salg_name[180], *real_mode = NULL, *cipher_iv = NULL, *key;
-	const char *salg_type;
+	char mode_name[64], tmp_salg_name[180], *cipher_iv = NULL, *key;
+	const char *salg_type, *real_mode;
 	bool aead;
 	int r;
 	struct sockaddr_alg sa = {
@@ -209,6 +225,7 @@ int crypt_cipher_check_kernel(const char *name, const char *mode,
 	};
 
 	aead = integrity && strcmp(integrity, "none");
+	real_mode = NULL;
 
 	/* Remove IV if present */
 	if (mode) {
@@ -229,14 +246,22 @@ int crypt_cipher_check_kernel(const char *name, const char *mode,
 	memset(tmp_salg_name, 0, sizeof(tmp_salg_name));
 
 	/* FIXME: this is duplicating a part of devmapper backend */
-	if (aead && !strcmp(integrity, "poly1305"))
-		r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "rfc7539(%s,%s)", name, integrity);
-	else if (!real_mode)
-		r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "%s", name);
-	else if (aead && !strcmp(real_mode, "ccm"))
-		r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "rfc4309(%s(%s))", real_mode, name);
-	else
-		r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "%s(%s)", real_mode, name);
+	if (aead) {
+		/* In AEAD, mode parameter can be just IV like "random" */
+		if (!strcmp(integrity, "poly1305"))
+			r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "rfc7539(%s,%s)", name, integrity);
+		else if (!real_mode)
+			r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "%s", name);
+		else if (!strcmp(real_mode, "ccm"))
+			r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "rfc4309(%s(%s))", real_mode, name);
+		else
+			r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "%s(%s)", real_mode, name);
+	} else {
+		if (!mode)
+			r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "%s", name);
+		else
+			r = snprintf(tmp_salg_name, sizeof(tmp_salg_name), "%s(%s)", real_mode ?: mode_name, name);
+	}
 
 	if (r < 0 || (size_t)r >= sizeof(tmp_salg_name))
 		return -EINVAL;

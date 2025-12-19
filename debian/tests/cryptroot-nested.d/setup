@@ -60,7 +60,7 @@ cryptsetup luksOpen --key-file=/keyfile --allow-discards \
     -- "/dev/testvg/lv1" "testvg-lv1_crypt"
 udevadm settle
 
-mdadm --create /dev/md0 --metadata=default --level=1 --raid-devices=2 \
+mdadm --create /dev/md0 --metadata=default --level=1 --raid-devices=2 --bitmap=internal \
     /dev/mapper/testvg-lv1_crypt /dev/vdc
 udevadm settle
 

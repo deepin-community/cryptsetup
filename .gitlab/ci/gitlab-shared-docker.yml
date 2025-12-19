@@ -1,5 +1,6 @@
-.gitlab-shared-docker:
-  image: ubuntu:focal
+# Ubuntu
+.gitlab-shared-docker-ubuntu:
+  image: ubuntu:noble
   tags:
     - gitlab-org-docker
   stage: test
@@ -12,20 +13,49 @@
     - .gitlab/ci/cibuild-setup-ubuntu.sh
     - export CC="${COMPILER}${COMPILER_VERSION:+-$COMPILER_VERSION}"
     - export CXX="${COMPILER}++${COMPILER_VERSION:+-$COMPILER_VERSION}"
-    - ./autogen.sh
+
+# Alpine
+.gitlab-shared-docker-alpine:
+  image: alpine:latest
+  tags:
+    - gitlab-org-docker
+  stage: test
+  interruptible: true
+  rules:
+    - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /v2\..\.x$/
+  before_script:
+    - apk add bash build-base clang clang-analyzer argp-standalone lvm2-dev openssl-dev popt-dev util-linux-dev json-c-dev device-mapper gettext-dev libssh-dev automake autoconf libtool tar asciidoctor
+    - export CC="${COMPILER}${COMPILER_VERSION:+-$COMPILER_VERSION}"
+    - export CXX="${COMPILER}++${COMPILER_VERSION:+-$COMPILER_VERSION}"
 
 .gitlab-shared-gcc:
   extends:
-    - .gitlab-shared-docker
+    - .gitlab-shared-docker-ubuntu
   variables:
     COMPILER: "gcc"
-    COMPILER_VERSION: "11"
-    RUN_SSH_PLUGIN_TEST: "1"
+    COMPILER_VERSION: "14"
+    CC: "gcc-14"
 
 .gitlab-shared-clang:
   extends:
-    - .gitlab-shared-docker
+    - .gitlab-shared-docker-ubuntu
   variables:
     COMPILER: "clang"
-    COMPILER_VERSION: "13"
-    RUN_SSH_PLUGIN_TEST: "1"
+    COMPILER_VERSION: "20"
+    CC: "clang-20"
+
+.gitlab-shared-gcc-alpine:
+  extends:
+    - .gitlab-shared-docker-alpine
+  variables:
+    COMPILER: "gcc"
+    CC: "gcc"
+
+.gitlab-shared-clang-alpine:
+  extends:
+    - .gitlab-shared-docker-alpine
+  variables:
+    COMPILER: "clang"
+    CC: "clang"

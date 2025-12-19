@@ -102,14 +102,18 @@ mount_initramfs() {
         new="y"
     fi
 
-    # unmkinitramfs(8) extracts microcode into folders "early*" and the actual initramfs into "main"
-    if [ -f "$INITRAMFS_MNT/sbin/cryptsetup" ]; then
-        INITRAMFS_DIR="$INITRAMFS_MNT"
-    elif [ -f "$INITRAMFS_MNT/main/sbin/cryptsetup" ]; then
-        INITRAMFS_DIR="$INITRAMFS_MNT/main"
-    else
-        log_error "Directory $INITRAMFS_MNT has unpected content" >&2
-        exit 1
+    INITRAMFS_DIR="$INITRAMFS_MNT"
+    if [ ! -f "$INITRAMFS_DIR/sbin/cryptsetup" ]; then
+        # unmkinitramfs(8) extracts microcode and actual initramfs into different folders
+        for p in "$INITRAMFS_MNT"/*/sbin/cryptsetup; do
+            if [ -f "$p" ] && [ -d "${p%"/sbin/cryptsetup"}/usr" ]; then
+                INITRAMFS_DIR="${p%"/sbin/cryptsetup"}"
+            fi
+        done
+        if [ ! -f "$INITRAMFS_DIR/sbin/cryptsetup" ]; then
+            log_error "Directory $INITRAMFS_MNT has unpected content" >&2
+            exit 1
+        fi
     fi
 
     if [ "$new" = "y" ]; then

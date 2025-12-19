@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 /*
  * PBKDF performance check
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2024 Milan Broz
+ * Copyright (C) 2012-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2025 Milan Broz
  * Copyright (C) 2016-2020 Ondrej Mosnacek
  */
 
@@ -300,6 +300,7 @@ static int crypt_argon2_check(const char *kdf, const char *password,
 	} while (ms < ms_atleast || ms > ms_atmost);
 out:
 	if (key) {
+		/* Key can be derived from a real provided password */
 		crypt_backend_memzero(key, key_length);
 		free(key);
 	}
@@ -381,6 +382,7 @@ static int crypt_pbkdf_check(const char *kdf, const char *hash,
 	}
 out:
 	if (key) {
+		/* Key can be derived from a real provided password */
 		crypt_backend_memzero(key, key_length);
 		free(key);
 	}
@@ -405,6 +407,9 @@ int crypt_pbkdf_perf(const char *kdf, const char *hash,
 	r = crypt_pbkdf_get_limits(kdf, &pbkdf_limits);
 	if (r < 0)
 		return r;
+
+	if (parallel_threads > pbkdf_limits.max_parallel)
+		return -EINVAL;
 
 	min_memory = pbkdf_limits.min_bench_memory;
 	if (min_memory > max_memory_kb)

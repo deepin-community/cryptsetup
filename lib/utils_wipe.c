@@ -3,8 +3,8 @@
  * utils_wipe - wipe a device
  *
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
  */
 
 #include <stdlib.h>
@@ -50,7 +50,7 @@ static void wipeSpecial(char *buffer, size_t buffer_size, unsigned int turn)
 {
 	unsigned int i;
 
-	unsigned char write_modes[][3] = {
+	const unsigned char write_modes[27][4] = {
 		{"\x55\x55\x55"}, {"\xaa\xaa\xaa"}, {"\x92\x49\x24"},
 		{"\x49\x24\x92"}, {"\x24\x92\x49"}, {"\x00\x00\x00"},
 		{"\x11\x11\x11"}, {"\x22\x22\x22"}, {"\x33\x33\x33"},
@@ -172,6 +172,10 @@ int crypt_wipe_device(struct crypt_device *cd,
 	/* Note: LUKS1 calls it with wipe_block not aligned to multiple of bsize */
 	bsize = device_block_size(cd, device);
 	alignment = device_alignment(device);
+
+	log_dbg(cd, "Wipe device %s [%u], offset %" PRIu64 ", length %" PRIu64 ", block %zu, bsize %zu, align %zu.",
+		device_path(device), (unsigned)pattern, offset, length, wipe_block_size, bsize, alignment);
+
 	if (!bsize || !alignment || !wipe_block_size)
 		return -EINVAL;
 
@@ -286,9 +290,6 @@ int crypt_wipe(struct crypt_device *cd,
 
 	if (!wipe_block_size)
 		wipe_block_size = 1024*1024;
-
-	log_dbg(cd, "Wipe [%u] device %s, offset %" PRIu64 ", length %" PRIu64 ", block %zu.",
-		(unsigned)pattern, device_path(device), offset, length, wipe_block_size);
 
 	r = crypt_wipe_device(cd, device, pattern, offset, length,
 			      wipe_block_size, progress, usrptr);

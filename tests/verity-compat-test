@@ -21,7 +21,7 @@ FEC_DEV=tst_fec123
 DEV_SALT=9e7457222290f1bac0d42ad2de2d602a87bb871c22ab70ca040bad450578a436
 DEV_UUID=a60c98d2-ae9b-4865-bfcb-b4e3ace11033
 
-function remove_mapping()
+remove_mapping()
 {
 	[ -b /dev/mapper/$DEV_NAME2 ] && dmsetup remove $DEV_NAME2 >/dev/null 2>&1
 	[ -b /dev/mapper/$DEV_NAME ] && dmsetup remove $DEV_NAME >/dev/null 2>&1
@@ -31,7 +31,7 @@ function remove_mapping()
 	LOOPDEV2=""
 }
 
-function fail()
+fail()
 {
 	[ -n "$1" ] && echo "$1"
 	echo "FAILED backtrace:"
@@ -41,13 +41,16 @@ function fail()
 	exit 2
 }
 
-function skip()
+_sigchld() { local c=$?; [ $c -eq 139 ] && fail "Segfault"; [ $c -eq 134 ] && fail "Aborted"; }
+trap _sigchld CHLD
+
+skip()
 {
 	[ -n "$1" ] && echo "$1"
 	exit 77
 }
 
-function prepare() # $1 dev1_siz [$2 dev2_size]
+prepare() # $1 dev1_siz [$2 dev2_size]
 {
 	remove_mapping
 
@@ -60,18 +63,18 @@ function prepare() # $1 dev1_siz [$2 dev2_size]
 	LOOPDEV2=$IMG_HASH
 }
 
-function wipe()
+wipe()
 {
 	dd if=/dev/zero of=$LOOPDEV1 bs=256k >/dev/null 2>&1
 	rm -f $IMG_HASH $DEV_OUT >/dev/null 2>&1
 }
 
-function check_exists()
+check_exists()
 {
 	[ -b /dev/mapper/$DEV_NAME ] || fail
 }
 
-function check_version() # MAJ MIN
+check_version() # MAJ MIN
 {
 	VER_STR=$(dmsetup targets | grep verity | cut -f 3 -dv)
 	[ -z "$VER_STR" ] && fail "Failed to parse dm-verity version."
@@ -80,18 +83,34 @@ function check_version() # MAJ MIN
 	VER_MIN=$(echo $VER_STR | cut -f 2 -d.)
 
 	test $VER_MAJ -gt $1 && return 0
+	test $VER_MAJ -lt $1 && return 1
 	test $VER_MIN -ge $2 && return 0
+
 	return 1
 }
 
-function compare_out() # $1 what, $2 expected
+check_version_kernel()
+{
+	KER_STR=$(uname -r)
+	[ -z "$KER_STR" ] && fail "Failed to parse kernel version."
+	KER_MAJ=$(echo $KER_STR | cut -f 1 -d.)
+	KER_MIN=$(echo $KER_STR | cut -f 2 -d.)
+
+	test $KER_MAJ -gt $1 && return 0
+	test $KER_MAJ -lt $1 && return 1
+	test $KER_MIN -ge $2 && return 0
+
+	return 1
+}
+
+compare_out() # $1 what, $2 expected
 {
 	OPT=$(grep -v "^#" $DEV_OUT | grep -i "$1" | sed -e s/.*\:\ // )
 	[ -z "$OPT" ] && fail
 	[ $OPT != $2 ] && fail "$1 differs ($2)"
 }
 
-function check_root_hash_fail()
+check_root_hash_fail()
 {
 	echo -n "Root hash check "
 	ROOT_HASH=$($VERITYSETUP format $IMG $IMG_HASH --fec-device $FEC_DEV --fec-roots 2 -h sha256 | grep -e "Root hash" | cut -d: -f2 | tr -d "\t\n ")
@@ -116,7 +135,7 @@ function check_root_hash_fail()
 	echo "[OK]"
 }
 
-function check_root_hash() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, [$6 offset]
+check_root_hash() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, [$6 offset]
 {
 	local FORMAT_PARAMS
 	local VERIFY_PARAMS
@@ -206,7 +225,7 @@ function check_root_hash() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, [$6
 	done
 }
 
-function corrupt_device() # $1 device, $2 device_size(in bytes), $3 #{corrupted_bytes}
+corrupt_device() # $1 device, $2 device_size(in bytes), $3 #{corrupted_bytes}
 {
 	# Repeatable magic corruption :-)
 	CORRUPT=$3
@@ -222,7 +241,7 @@ function corrupt_device() # $1 device, $2 device_size(in bytes), $3 #{corrupted_
 # $1 data_device, $2 hash_device, $3 fec_device, $4 data/hash_block_size(in bytes),
 # $5 data_size(in blocks), $6 device_size(in blocks), $7 hash_offset(in bytes),
 # $8 fec_offset(in bytes), $9 fec_roots, ${10} corrupted_bytes, [${11} superblock(y/n), ${12} salt]
-function check_fec()
+check_fec()
 {
 	INDEX=25
 	dd if=/dev/zero of=$1 bs=$4 count=$6 > /dev/null 2>&1
@@ -290,22 +309,22 @@ function check_fec()
 	return $RET
 }
 
-function check_option() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, $6 CLI option, $7 status option
+check_option() # $1 size, $2 hash, $3 salt, $4 version, $5 hash, $6 status option, $7-$8 CLI options
 {
 	DEV_PARAMS="$LOOPDEV1 $LOOPDEV2"
 	FORMAT_PARAMS="--format=$4 --data-block-size=$1 --hash-block-size=$1 --hash=$5 --salt=$3"
 
-	echo -n "Option $6 "
+	echo -n "Option $7 / $6 "
 	$VERITYSETUP format $DEV_PARAMS $FORMAT_PARAMS >/dev/null 2>&1 || fail
-	$VERITYSETUP create $DEV_NAME $DEV_PARAMS $2 $6 >/dev/null 2>&1 || fail
+	$VERITYSETUP create $DEV_NAME $DEV_PARAMS $2 $7 $8 >/dev/null 2>&1 || fail
 	check_exists
-	$VERITYSETUP status $DEV_NAME 2>/dev/null | grep flags | grep -q $7 || fail
-	dmsetup table $DEV_NAME 2>/dev/null | grep -q $7 || fail
+	$VERITYSETUP status $DEV_NAME 2>/dev/null | grep flags | grep -q $6 || fail
+	dmsetup table $DEV_NAME 2>/dev/null | grep -q $6 || fail
 	$VERITYSETUP close $DEV_NAME >/dev/null 2>&1 || fail
 	echo "[OK]"
 }
 
-function valgrind_setup()
+valgrind_setup()
 {
 	command -v valgrind >/dev/null || fail "Cannot find valgrind."
 	[ ! -f $VERITYSETUP_VALGRIND ] && fail "Unable to get location of veritysetup executable."
@@ -315,12 +334,12 @@ function valgrind_setup()
 	fi
 }
 
-function valgrind_run()
+valgrind_run()
 {
 	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${VERITYSETUP_VALGRIND} "$@"
 }
 
-function checkOffsetBug() # $1 size, $2 hash-offset, $3 data-blocks
+checkOffsetBug() # $1 size, $2 hash-offset, $3 data-blocks
 {
 	echo -n "Size :: $1 B | Hash-offset :: $2 blocks | Data-blocks :: $3 "
 	dd if=/dev/zero of=$IMG bs=1 count=0 seek=$1 >/dev/null 2>&1
@@ -329,7 +348,7 @@ function checkOffsetBug() # $1 size, $2 hash-offset, $3 data-blocks
 	remove_mapping
 }
 
-function checkOverlapBug() # $1 size, $2 hash-offset, $3 data-blocks, $4 block_size, $5 fec_offset
+checkOverlapBug() # $1 size, $2 hash-offset, $3 data-blocks, $4 block_size, $5 fec_offset
 {
 	echo -n "Device-size :: $1 B | "
 	[ $# -ge 3 ] && echo -n "Data-blocks :: $3 blocks| "
@@ -372,7 +391,7 @@ function checkOverlapBug() # $1 size, $2 hash-offset, $3 data-blocks, $4 block_s
 # $1 size, $2 block size, $3 roots, $4 hash offset, $5 fec offset,
 # $6 one dev(1 - one device, 2 - one device for data and hash, one device for fec data, 3 - three separate devices),
 # $7 #{corrupted bytes}
-function checkUserSpaceRepair()
+checkUserSpaceRepair()
 {
 	BS=512
 	COUNT=50000
@@ -404,7 +423,7 @@ function checkUserSpaceRepair()
 	echo "[OK]"
 }
 
-function check_concurrent() # $1 hash
+check_concurrent() # $1 hash
 {
 	DEV_PARAMS="$LOOPDEV1 $LOOPDEV2"
 
@@ -424,6 +443,8 @@ function check_concurrent() # $1 hash
 	wait
 	grep -q "Command failed with code .* (wrong or missing parameters)" $DEV_OUT && fail
 	grep -q "Command failed with code .* (wrong device or file specified)." $DEV_OUT && fail
+	# Some distros have strange udev rules, settle here seems to be necessary
+	udevadm settle >/dev/null 2>&1
 	check_exists
 	rm $DEV_OUT
 	$VERITYSETUP close $DEV_NAME >/dev/null 2>&1 || fail
@@ -476,20 +497,24 @@ if check_version 1 3; then
 	SALT=e48da609055204e89ae53b655ca2216dd983cf3cb829f34f63a297d106d53e2d
 	HASH=9de18652fe74edfb9b805aaed72ae2aa48f94333f1ba5c452ac33b1c39325174
 	prepare 8192 1024
-	check_option 512 $HASH $SALT 1 sha256 "--ignore-corruption" "ignore_corruption"
-	check_option 512 $HASH $SALT 1 sha256 "--restart-on-corruption" "restart_on_corruption"
-	check_option 512 $HASH $SALT 1 sha256 "--ignore-zero-blocks" "ignore_zero_blocks"
-	check_option 512 $HASH $SALT 1 sha256 "--ignore-corruption --ignore-zero-blocks" "ignore_corruption"
+	check_option 512 $HASH $SALT 1 sha256 ignore_corruption --ignore-corruption
+	check_option 512 $HASH $SALT 1 sha256 restart_on_corruption --restart-on-corruption
+	check_option 512 $HASH $SALT 1 sha256 ignore_zero_blocks --ignore-zero-blocks
+	check_option 512 $HASH $SALT 1 sha256 ignore_corruption --ignore-corruption --ignore-zero-blocks
 	if check_version 1 4; then
-		check_option 512 $HASH $SALT 1 sha256 "--check-at-most-once" "check_at_most_once"
+		check_option 512 $HASH $SALT 1 sha256 check_at_most_once --check-at-most-once
 	fi
 	if check_version 1 7; then
-		check_option 512 $HASH $SALT 1 sha256 "--panic-on-corruption" "panic_on_corruption"
+		check_option 512 $HASH $SALT 1 sha256 panic_on_corruption --panic-on-corruption
+	fi
+	if check_version_kernel 6 12; then # dm-verity 1.10+ but they forget bump version
+		check_option 512 $HASH $SALT 1 sha256 panic_on_error --error-as-corruption --panic-on-corruption
+		check_option 512 $HASH $SALT 1 sha256 restart_on_error --error-as-corruption --restart-on-corruption
 	fi
 
 	if check_version 1 9; then
 		echo "Verity data performance options test."
-		check_option 512 $HASH $SALT 1 sha256 "--use-tasklets" "try_verify_in_tasklet"
+		check_option 512 $HASH $SALT 1 sha256 try_verify_in_tasklet --use-tasklets
 	fi
 fi
 
@@ -563,6 +588,15 @@ else
 	$VERITYSETUP close $DEV_NAME >/dev/null 2>&1
 	echo "[N/A]"
 fi
+
+echo -n "Early check for active name:"
+prepare 8192 1024
+DM_BAD_NAME=x/x
+DM_LONG_NAME=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+$VERITYSETUP format $LOOPDEV1 $IMG_HASH --format=1 --data-block-size=512 --hash-block-size=512 --hash=sha256 --salt=$SALT >/dev/null 2>&1 || fail "Cannot format device."
+$VERITYSETUP open $LOOPDEV1 $DM_BAD_NAME $DEV $IMG_HASH 9de18652fe74edfb9b805aaed72ae2aa48f94333f1ba5c452ac33b1c39325174 2>/dev/null && fail
+$VERITYSETUP open $LOOPDEV1 $DM_LONG_NAME $DEV $IMG_HASH 9de18652fe74edfb9b805aaed72ae2aa48f94333f1ba5c452ac33b1c39325174 2>/dev/null && fail
+echo "[OK]"
 
 remove_mapping
 exit 0

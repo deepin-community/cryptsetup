@@ -2,8 +2,8 @@
 /*
  * Command line arguments name list
  *
- * Copyright (C) 2020-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2024 Ondrej Kozina
+ * Copyright (C) 2020-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2025 Ondrej Kozina
  */
 
 #ifndef UTILS_ARG_NAMES_H
@@ -37,12 +37,14 @@
 #define OPT_DUMP_MASTER_KEY		"dump-master-key"
 #define OPT_DUMP_VOLUME_KEY		"dump-volume-key"
 #define OPT_ENCRYPT			"encrypt"
+#define OPT_ERROR_AS_CORRUPTION		"error-as-corruption"
 #define OPT_EXTERNAL_TOKENS_PATH	"external-tokens-path"
 #define OPT_FEC_DEVICE			"fec-device"
 #define OPT_FEC_OFFSET			"fec-offset"
 #define OPT_FEC_ROOTS			"fec-roots"
 #define OPT_FORCE_PASSWORD		"force-password"
 #define OPT_FORCE_OFFLINE_REENCRYPT	"force-offline-reencrypt"
+#define OPT_FORCE_NO_KEYSLOTS		"force-no-keyslots"
 #define OPT_FORMAT			"format"
 #define OPT_HASH			"hash"
 #define OPT_HASH_BLOCK_SIZE		"hash-block-size"
@@ -60,6 +62,7 @@
 #define OPT_INTEGRITY_BITMAP_MODE	"integrity-bitmap-mode"
 #define OPT_INTEGRITY_KEY_FILE		"integrity-key-file"
 #define OPT_INTEGRITY_KEY_SIZE		"integrity-key-size"
+#define OPT_INTEGRITY_INLINE		"integrity-inline"
 #define OPT_INTEGRITY_LEGACY_PADDING	"integrity-legacy-padding"
 #define OPT_INTEGRITY_LEGACY_HMAC	"integrity-legacy-hmac"
 #define OPT_INTEGRITY_LEGACY_RECALC	"integrity-legacy-recalculate"
@@ -101,17 +104,22 @@
 #define OPT_VOLUME_KEY_FILE		"volume-key-file"
 #define OPT_VOLUME_KEY_KEYRING		"volume-key-keyring"
 #define OPT_NEW				"new"
+#define OPT_NEW_KEY_DESCRIPTION		"new-key-description"
+#define OPT_NEW_KEY_SIZE		"new-key-size"
 #define OPT_NEW_KEY_SLOT		"new-key-slot"
 #define OPT_NEW_KEYFILE			"new-keyfile"
 #define OPT_NEW_KEYFILE_OFFSET		"new-keyfile-offset"
 #define OPT_NEW_KEYFILE_SIZE		"new-keyfile-size"
 #define OPT_NEW_TOKEN_ID		"new-token-id"
+#define OPT_NEW_VOLUME_KEY_FILE		"new-volume-key-file"
+#define OPT_NEW_VOLUME_KEY_KEYRING	"new-volume-key-keyring"
 #define OPT_OFFSET			"offset"
 #define OPT_PANIC_ON_CORRUPTION		"panic-on-corruption"
 #define OPT_PBKDF			"pbkdf"
 #define OPT_PBKDF_FORCE_ITERATIONS	"pbkdf-force-iterations"
 #define OPT_PBKDF_MEMORY		"pbkdf-memory"
 #define OPT_PBKDF_PARALLEL		"pbkdf-parallel"
+#define OPT_PERF_HIGH_PRIORITY		"perf-high_priority"
 #define OPT_PERF_NO_READ_WORKQUEUE	"perf-no_read_workqueue"
 #define OPT_PERF_NO_WRITE_WORKQUEUE	"perf-no_write_workqueue"
 #define OPT_PERF_SAME_CPU_CRYPT		"perf-same_cpu_crypt"

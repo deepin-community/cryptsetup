@@ -4,8 +4,8 @@
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
  */
 
 #include "cryptsetup.h"
@@ -425,27 +425,27 @@ void tools_package_version(const char *name, bool use_pwlibs)
 	bool udev = false, blkid = false, keyring = false, fips = false,
 	     kernel_capi = false, pwquality = false, passwdqc = false,
 	     hw_opal = false;
-#ifdef USE_UDEV
+#if USE_UDEV
 	udev = true;
 #endif
-#ifdef HAVE_BLKID
+#if HAVE_BLKID
 	blkid = true;
 #endif
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	keyring = true;
 #endif
-#ifdef ENABLE_FIPS
+#if ENABLE_FIPS
 	fips = true;
 #endif
-#ifdef ENABLE_AF_ALG
+#if ENABLE_AF_ALG
 	kernel_capi = true;
 #endif
-#if defined(ENABLE_PWQUALITY)
+#if ENABLE_PWQUALITY
 	pwquality = true;
-#elif defined(ENABLE_PASSWDQC)
+#elif ENABLE_PASSWDQC
 	passwdqc = true;
 #endif
-#ifdef HAVE_HW_OPAL
+#if HAVE_HW_OPAL
 	hw_opal = true;
 #endif
 	log_std("%s %s flags: %s%s%s%s%s%s%s%s\n", name, PACKAGE_VERSION,
@@ -457,4 +457,20 @@ void tools_package_version(const char *name, bool use_pwlibs)
 		pwquality && use_pwlibs ? "PWQUALITY " : "",
 		passwdqc && use_pwlibs ? "PASSWDQC " : "",
 		hw_opal ? "HW_OPAL " : "");
+}
+
+int tools_check_newname(const char *name)
+{
+	if (!name)
+		return 0;
+
+	if (strlen(name) >= DM_NAME_LEN) {
+		log_err(_("Name is too long."));
+		return -EINVAL;
+	} else if (strchr(name, '/')) {
+		log_err(_("Name must not contain '/' character."));
+		return -EINVAL;
+	}
+
+	return 0;
 }

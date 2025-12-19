@@ -11,6 +11,8 @@ if get_option('cryptsetup')
         'utils_reencrypt.c',
         'utils_reencrypt_luks1.c',
         'utils_tools.c',
+        'utils_key_description.c',
+        'utils_keyslot_check.c',
     )
     cryptsetup_files += lib_tools_files
     cryptsetup_deps = [
@@ -23,6 +25,8 @@ if get_option('cryptsetup')
     cryptsetup = executable('cryptsetup',
         cryptsetup_files,
         dependencies: cryptsetup_deps,
+        install: true,
+        install_dir: get_option('sbindir'),
         link_with: libcryptsetup,
         link_args: link_args,
         include_directories: includes_tools)
@@ -43,6 +47,8 @@ if get_option('veritysetup')
     veritysetup = executable('veritysetup',
         veritysetup_files,
         dependencies: veritysetup_deps,
+        install: true,
+        install_dir: get_option('sbindir'),
         link_with: libcryptsetup,
         link_args: link_args,
         include_directories: includes_tools)
@@ -66,6 +72,8 @@ if get_option('integritysetup')
     integritysetup = executable('integritysetup',
         integritysetup_files,
         dependencies: integritysetup_deps,
+        install: true,
+        install_dir: get_option('sbindir'),
         link_with: libcryptsetup,
         link_args: link_args,
         include_directories: includes_tools)

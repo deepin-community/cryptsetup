@@ -98,6 +98,26 @@ sub expect(;$$) {
     #print STDERR "INFO done reading\n";
 }
 
+sub consume($) {
+    my $chan = shift;
+    my $buffer = defined $chan ? \$BUFFER{$chan} : undef;
+    if (! defined $buffer) {
+        return;
+    }
+
+    while(unpack("b*", $RBITS) != 0) {
+        my $rout = $RBITS;
+        if (select($rout, undef, undef, 1) == -1) {
+            return;
+        }
+        read_data($rout);
+        if (length($$buffer) == 0) {
+            return;
+        }
+        $$buffer = "";
+    }
+}
+
 sub write_data($$%) {
     my $chan = shift;
     my $data = shift;
@@ -168,11 +188,13 @@ BEGIN {
         hibernate
         poweroff
         expect
+        consume
     /;
 }
 
 *expect     = \&CryptrootTest::Utils::expect;
 *write_data = \&CryptrootTest::Utils::write_data;
+*consume = \&CryptrootTest::Utils::consume;
 
 sub unlock_disk($) {
     my $passphrase = shift;
@@ -231,7 +253,9 @@ sub shell($%) {
 sub suspend() {
     @QMP::EVENTS = (); # flush the event queue
 
-    write_data($CONSOLE => q{systemctl suspend});
+    # there is a race condition that causes suspend to fail.
+    # retry until success. Note, this may leave clutter in the console
+    write_data($CONSOLE => q{until systemctl suspend; do sleep 1; done});
     # while the command is asynchronous the system might suspend before
     # we have a chance to read the next $PS1
 

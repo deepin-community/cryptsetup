@@ -30,28 +30,22 @@ which enables users to transport or migrate data seamlessly.
   * The latest version of the
   [LUKS2 format specification](https://gitlab.com/cryptsetup/LUKS2-docs).
   * The latest version of the
-  [LUKS1 format specification](https://www.kernel.org/pub/linux/utils/cryptsetup/LUKS_docs/on-disk-format.pdf).
+  [LUKS1 format specification](https://cdn.kernel.org/pub/linux/utils/cryptsetup/LUKS_docs/on-disk-format.pdf).
   * [Project home page](https://gitlab.com/cryptsetup/cryptsetup/).
   * [Frequently asked questions (FAQ)](https://gitlab.com/cryptsetup/cryptsetup/wikis/FrequentlyAskedQuestions)
 
 Download
 --------
 Release notes and tarballs are available at
-[kernel.org](https://www.kernel.org/pub/linux/utils/cryptsetup/).
+[kernel.org](https://cdn.kernel.org/pub/linux/utils/cryptsetup/).
 
-**The latest stable cryptsetup release version is 2.7.5**
-  * [cryptsetup-2.7.5.tar.xz](https://www.kernel.org/pub/linux/utils/cryptsetup/v2.7/cryptsetup-2.7.5.tar.xz)
-  * Signature [cryptsetup-2.7.5.tar.sign](https://www.kernel.org/pub/linux/utils/cryptsetup/v2.7/cryptsetup-2.7.5.tar.sign)
+**The latest stable cryptsetup release version is 2.8.2**
+  * [cryptsetup-2.8.2.tar.xz](https://cdn.kernel.org/pub/linux/utils/cryptsetup/v2.8/cryptsetup-2.8.2.tar.xz)
+  * Signature [cryptsetup-2.8.2.tar.sign](https://cdn.kernel.org/pub/linux/utils/cryptsetup/v2.8/cryptsetup-2.8.2.tar.sign)
     _(You need to decompress file first to check signature.)_
-  * [Cryptsetup 2.7.5 Release Notes](https://www.kernel.org/pub/linux/utils/cryptsetup/v2.7/v2.7.5-ReleaseNotes).
+  * [Cryptsetup 2.8.2 Release Notes](https://cdn.kernel.org/pub/linux/utils/cryptsetup/v2.8/v2.8.2-ReleaseNotes).
 
-Previous versions
- * [Version 2.6.1](https://www.kernel.org/pub/linux/utils/cryptsetup/v2.6/cryptsetup-2.6.1.tar.xz) -
-   [Signature](https://www.kernel.org/pub/linux/utils/cryptsetup/v2.6/cryptsetup-2.6.1.tar.sign) -
-   [Release Notes](https://www.kernel.org/pub/linux/utils/cryptsetup/v2.5/v2.5.0-ReleaseNotes).
- * [Version 1.7.5](https://www.kernel.org/pub/linux/utils/cryptsetup/v1.7/cryptsetup-1.7.5.tar.xz) -
-   [Signature](https://www.kernel.org/pub/linux/utils/cryptsetup/v1.7/cryptsetup-1.7.5.tar.sign) -
-   [Release Notes](https://www.kernel.org/pub/linux/utils/cryptsetup/v1.7/v1.7.5-ReleaseNotes).
+[Previous versions](https://cdn.kernel.org/pub/linux/utils/cryptsetup)
 
 Source and API documentation
 ----------------------------
@@ -76,8 +70,7 @@ Below are the packages needed to build for certain Linux distributions:
 
 **For Fedora**:
 ```
-git gcc make autoconf automake gettext-devel pkgconfig openssl-devel popt-devel device-mapper-devel
-libuuid-devel json-c-devel libblkid-devel findutils libtool libssh-devel tar
+git gcc make autoconf automake gettext-devel pkgconfig openssl-devel popt-devel device-mapper-devel libuuid-devel json-c-devel libblkid-devel findutils libtool libssh-devel tar rubygem-asciidoctor
 
 Optionally: libargon2-devel libpwquality-devel
 ```
@@ -88,14 +81,13 @@ sharutils device-mapper jq vim-common expect keyutils netcat shadow-utils openss
 
 **For Debian and Ubuntu**:
 ```
-git gcc make autoconf automake autopoint pkg-config libtool gettext libssl-dev libdevmapper-dev
-libpopt-dev uuid-dev libsepol-dev libjson-c-dev libssh-dev libblkid-dev tar
+git gcc make autoconf automake autopoint pkg-config libtool gettext libssl-dev libdevmapper-dev libpopt-dev uuid-dev libsepol-dev libjson-c-dev libssh-dev libblkid-dev tar asciidoctor
 
 Optionally: libargon2-0-dev libpwquality-dev
 ```
 To run the internal testsuite (make check) you also need to install
 ```
-sharutils dmsetup jq xxd expect keyutils netcat passwd openssh-client sshpass
+sharutils dmsetup jq xxd expect keyutils netcat-openbsd passwd openssh-client sshpass
 ```
 
 Note that the list may change as Linux distributions evolve.

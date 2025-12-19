@@ -2,14 +2,14 @@
 /*
  * Password quality check wrapper
  *
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2024 Milan Broz
+ * Copyright (C) 2012-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2025 Milan Broz
  */
 
 #include "cryptsetup.h"
 #include <termios.h>
 
-#if defined ENABLE_PWQUALITY
+#if ENABLE_PWQUALITY
 #include <pwquality.h>
 
 static int tools_check_pwquality(const char *password)
@@ -42,7 +42,7 @@ static int tools_check_pwquality(const char *password)
 	pwquality_free_settings(pwq);
 	return r;
 }
-#elif defined ENABLE_PASSWDQC
+#elif ENABLE_PASSWDQC
 #include <passwdqc.h>
 
 static int tools_check_passwdqc(const char *password)
@@ -80,9 +80,9 @@ out:
 /* coverity[ +tainted_string_sanitize_content : arg-0 ] */
 static int tools_check_password(const char *password)
 {
-#if defined ENABLE_PWQUALITY
+#if ENABLE_PWQUALITY
 	return tools_check_pwquality(password);
-#elif defined ENABLE_PASSWDQC
+#elif ENABLE_PASSWDQC
 	return tools_check_passwdqc(password);
 #else
 	UNUSED(password);
@@ -194,7 +194,7 @@ out:
 	if (!failed && write(outfd, "\n", 1)) {};
 
 	if (realsize == maxlen)
-		log_dbg("Read stopped at maximal interactive input length, passphrase can be trimmed.");
+		log_err(_("Read stopped at maximal interactive input length, passphrase can be trimmed."));
 
 	if (close_fd)
 		close(infd);

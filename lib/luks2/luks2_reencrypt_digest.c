@@ -2,9 +2,9 @@
 /*
  * LUKS - Linux Unified Key Setup v2, reencryption digest helpers
  *
- * Copyright (C) 2022-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2022-2024 Ondrej Kozina
- * Copyright (C) 2022-2024 Milan Broz
+ * Copyright (C) 2022-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2022-2025 Ondrej Kozina
+ * Copyright (C) 2022-2025 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -240,10 +240,10 @@ static size_t reenc_keyslot_serialize(struct luks2_hdr *hdr, uint8_t *buffer)
 	return srs(j, buffer);
 }
 
-static size_t blob_serialize(void *blob, size_t length, uint8_t *buffer)
+static size_t blob_serialize(const void *blob, size_t length, uint8_t *buffer)
 {
 	if (buffer)
-		memcpy(buffer, blob, length);
+		crypt_safe_memcpy(buffer, blob, length);
 
 	return length;
 }
@@ -252,12 +252,13 @@ static int reencrypt_assembly_verification_data(struct crypt_device *cd,
 	struct luks2_hdr *hdr,
 	struct volume_key *vks,
 	uint8_t version,
-	struct volume_key **verification_data)
+	struct volume_key **r_verification_data)
 {
 	uint8_t *ptr;
-	int digest_new, digest_old;
-	struct volume_key *data = NULL, *vk_old = NULL, *vk_new = NULL;
+	int digest_new, digest_old, r = -EINVAL;
+	struct volume_key *verification_data = NULL, *vk_old = NULL, *vk_new = NULL;
 	size_t keyslot_data_len, segments_data_len, data_len = 2;
+	void *data = NULL;
 
 	/*
 	 * This works up to (including) version v207.
@@ -274,7 +275,7 @@ static int reencrypt_assembly_verification_data(struct crypt_device *cd,
 			log_dbg(cd, "Key (digest id %d) required but not unlocked.", digest_old);
 			return -EINVAL;
 		}
-		data_len += blob_serialize(vk_old->key, vk_old->keylength, NULL);
+		data_len += blob_serialize(crypt_volume_key_get_key(vk_old), crypt_volume_key_length(vk_old), NULL);
 	}
 
 	if (digest_new >= 0 && digest_old != digest_new) {
@@ -283,7 +284,7 @@ static int reencrypt_assembly_verification_data(struct crypt_device *cd,
 			log_dbg(cd, "Key (digest id %d) required but not unlocked.", digest_new);
 			return -EINVAL;
 		}
-		data_len += blob_serialize(vk_new->key, vk_new->keylength, NULL);
+		data_len += blob_serialize(crypt_volume_key_get_key(vk_new), crypt_volume_key_length(vk_new), NULL);
 	}
 
 	if (data_len == 2)
@@ -299,20 +300,22 @@ static int reencrypt_assembly_verification_data(struct crypt_device *cd,
 	data_len += segments_data_len;
 
 	/* Alloc and fill serialization data */
-	data = crypt_alloc_volume_key(data_len, NULL);
+	data = crypt_safe_alloc(data_len);
 	if (!data)
 		return -ENOMEM;
 
-	ptr = (uint8_t*)data->key;
+	ptr = (uint8_t*)data;
 
 	*ptr++ = 0x76;
 	*ptr++ = 0x30 + version;
 
 	if (vk_old)
-		ptr += blob_serialize(vk_old->key, vk_old->keylength, ptr);
+		ptr += blob_serialize(crypt_volume_key_get_key(vk_old),
+				      crypt_volume_key_length(vk_old), ptr);
 
 	if (vk_new)
-		ptr += blob_serialize(vk_new->key, vk_new->keylength, ptr);
+		ptr += blob_serialize(crypt_volume_key_get_key(vk_new),
+				      crypt_volume_key_length(vk_new), ptr);
 
 	if (!reenc_keyslot_serialize(hdr, ptr))
 		goto bad;
@@ -322,14 +325,20 @@ static int reencrypt_assembly_verification_data(struct crypt_device *cd,
 		goto bad;
 	ptr += segments_data_len;
 
-	assert((size_t)(ptr - (uint8_t*)data->key) == data_len);
+	assert((size_t)(ptr - (uint8_t*)data) == data_len);
 
-	*verification_data = data;
+	verification_data = crypt_alloc_volume_key_by_safe_alloc(&data);
+	if (!verification_data) {
+		r = -ENOMEM;
+		goto bad;
+	}
+	*r_verification_data = verification_data;
 
 	return 0;
 bad:
-	crypt_free_volume_key(data);
-	return -EINVAL;
+	crypt_safe_free(data);
+	crypt_free_volume_key(verification_data);
+	return r;
 }
 
 int LUKS2_keyslot_reencrypt_digest_create(struct crypt_device *cd,
@@ -360,22 +369,6 @@ int LUKS2_keyslot_reencrypt_digest_create(struct crypt_device *cd,
 		return r;
 
 	return LUKS2_digest_assign(cd, hdr, keyslot_reencrypt, digest_reencrypt, 1, 0);
-}
-
-void LUKS2_reencrypt_lookup_key_ids(struct crypt_device *cd, struct luks2_hdr *hdr, struct volume_key *vk)
-{
-	int digest_old, digest_new;
-
-	digest_old = LUKS2_reencrypt_digest_old(hdr);
-	digest_new = LUKS2_reencrypt_digest_new(hdr);
-
-	while (vk) {
-		if (digest_old >= 0 && LUKS2_digest_verify_by_digest(cd, digest_old, vk) == digest_old)
-			crypt_volume_key_set_id(vk, digest_old);
-		if (digest_new >= 0 && LUKS2_digest_verify_by_digest(cd, digest_new, vk) == digest_new)
-			crypt_volume_key_set_id(vk, digest_new);
-		vk = vk->next;
-	}
 }
 
 int LUKS2_reencrypt_digest_verify(struct crypt_device *cd,

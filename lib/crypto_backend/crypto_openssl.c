@@ -2,8 +2,8 @@
 /*
  * OPENSSL crypto backend implementation
  *
- * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2024 Milan Broz
+ * Copyright (C) 2010-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2025 Milan Broz
  */
 
 #include <stdio.h>
@@ -19,6 +19,7 @@
 #include <openssl/provider.h>
 #include <openssl/kdf.h>
 #include <openssl/core_names.h>
+#include <openssl/err.h>
 static OSSL_PROVIDER *ossl_legacy = NULL;
 static OSSL_PROVIDER *ossl_default = NULL;
 static OSSL_LIB_CTX  *ossl_ctx = NULL;
@@ -381,7 +382,7 @@ int crypt_hash_final(struct crypt_hash *ctx, char *buffer, size_t length)
 	if (EVP_DigestFinal_ex(ctx->md, tmp, &tmp_len) != 1)
 		return -EINVAL;
 
-	memcpy(buffer, tmp, length);
+	crypt_backend_memcpy(buffer, tmp, length);
 	crypt_backend_memzero(tmp, sizeof(tmp));
 
 	if (tmp_len < length)
@@ -510,7 +511,7 @@ int crypt_hmac_final(struct crypt_hmac *ctx, char *buffer, size_t length)
 
 	HMAC_Final(ctx->md, tmp, &tmp_len);
 #endif
-	memcpy(buffer, tmp, length);
+	crypt_backend_memcpy(buffer, tmp, length);
 	crypt_backend_memzero(tmp, sizeof(tmp));
 
 	if (tmp_len < length)
@@ -637,6 +638,10 @@ static int openssl_argon2(const char *type, const char *password, size_t passwor
 
 	EVP_KDF_CTX_free(ctx);
 	EVP_KDF_free(argon2);
+
+	/* Memory allocation is common issue with memory-hard Argon2 */
+	if (r == 0 && ERR_GET_REASON(ERR_get_error()) == ERR_R_MALLOC_FAILURE)
+		return -ENOMEM;
 
 	/* _derive() returns 0 or negative value on error, 1 on success */
 	return r == 1 ? 0 : -EINVAL;

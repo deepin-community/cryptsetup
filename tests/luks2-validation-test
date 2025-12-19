@@ -25,12 +25,12 @@ FAILS=0
 
 [ -z "$srcdir" ] && srcdir="."
 
-function remove_mapping()
+remove_mapping()
 {
 	rm -rf $IMG $TST_IMGS >/dev/null 2>&1
 }
 
-function fail()
+fail()
 {
 	[ -n "$1" ] && echo "$1"
 	echo "FAILED backtrace:"
@@ -40,19 +40,22 @@ function fail()
 	exit 2
 }
 
+_sigchld() { local c=$?; [ $c -eq 139 ] && fail "Segfault"; [ $c -eq 134 ] && fail "Aborted"; }
+trap _sigchld CHLD
+
 fail_count()
 {
 	echo "$1"
 	FAILS=$((FAILS+1))
 }
 
-function skip()
+skip()
 {
 	[ -n "$1" ] && echo "$1"
 	exit 77
 }
 
-function prepare() # $1 dev1_size
+prepare() # $1 dev1_size
 {
 	remove_mapping
 
@@ -63,13 +66,27 @@ function prepare() # $1 dev1_size
 	cp $ORIG_IMG $IMG
 }
 
-function test_load()
+test_load()
 {
 	local _debug=
 
 	test -z "$_DEBUG" || _debug="--debug"
 
 	case "$1" in
+	T)
+		if [ -n "$_debug" ]; then
+			$CRYPTSETUP token remove --token-id 0 $_debug $IMG
+		else
+			$CRYPTSETUP token remove --token-id 0 $IMG > /dev/null 2>&1
+		fi
+		test $? -eq 0 || return 1
+		if [ -n "$_debug" ]; then
+			$CRYPTSETUP luksDump $_debug $IMG
+		else
+			$CRYPTSETUP luksDump $IMG > /dev/null 2>&1
+		fi
+		test $? -eq 0 || return 1
+		;;
 	R)
 		if [ -n "$_debug" ]; then
 			$CRYPTSETUP luksDump $_debug $IMG
@@ -94,7 +111,7 @@ function test_load()
 	esac
 }
 
-function RUN()
+RUN()
 {
 	echo -n "Test image: $1..."
 	cp $TST_IMGS/$1 $IMG || fail "Missing test image"
@@ -106,7 +123,7 @@ function RUN()
 	fi
 }
 
-function valgrind_setup()
+valgrind_setup()
 {
 	command -v valgrind >/dev/null || fail "Cannot find valgrind."
 	[ ! -f $CRYPTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
@@ -116,7 +133,7 @@ function valgrind_setup()
 	fi
 }
 
-function valgrind_run()
+valgrind_run()
 {
 	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${CRYPTSETUP_VALGRIND} "$@"
 }
@@ -125,6 +142,7 @@ function valgrind_run()
 [ -n "$VALG" ] && valgrind_setup && CRYPTSETUP=valgrind_run
 
 command -v jq >/dev/null || skip "Cannot find jq, test skipped."
+command -v xxd >/dev/null || skip "Cannot find xxd, test skipped."
 
 prepare
 
@@ -250,6 +268,10 @@ RUN luks2-keyslot-invalid-area.img			"F" "Invalid keyslot area object not reject
 RUN luks2-keyslot-invalid-area-size.img			"F" "Invalid keyslot area size that can overflow not rejected"
 RUN luks2-keyslot-invalid-objects.img			"F" "Invalid keyslot objects not rejected"
 RUN luks2-keyslot-invalid-af.img			"F" "Invalid keyslot objects types not rejected"
+
+echo "[8] Test non compact json does not break write optimization"
+RUN luks2-non-compact-json-token-0.img			"T" "Non compact json area corrupted after write"
+RUN luks2-non-compact-json-4k-token-0.img		"T" "Non compact 4K aligned json area corrupted after write"
 
 remove_mapping
 

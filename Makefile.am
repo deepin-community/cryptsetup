@@ -1,4 +1,4 @@
-EXTRA_DIST = README.md SECURITY.md COPYING.LGPL CONTRIBUTING.md FAQ.md docs misc autogen.sh
+EXTRA_DIST = README.md SECURITY.md README.licensing CONTRIBUTING.md FAQ.md docs misc autogen.sh
 EXTRA_DIST += meson_options.txt \
 	meson.build \
 	lib/crypto_backend/argon2/meson.build \
@@ -9,6 +9,7 @@ EXTRA_DIST += meson_options.txt \
 	scripts/meson.build \
 	src/meson.build \
 	tests/meson.build \
+	tests/fuzz/meson.build \
 	tokens/meson.build \
 	tokens/ssh/meson.build
 
@@ -24,8 +25,7 @@ AM_CPPFLAGS = \
         -DLIBDIR=\""$(libdir)"\"                \
         -DPREFIX=\""$(prefix)"\"                \
         -DSYSCONFDIR=\""$(sysconfdir)"\"        \
-        -DVERSION=\""$(VERSION)"\"              \
-        -DEXTERNAL_LUKS2_TOKENS_PATH=\"${EXTERNAL_LUKS2_TOKENS_PATH}\"
+        -DVERSION=\""$(VERSION)"\"
 AM_CFLAGS = -Wall
 AM_CXXFLAGS = -Wall
 AM_LDFLAGS =

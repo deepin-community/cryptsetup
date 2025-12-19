@@ -2,7 +2,7 @@
 /*
  * dm-verity volume handling
  *
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2025 Red Hat, Inc. All rights reserved.
  */
 
 #include <errno.h>
@@ -301,6 +301,11 @@ static int VERITY_create_or_verify_hash(struct crypt_device *cd, bool verify,
 	log_dbg(cd, "Hash device size required: %" PRIu64 " bytes.",
 		hash_device_offset_max - params->hash_area_offset);
 	log_dbg(cd, "Using %d hash levels.", levels);
+
+	r = device_check_size(cd, crypt_metadata_device(cd),
+			      hash_device_offset_max - params->hash_area_offset, 1);
+	if (r < 0)
+		return r;
 
 	data_file = fopen(device_path(crypt_data_device(cd)), "r");
 	if (!data_file) {

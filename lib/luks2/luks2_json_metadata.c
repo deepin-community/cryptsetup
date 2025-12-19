@@ -2,9 +2,9 @@
 /*
  * LUKS - Linux Unified Key Setup v2
  *
- * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2024 Milan Broz
- * Copyright (C) 2015-2024 Ondrej Kozina
+ * Copyright (C) 2015-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2025 Milan Broz
+ * Copyright (C) 2015-2025 Ondrej Kozina
  */
 
 #include "luks2_internal.h"
@@ -12,8 +12,6 @@
 #include "../integrity/integrity.h"
 #include <ctype.h>
 #include <uuid/uuid.h>
-
-#define LUKS_STRIPES 4000
 
 struct interval {
 	uint64_t offset;
@@ -467,8 +465,7 @@ static int hdr_validate_json_size(struct crypt_device *cd, json_object *hdr_jobj
 	json_object_object_get_ex(hdr_jobj, "config", &jobj);
 	json_object_object_get_ex(jobj, "json_size", &jobj1);
 
-	json = json_object_to_json_string_ext(hdr_jobj,
-		JSON_C_TO_STRING_PLAIN | JSON_C_TO_STRING_NOSLASHESCAPE);
+	json = crypt_jobj_to_string_on_disk(hdr_jobj);
 	if (!json)
 		return 1;
 
@@ -636,6 +633,11 @@ static int reqs_opal(uint32_t reqs)
 	return reqs & CRYPT_REQUIREMENT_OPAL;
 }
 
+static int reqs_inline_hw_tags(uint32_t reqs)
+{
+	return reqs & CRYPT_REQUIREMENT_INLINE_HW_TAGS;
+}
+
 /*
  * Config section requirements object must be valid.
  * Also general segments section must be validated first.
@@ -644,14 +646,12 @@ static int validate_reencrypt_segments(struct crypt_device *cd, json_object *hdr
 {
 	json_object *jobj, *jobj_backup_previous = NULL, *jobj_backup_final = NULL;
 	uint32_t reqs;
-	int i, r;
+	int i;
 	struct luks2_hdr dummy = {
 		.jobj = hdr_jobj
 	};
 
-	r = LUKS2_config_get_requirements(cd, &dummy, &reqs);
-	if (r)
-		return 1;
+	LUKS2_config_get_requirements(cd, &dummy, &reqs);
 
 	if (reqs_reencrypt_online(reqs)) {
 		for (i = first_backup; i < segments_count; i++) {
@@ -1272,7 +1272,11 @@ int LUKS2_hdr_uuid(struct crypt_device *cd, struct luks2_hdr *hdr, const char *u
 int LUKS2_hdr_labels(struct crypt_device *cd, struct luks2_hdr *hdr,
 		     const char *label, const char *subsystem, int commit)
 {
-	//FIXME: check if the labels are the same and skip this.
+	if ((label && strlen(label) >= LUKS2_LABEL_L) ||
+	    (subsystem && strlen(subsystem) >= LUKS2_LABEL_L)) {
+		log_err(cd, _("Label is too long."));
+		return -EINVAL;
+	}
 
 	memset(hdr->label, 0, LUKS2_LABEL_L);
 	if (label)
@@ -1426,7 +1430,8 @@ int LUKS2_hdr_restore(struct crypt_device *cd, struct luks2_hdr *hdr,
 	}
 
 	/* do not allow header restore from backup with unmet requirements */
-	if (LUKS2_unmet_requirements(cd, &hdr_file, CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 1)) {
+	if (LUKS2_unmet_requirements(cd, &hdr_file,
+	    CRYPT_REQUIREMENT_ONLINE_REENCRYPT | CRYPT_REQUIREMENT_INLINE_HW_TAGS, 1)) {
 		log_err(cd, _("Forbidden LUKS2 requirements detected in backup %s."),
 			backup_file);
 		r = -ETXTBSY;
@@ -1458,9 +1463,7 @@ int LUKS2_hdr_restore(struct crypt_device *cd, struct luks2_hdr *hdr,
 	r = LUKS2_hdr_read(cd, &tmp_hdr, 0);
 	if (r == 0) {
 		log_dbg(cd, "Device %s already contains LUKS2 header, checking UUID and requirements.", device_path(device));
-		r = LUKS2_config_get_requirements(cd, &tmp_hdr, &reqs);
-		if (r)
-			goto out;
+		LUKS2_config_get_requirements(cd, &tmp_hdr, &reqs);
 
 		if (memcmp(tmp_hdr.uuid, hdr_file.uuid, LUKS2_UUID_L))
 			diff_uuid = 1;
@@ -1544,7 +1547,7 @@ out:
  * Persistent config flags
  */
 static const struct  {
-	uint32_t flag;
+	uint64_t flag;
 	const char *description;
 } persistent_flags[] = {
 	{ CRYPT_ACTIVATE_ALLOW_DISCARDS,         "allow-discards" },
@@ -1553,6 +1556,7 @@ static const struct  {
 	{ CRYPT_ACTIVATE_NO_JOURNAL,             "no-journal" },
 	{ CRYPT_ACTIVATE_NO_READ_WORKQUEUE,      "no-read-workqueue" },
 	{ CRYPT_ACTIVATE_NO_WRITE_WORKQUEUE,     "no-write-workqueue" },
+	{ CRYPT_ACTIVATE_HIGH_PRIORITY,          "high_priority" },
 	{ 0, NULL }
 };
 
@@ -1642,6 +1646,7 @@ static const struct requirement_flag requirements_flags[] = {
 	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 2, "online-reencrypt-v2" },
 	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 3, "online-reencrypt-v3" },
 	{ CRYPT_REQUIREMENT_ONLINE_REENCRYPT, 1, "online-reencrypt" },
+	{ CRYPT_REQUIREMENT_INLINE_HW_TAGS,   1, "inline-hw-tags" },
 	{ CRYPT_REQUIREMENT_OPAL,	      1, "opal" },
 	{ 0, 0, NULL }
 };
@@ -1764,7 +1769,7 @@ static const struct requirement_flag *stored_requirement_name_by_id(struct luks2
 /*
  * returns count of requirements (past cryptsetup 2.0 release)
  */
-int LUKS2_config_get_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t *reqs)
+void LUKS2_config_get_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t *reqs)
 {
 	json_object *jobj_mandatory, *jobj;
 	int i, len;
@@ -1777,11 +1782,11 @@ int LUKS2_config_get_requirements(struct crypt_device *cd, struct luks2_hdr *hdr
 
 	jobj_mandatory = mandatory_requirements_jobj(hdr);
 	if (!jobj_mandatory)
-		return 0;
+		return;
 
 	len = (int) json_object_array_length(jobj_mandatory);
 	if (len <= 0)
-		return 0;
+		return;
 
 	log_dbg(cd, "LUKS2 requirements detected:");
 
@@ -1792,8 +1797,6 @@ int LUKS2_config_get_requirements(struct crypt_device *cd, struct luks2_hdr *hdr
 				        reqs_unknown(req->flag) ? "un" : "");
 		*reqs |= req->flag;
 	}
-
-	return 0;
 }
 
 int LUKS2_config_set_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t reqs, bool commit)
@@ -1801,7 +1804,7 @@ int LUKS2_config_set_requirements(struct crypt_device *cd, struct luks2_hdr *hdr
 	json_object *jobj_config, *jobj_requirements, *jobj_mandatory, *jobj;
 	int i, r = -EINVAL;
 	const struct requirement_flag *req;
-	uint32_t req_id;
+	uint64_t req_id;
 
 	if (!hdr)
 		return -EINVAL;
@@ -2128,6 +2131,10 @@ static void hdr_dump_segments(struct crypt_device *cd, json_object *hdr_jobj)
 		    json_object_object_get_ex(jobj1, "type", &jobj2))
 			log_std(cd, "\tintegrity: %s\n", json_object_get_string(jobj2));
 
+		if (json_object_object_get_ex(jobj_segment, "integrity", &jobj1) &&
+		    json_object_object_get_ex(jobj1, "key_size", &jobj2))
+			log_std(cd, "\tintegrity key size: %" PRIu32 " [bits]\n", crypt_jobj_get_uint32(jobj2) * 8);
+
 		if (json_object_object_get_ex(jobj_segment, "flags", &jobj1) &&
 		    (flags = (int)json_object_array_length(jobj1)) > 0) {
 			jobj2 = json_object_array_get_idx(jobj1, 0);
@@ -2304,12 +2311,7 @@ crypt_reencrypt_info LUKS2_reencrypt_status(struct luks2_hdr *hdr)
 {
 	uint32_t reqs;
 
-	/*
-	 * Any unknown requirement or offline reencryption should abort
-	 * anything related to online-reencryption handling
-	 */
-	if (LUKS2_config_get_requirements(NULL, hdr, &reqs))
-		return CRYPT_REENCRYPT_INVALID;
+	LUKS2_config_get_requirements(NULL, hdr, &reqs);
 
 	if (!reqs_reencrypt_online(reqs))
 		return CRYPT_REENCRYPT_NONE;
@@ -2361,6 +2363,24 @@ const char *LUKS2_get_integrity(struct luks2_hdr *hdr, int segment)
 		return NULL;
 
 	return json_object_get_string(jobj3);
+}
+
+int LUKS2_get_integrity_key_size(struct luks2_hdr *hdr, int segment)
+{
+	json_object *jobj1, *jobj2, *jobj3;
+
+	jobj1 = LUKS2_get_segment_jobj(hdr, segment);
+	if (!jobj1)
+		return -1;
+
+	if (!json_object_object_get_ex(jobj1, "integrity", &jobj2))
+		return -1;
+
+	/* The value is optional, do not fail if not present */
+	if (!json_object_object_get_ex(jobj2, "key_size", &jobj3))
+		return 0;
+
+	return json_object_get_int(jobj3);
 }
 
 /* FIXME: this only ensures that once we have journal encryption, it is not ignored. */
@@ -2450,6 +2470,19 @@ int LUKS2_get_volume_key_size(struct luks2_hdr *hdr, int segment)
 	return -1;
 }
 
+int LUKS2_get_old_volume_key_size(struct luks2_hdr *hdr)
+{
+	int old_segment;
+
+	assert(hdr);
+
+	old_segment = LUKS2_reencrypt_segment_old(hdr);
+	if (old_segment < 0)
+		return old_segment;
+
+	return LUKS2_get_volume_key_size(hdr, old_segment);
+}
+
 uint32_t LUKS2_get_sector_size(struct luks2_hdr *hdr)
 {
 	return json_segment_get_sector_size(LUKS2_get_segment_jobj(hdr, CRYPT_DEFAULT_SEGMENT));
@@ -2518,7 +2551,7 @@ int LUKS2_assembly_multisegment_dmd(struct crypt_device *cd,
 					crypt_data_device(cd), vk,
 					json_segment_get_cipher(jobj),
 					json_segment_get_iv_offset(jobj),
-					segment_offset, "none", 0,
+					segment_offset, "none", 0, 0,
 					json_segment_get_sector_size(jobj));
 			if (r) {
 				log_err(cd, _("Failed to set dm-crypt segment."));
@@ -2632,7 +2665,7 @@ int LUKS2_activate(struct crypt_device *cd,
 {
 	int r;
 	bool dynamic, read_lock, write_lock, opal_lock_on_error = false;
-	uint32_t opal_segment_number;
+	uint32_t opal_segment_number, req_flags;
 	uint64_t range_offset_sectors, range_length_sectors, device_length_bytes;
 	struct luks2_hdr *hdr = crypt_get_hdr(cd, CRYPT_LUKS2);
 	struct crypt_dm_active_device dmdi = {}, dmd = {
@@ -2641,7 +2674,8 @@ int LUKS2_activate(struct crypt_device *cd,
 	struct crypt_lock_handle *opal_lh = NULL;
 
 	/* do not allow activation when particular requirements detected */
-	if ((r = LUKS2_unmet_requirements(cd, hdr, CRYPT_REQUIREMENT_OPAL, 0)))
+	if ((r = LUKS2_unmet_requirements(cd, hdr,
+	     CRYPT_REQUIREMENT_OPAL | CRYPT_REQUIREMENT_INLINE_HW_TAGS, 0)))
 		return r;
 
 	/* Check that cipher is in compatible format */
@@ -2714,7 +2748,7 @@ int LUKS2_activate(struct crypt_device *cd,
 					crypt_key, crypt_get_cipher_spec(cd),
 					crypt_get_iv_offset(cd), crypt_get_data_offset(cd),
 					crypt_get_integrity(cd) ?: "none",
-					crypt_get_integrity_tag_size(cd),
+					crypt_get_integrity_key_size(cd, true), crypt_get_integrity_tag_size(cd),
 					crypt_get_sector_size(cd));
 	} else
 		r = dm_linear_target_set(&dmd.segment, 0,
@@ -2730,7 +2764,13 @@ int LUKS2_activate(struct crypt_device *cd,
 
 	dmd.flags |= flags;
 
-	if (crypt_get_integrity_tag_size(cd)) {
+	if (crypt_persistent_flags_get(cd, CRYPT_FLAGS_REQUIREMENTS, &req_flags)) {
+		r = -EINVAL;
+		goto out;
+	}
+
+	if (crypt_get_integrity_tag_size(cd) &&
+	    !(req_flags & CRYPT_REQUIREMENT_INLINE_HW_TAGS)) {
 		if (!LUKS2_integrity_compatible(hdr)) {
 			log_err(cd, _("Unsupported device integrity configuration."));
 			r = -EINVAL;
@@ -2810,14 +2850,14 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 	struct crypt_dm_active_device dmdc;
 	uint32_t opal_segment_number;
 	char **dep, deps_uuid_prefix[40], *deps[MAX_DM_DEPS+1] = { 0 };
-	const char *namei = NULL;
+	char *iname = NULL;
 	struct crypt_lock_handle *reencrypt_lock = NULL, *opal_lh = NULL;
 
 	if (!dmd || !dmd->uuid || strncmp(CRYPT_LUKS2, dmd->uuid, sizeof(CRYPT_LUKS2)-1))
 		return -EINVAL;
 
 	/* uuid mismatch with metadata (if available) */
-	if (hdr && crypt_uuid_cmp(dmd->uuid, hdr->uuid))
+	if (hdr && dm_uuid_cmp(dmd->uuid, hdr->uuid))
 		return -EINVAL;
 
 	r = snprintf(deps_uuid_prefix, sizeof(deps_uuid_prefix), CRYPT_SUBDEV "-%.32s", dmd->uuid + 6);
@@ -2825,15 +2865,15 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 		return -EINVAL;
 
 	/* check if active device has LUKS2-OPAL dm uuid prefix */
-	dm_opal_uuid = !crypt_uuid_type_cmp(dmd->uuid, CRYPT_LUKS2_HW_OPAL);
+	dm_opal_uuid = !dm_uuid_type_cmp(dmd->uuid, CRYPT_LUKS2_HW_OPAL);
 	if (dm_opal_uuid && hdr && !LUKS2_segment_is_hw_opal(hdr, CRYPT_DEFAULT_SEGMENT))
 		return -EINVAL;
 
 	tgt = &dmd->segment;
 
 	/* TODO: We have LUKS2 dependencies now */
-	if (single_segment(dmd) && tgt->type == DM_CRYPT && tgt->u.crypt.tag_size)
-		namei = device_dm_name(tgt->data_device);
+	if (tgt->type == DM_CRYPT && tgt->u.crypt.tag_size)
+	    iname = dm_get_active_iname(cd, name);
 
 	r = dm_device_deps(cd, name, deps_uuid_prefix, deps, ARRAY_SIZE(deps));
 	if (r < 0)
@@ -2871,23 +2911,34 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 		tgt = &dmdc.segment;
 		while (tgt) {
 			if (tgt->type == DM_CRYPT)
-				crypt_drop_keyring_key_by_description(cd, tgt->u.crypt.vk->key_description,
-					LOGON_KEY);
+				crypt_volume_key_drop_kernel_key(cd, tgt->u.crypt.vk);
 			tgt = tgt->next;
 		}
 	}
 	dm_targets_free(cd, &dmdc);
 
 	/* TODO: We have LUKS2 dependencies now */
-	if (r >= 0 && namei) {
-		log_dbg(cd, "Deactivating integrity device %s.", namei);
-		r = dm_remove_device(cd, namei, 0);
+	if (r >= 0 && iname) {
+		log_dbg(cd, "Deactivating integrity device %s.", iname);
+		r = dm_remove_device(cd, iname, 0);
 	}
 
 	if (!r) {
 		ret = 0;
 		dep = deps;
 		while (*dep) {
+			/*
+			 * FIXME: dm-integrity has now proper SUBDEV prefix so
+			 * it would be deactivated here, but due to specific
+			 * dm_remove_device(iname) above the iname device
+			 * is no longer active. This will be fixed when
+			 * we switch to SUBDEV deactivation after 2.8 release.
+			 */
+			if (iname && !strcmp(*dep, iname)) {
+				dep++;
+				continue;
+			}
+
 			log_dbg(cd, "Deactivating LUKS2 dependent device %s.", *dep);
 			r = dm_query_device(cd, *dep, DM_ACTIVE_CRYPT_KEY | DM_ACTIVE_CRYPT_KEYSIZE, &dmdc);
 			if (r < 0) {
@@ -2907,8 +2958,7 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 				tgt = &dmdc.segment;
 				while (tgt) {
 					if (tgt->type == DM_CRYPT)
-						crypt_drop_keyring_key_by_description(cd, tgt->u.crypt.vk->key_description,
-							LOGON_KEY);
+						crypt_volume_key_drop_kernel_key(cd, tgt->u.crypt.vk);
 					tgt = tgt->next;
 				}
 			}
@@ -2950,6 +3000,7 @@ int LUKS2_deactivate(struct crypt_device *cd, const char *name, struct luks2_hdr
 out:
 	opal_exclusive_unlock(cd, opal_lh);
 	LUKS2_reencrypt_unlock(cd, reencrypt_lock);
+	free(iname);
 	dep = deps;
 	while (*dep)
 		free(*dep++);
@@ -2957,16 +3008,11 @@ out:
 	return r;
 }
 
-int LUKS2_unmet_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint32_t reqs_mask, int quiet)
+int LUKS2_unmet_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uint64_t reqs_mask, int quiet)
 {
 	uint32_t reqs;
-	int r = LUKS2_config_get_requirements(cd, hdr, &reqs);
 
-	if (r) {
-		if (!quiet)
-			log_err(cd, _("Failed to read LUKS2 requirements."));
-		return r;
-	}
+	LUKS2_config_get_requirements(cd, hdr, &reqs);
 
 	/* do not mask unknown requirements check */
 	if (reqs_unknown(reqs)) {
@@ -2984,6 +3030,8 @@ int LUKS2_unmet_requirements(struct crypt_device *cd, struct luks2_hdr *hdr, uin
 		log_err(cd, _("Operation incompatible with device marked for LUKS2 reencryption. Aborting."));
 	if (reqs_opal(reqs) && !quiet)
 		log_err(cd, _("Operation incompatible with device using OPAL. Aborting."));
+	if (reqs_inline_hw_tags(reqs) && !quiet)
+		log_err(cd, _("Operation incompatible with device using inline HW tags. Aborting."));
 
 	/* any remaining unmasked requirement fails the check */
 	return reqs ? -EINVAL : 0;
@@ -3092,22 +3140,22 @@ int LUKS2_split_crypt_and_opal_keys(struct crypt_device *cd __attribute__((unuse
 	if (r < 0)
 		return -EINVAL;
 
-	if (vk->keylength < opal_user_key_size)
+	if (crypt_volume_key_length(vk) < opal_user_key_size)
 		return -EINVAL;
 
 	/* OPAL SEGMENT only */
-	if (vk->keylength == opal_user_key_size) {
+	if (crypt_volume_key_length(vk) == opal_user_key_size) {
 		*ret_crypt_key = NULL;
 		*ret_opal_key = NULL;
 		return 0;
 	}
 
-	opal_key = crypt_alloc_volume_key(opal_user_key_size, vk->key);
+	opal_key = crypt_alloc_volume_key(opal_user_key_size, crypt_volume_key_get_key(vk));
 	if (!opal_key)
 		return -ENOMEM;
 
-	crypt_key = crypt_alloc_volume_key(vk->keylength - opal_user_key_size,
-					   vk->key + opal_user_key_size);
+	crypt_key = crypt_alloc_volume_key(crypt_volume_key_length(vk) - opal_user_key_size,
+					   crypt_volume_key_get_key(vk) + opal_user_key_size);
 	if (!crypt_key) {
 		crypt_free_volume_key(opal_key);
 		return -ENOMEM;

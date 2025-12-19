@@ -2,15 +2,13 @@
 /*
  * utils_safe_memory - safe memory helpers
  *
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2025 Milan Broz
  */
 
-#include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
 #include <sys/mman.h>
-#include "libcryptsetup.h"
+#include "internal.h"
 
 struct safe_allocation {
 	size_t size;
@@ -28,14 +26,16 @@ void crypt_safe_memzero(void *data, size_t size)
 	if (!data)
 		return;
 
-#ifdef HAVE_EXPLICIT_BZERO
-	explicit_bzero(data, size);
-#else
-	volatile uint8_t *p = (volatile uint8_t *)data;
+	return crypt_backend_memzero(data, size);
+}
 
-	while(size--)
-		*p++ = 0;
-#endif
+/* Memcpy helper to avoid spilling sensitive data through additional registers */
+void *crypt_safe_memcpy(void *dst, const void *src, size_t size)
+{
+	if (!dst || !src)
+		return NULL;
+
+	return crypt_backend_memcpy(dst, src, size);
 }
 
 /* safe allocations */
@@ -50,7 +50,7 @@ void *crypt_safe_alloc(size_t size)
 	if (!alloc)
 		return NULL;
 
-	crypt_safe_memzero(alloc, size + OVERHEAD);
+	crypt_backend_memzero(alloc, size + OVERHEAD);
 	alloc->size = size;
 
 	/* Ignore failure if it is over limit. */
@@ -73,7 +73,7 @@ void crypt_safe_free(void *data)
 	p = (char *)data - OVERHEAD;
 	alloc = (struct safe_allocation *)p;
 
-	crypt_safe_memzero(data, alloc->size);
+	crypt_backend_memzero(data, alloc->size);
 
 	if (alloc->locked) {
 		munlock(alloc, alloc->size + OVERHEAD);
@@ -101,9 +101,21 @@ void *crypt_safe_realloc(void *data, size_t size)
 		if (size > alloc->size)
 			size = alloc->size;
 
-		memcpy(new_data, data, size);
+		crypt_backend_memcpy(new_data, data, size);
 	}
 
 	crypt_safe_free(data);
 	return new_data;
+}
+
+size_t crypt_safe_alloc_size(const void *data)
+{
+	const void *p;
+
+	if (!data)
+		return 0;
+
+	p = (const char *)data - OVERHEAD;
+
+	return ((const struct safe_allocation *)p)->size;
 }

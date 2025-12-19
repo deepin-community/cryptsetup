@@ -2,8 +2,8 @@
 /*
  * LUKS - Linux Unified Key Setup v2, digest handling
  *
- * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2024 Milan Broz
+ * Copyright (C) 2015-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2025 Milan Broz
  */
 
 #include "luks2_internal.h"
@@ -75,7 +75,7 @@ int LUKS2_digest_create(struct crypt_device *cd,
 
 	log_dbg(cd, "Creating new digest %d (%s).", digest, type);
 
-	return dh->store(cd, digest, vk->key, vk->keylength) ?: digest;
+	return dh->store(cd, digest, crypt_volume_key_get_key(vk), crypt_volume_key_length(vk)) ?: digest;
 }
 
 int LUKS2_digest_by_keyslot(struct luks2_hdr *hdr, int keyslot)
@@ -108,7 +108,7 @@ int LUKS2_digest_verify_by_digest(struct crypt_device *cd,
 	if (!h)
 		return -EINVAL;
 
-	r = h->verify(cd, digest, vk->key, vk->keylength);
+	r = h->verify(cd, digest, crypt_volume_key_get_key(vk), crypt_volume_key_length(vk));
 	if (r < 0) {
 		log_dbg(cd, "Digest %d (%s) verify failed with %d.", digest, h->name, r);
 		return r;
@@ -143,8 +143,7 @@ int LUKS2_digest_dump(struct crypt_device *cd, int digest)
 	return h->dump(cd, digest);
 }
 
-int LUKS2_digest_any_matching(struct crypt_device *cd,
-		struct luks2_hdr *hdr __attribute__((unused)),
+int LUKS2_digest_verify_by_any_matching(struct crypt_device *cd,
 		const struct volume_key *vk)
 {
 	int digest;
@@ -161,7 +160,7 @@ int LUKS2_digest_verify_by_segment(struct crypt_device *cd,
 	int segment,
 	const struct volume_key *vk)
 {
-	int r = -EINVAL;
+	int r;
 	unsigned s;
 
 	if (segment == CRYPT_ANY_SEGMENT) {
@@ -173,7 +172,11 @@ int LUKS2_digest_verify_by_segment(struct crypt_device *cd,
 		return -EPERM;
 	}
 
-	return LUKS2_digest_verify_by_digest(cd, LUKS2_digest_by_segment(hdr, segment), vk);
+	r = LUKS2_digest_by_segment(hdr, segment);
+	if (r < 0)
+		return r;
+
+	return LUKS2_digest_verify_by_digest(cd, r, vk);
 }
 
 /* FIXME: segment can have more digests */
@@ -420,21 +423,7 @@ int LUKS2_key_description_by_segment(struct crypt_device *cd,
 	char *desc = get_key_description_by_digest(cd, LUKS2_digest_by_segment(hdr, segment));
 	int r;
 
-	r = crypt_volume_key_set_description(vk, desc);
-	free(desc);
-	return r;
-}
-
-int LUKS2_volume_key_load_in_keyring_by_keyslot(struct crypt_device *cd,
-		struct luks2_hdr *hdr, struct volume_key *vk, int keyslot)
-{
-	char *desc = get_key_description_by_digest(cd, LUKS2_digest_by_keyslot(hdr, keyslot));
-	int r;
-
-	r = crypt_volume_key_set_description(vk, desc);
-	if (!r)
-		r = crypt_volume_key_load_in_keyring(cd, vk);
-
+	r = crypt_volume_key_set_description(vk, desc, LOGON_KEY);
 	free(desc);
 	return r;
 }
@@ -445,7 +434,7 @@ int LUKS2_volume_key_load_in_keyring_by_digest(struct crypt_device *cd,
 	char *desc = get_key_description_by_digest(cd, digest);
 	int r;
 
-	r = crypt_volume_key_set_description(vk, desc);
+	r = crypt_volume_key_set_description(vk, desc, LOGON_KEY);
 	if (!r)
 		r = crypt_volume_key_load_in_keyring(cd, vk);
 

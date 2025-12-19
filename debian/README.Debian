@@ -277,7 +277,7 @@ manage the keyslots for both original and backup device independently.
 
 
 10. Changing the boot order of cryptdisks init scripts
------------------------------------------------------
+------------------------------------------------------
 
  In order to support non-standard setups, it might be necessary to change the
 order of init scripts in the boot process. Cryptsetup already installs two

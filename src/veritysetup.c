@@ -2,8 +2,8 @@
 /*
  * veritysetup - setup cryptographic volumes for dm-verity
  *
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2024 Milan Broz
+ * Copyright (C) 2012-2025 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2025 Milan Broz
  */
 
 #include "cryptsetup.h"
@@ -167,6 +167,8 @@ static int _activate(const char *dm_device,
 		activate_flags |= CRYPT_ACTIVATE_RESTART_ON_CORRUPTION;
 	if (ARG_SET(OPT_PANIC_ON_CORRUPTION_ID))
 		activate_flags |= CRYPT_ACTIVATE_PANIC_ON_CORRUPTION;
+	if (ARG_SET(OPT_ERROR_AS_CORRUPTION_ID))
+		activate_flags |= CRYPT_ACTIVATE_ERROR_AS_CORRUPTION;
 	if (ARG_SET(OPT_IGNORE_ZERO_BLOCKS_ID))
 		activate_flags |= CRYPT_ACTIVATE_IGNORE_ZERO_BLOCKS;
 	if (ARG_SET(OPT_CHECK_AT_MOST_ONCE_ID))
@@ -268,6 +270,9 @@ static int action_open(void)
 		log_err(_("Command requires <root_hash> or --root-hash-file option as argument."));
 		return -EINVAL;
 	}
+
+	if (tools_check_newname(action_argv[1]))
+		return -EINVAL;
 
 	return _activate(action_argv[1],
 			 action_argv[0],
@@ -374,8 +379,8 @@ static int action_status(void)
 			vp.flags & CRYPT_VERITY_ROOT_HASH_SIGNATURE ? " (with signature)" : "");
 
 		log_std("  hash type:   %u\n", vp.hash_type);
-		log_std("  data block:  %u\n", vp.data_block_size);
-		log_std("  hash block:  %u\n", vp.hash_block_size);
+		log_std("  data block:  %u [bytes]\n", vp.data_block_size);
+		log_std("  hash block:  %u [bytes]\n", vp.hash_block_size);
 		log_std("  hash name:   %s\n", vp.hash_name);
 		log_std("  salt:        ");
 		if (vp.salt_size)
@@ -389,7 +394,7 @@ static int action_status(void)
 			log_std("  data loop:   %s\n", backing_file);
 			free(backing_file);
 		}
-		log_std("  size:        %" PRIu64 " sectors\n", cad.size);
+		log_std("  size:        %" PRIu64 " [512-byte units] (%" PRIu64 " [bytes])\n", cad.size, cad.size * (uint64_t)SECTOR_SIZE);
 		log_std("  mode:        %s\n", cad.flags & CRYPT_ACTIVATE_READONLY ?
 					   "readonly" : "read/write");
 
@@ -398,8 +403,8 @@ static int action_status(void)
 			log_std("  hash loop:   %s\n", backing_file);
 			free(backing_file);
 		}
-		log_std("  hash offset: %" PRIu64 " sectors\n",
-			vp.hash_area_offset * vp.hash_block_size / 512);
+		log_std("  hash offset: %" PRIu64 " [512-byte units] (%" PRIu64 " [bytes])\n",
+			vp.hash_area_offset * vp.hash_block_size / SECTOR_SIZE, vp.hash_area_offset * vp.hash_block_size);
 
 		if (vp.fec_device) {
 			log_std("  FEC device:  %s\n", vp.fec_device);
@@ -407,8 +412,8 @@ static int action_status(void)
 				log_std("  FEC loop:    %s\n", backing_file);
 				free(backing_file);
 			}
-			log_std("  FEC offset:  %" PRIu64 " sectors\n",
-				vp.fec_area_offset * vp.hash_block_size / 512);
+			log_std("  FEC offset:  %" PRIu64 " [512-byte units] (%" PRIu64 " [bytes])\n",
+				vp.fec_area_offset * vp.hash_block_size / SECTOR_SIZE, vp.fec_area_offset * vp.hash_block_size);
 			log_std("  FEC roots:   %u\n", vp.fec_roots);
 		}
 
@@ -429,10 +434,12 @@ static int action_status(void)
 				 CRYPT_ACTIVATE_IGNORE_ZERO_BLOCKS|
 				 CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE|
 				 CRYPT_ACTIVATE_TASKLETS))
-			log_std("  flags:       %s%s%s%s%s%s\n",
+			log_std("  flags:       %s%s%s%s%s%s%s\n",
 				(cad.flags & CRYPT_ACTIVATE_IGNORE_CORRUPTION) ? "ignore_corruption " : "",
 				(cad.flags & CRYPT_ACTIVATE_RESTART_ON_CORRUPTION) ? "restart_on_corruption " : "",
 				(cad.flags & CRYPT_ACTIVATE_PANIC_ON_CORRUPTION) ? "panic_on_corruption " : "",
+				(cad.flags & CRYPT_ACTIVATE_ERROR_AS_CORRUPTION) ?
+				((cad.flags & CRYPT_ACTIVATE_PANIC_ON_CORRUPTION) ? "panic_on_error " : "restart_on_error") : "",
 				(cad.flags & CRYPT_ACTIVATE_IGNORE_ZERO_BLOCKS) ? "ignore_zero_blocks " : "",
 				(cad.flags & CRYPT_ACTIVATE_CHECK_AT_MOST_ONCE) ? "check_at_most_once" : "",
 				(cad.flags & CRYPT_ACTIVATE_TASKLETS) ? "try_verify_in_tasklet" : "");
@@ -653,6 +660,12 @@ int main(int argc, const char **argv)
 	if (ARG_SET(OPT_PANIC_ON_CORRUPTION_ID) && ARG_SET(OPT_RESTART_ON_CORRUPTION_ID))
 		usage(popt_context, EXIT_FAILURE,
 		_("Option --panic-on-corruption and --restart-on-corruption cannot be used together."),
+		poptGetInvocationName(popt_context));
+
+	if (ARG_SET(OPT_ERROR_AS_CORRUPTION_ID) &&
+	    !(ARG_SET(OPT_RESTART_ON_CORRUPTION_ID) || ARG_SET(OPT_PANIC_ON_CORRUPTION_ID)))
+		usage(popt_context, EXIT_FAILURE,
+		_("Option --error-as-corruption must be used with --panic-on-corruption or --restart-on-corruption."),
 		poptGetInvocationName(popt_context));
 
 	if (ARG_SET(OPT_CANCEL_DEFERRED_ID) && ARG_SET(OPT_DEFERRED_ID))
