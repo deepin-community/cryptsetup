@@ -3,25 +3,83 @@ test-gcc-compilation:
     - .gitlab-shared-gcc
   script:
     - export CFLAGS="-Wall -Werror"
+    - ./autogen.sh
+    - $CC --version
     - ./configure
     - make -j
     - make -j check-programs
 
-test-gcc-Wall-script:
+test-gcc-Wall-script-ubuntu:
   extends:
     - .gitlab-shared-gcc
   script:
     - export CFLAGS="-g -O0"
     - export CC="$CI_PROJECT_DIR/.gitlab/ci/gcc-Wall"
+    - ./autogen.sh
+    - $CC --version
     - ./configure
     - make -j CFLAGS="-g -O0 -Werror"
     - make -j CFLAGS="-g -O0 -Werror" check-programs
 
-test-gcc-fanalyzer:
+test-gcc-Wall-script-alpine:
+  extends:
+    - .gitlab-shared-gcc-alpine
+  allow_failure: true
+  script:
+    - export CFLAGS="-g -O0"
+    - export CC="$CI_PROJECT_DIR/.gitlab/ci/gcc-Wall"
+    - ./autogen.sh
+    - $CC --version
+    - ./configure
+    - make -j CFLAGS="-g -O0 -Werror"
+    - make -j CFLAGS="-g -O0 -Werror" check-programs
+
+test-gcc-fanalyzer-ubuntu:
   extends:
     - .gitlab-shared-gcc
   script:
-    - export CFLAGS="-Wall -Werror -g -O0 -fanalyzer -fdiagnostics-path-format=separate-events"
-    - ./configure
+    - ./autogen.sh
+    - $CC --version
+    - ./configure CFLAGS="-Wall -Werror -g -O0 -fanalyzer -fdiagnostics-path-format=separate-events" --host=x86_64
     - make -j
     - make -j check-programs
+
+test-gcc-fanalyzer-alpine:
+  extends:
+    - .gitlab-shared-gcc-alpine
+  allow_failure: true
+  script:
+    - ./autogen.sh
+    - $CC --version
+    - ./configure CFLAGS="-Wall -Werror -g -O0 -fanalyzer -fdiagnostics-path-format=separate-events -Wno-analyzer-fd-leak" --host=x86_64
+    - make -j
+    - make -j check-programs
+
+test-gcc-fanalyzer-backends:
+  extends:
+    - .gitlab-shared-gcc
+  parallel:
+    matrix:
+      - BACKENDS: [
+          "openssl",
+          "gcrypt",
+          "nss",
+          "kernel",
+          "nettle",
+          "mbedtls"
+      ]
+  rules:
+    - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /v2\..\.x$/
+      changes:
+        - lib/crypto_backend/*
+  script:
+    - DEBIAN_FRONTEND=noninteractive apt-get -yq install libgcrypt20-dev libnss3-dev nettle-dev libmbedtls-dev
+    - ./autogen.sh
+    - $CC --version
+    - echo "Configuring with crypto backend $BACKENDS"
+    - ./configure CFLAGS="-Wall -Werror -g -O0 -fanalyzer -fdiagnostics-path-format=separate-events" --host=x86_64 --with-crypto_backend=$BACKENDS
+    - make -j
+    - make -j check-programs
+    - ./tests/vectors-test

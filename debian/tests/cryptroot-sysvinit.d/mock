@@ -22,7 +22,8 @@ die unless $out =~ m#\Avda5\s.*\r?\n^`-vda5_crypt\s+crypt\s+/\s*\r?\n\z#m;
 # make sure only vda5 is processed at initramfs stage
 # XXX unmkinitramfs doesn't work on /initrd.img with COMPRESS=zstd, cf. #1015954
 shell(q{unmkinitramfs /boot/initrd.img-`uname -r` /tmp/initramfs});
-shell(q{grep -E '^vd\S+_crypt\s' </tmp/initramfs/cryptroot/crypttab >/tmp/out});
+shell(q{find /tmp/initramfs -path "*/cryptroot/crypttab" -type f -print0 >/tmp/paths});
+shell(q{xargs -r0a/tmp/paths grep -Eh '^vd\S+_crypt\s' >/tmp/out});
 shell(q{grep -E  '^vda5_crypt\s' </tmp/out}, rv => 0);
 shell(q{grep -Ev '^vda5_crypt\s' </tmp/out}, rv => 1);
 

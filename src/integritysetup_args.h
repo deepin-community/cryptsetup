@@ -2,8 +2,8 @@
 /*
  * Command line arguments helpers
  *
- * Copyright (C) 2020-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2020-2024 Ondrej Kozina
+ * Copyright (C) 2020-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2020-2026 Ondrej Kozina
  */
 
 #ifndef INTEGRITYSETUP_ARGS_H
@@ -23,6 +23,7 @@
 #define OPT_DEFERRED_ACTIONS			{ CLOSE_ACTION }
 #define OPT_DEVICE_SIZE_ACTIONS			{ RESIZE_ACTION }
 #define OPT_DISABLE_BLKID_ACTIONS		{ FORMAT_ACTION }
+#define OPT_INTEGRITY_INLINE_ACTIONS		{ FORMAT_ACTION }
 #define OPT_INTEGRITY_RECALCULATE_ACTIONS	{ OPEN_ACTION }
 #define OPT_INTERLEAVE_SECTORS_ACTIONS		{ FORMAT_ACTION }
 #define OPT_JOURNAL_SIZE_ACTIONS		{ FORMAT_ACTION }
@@ -40,7 +41,7 @@ OPT_UNUSED_ID = 0,
 #undef ARG
 };
 
-static struct tools_arg tool_core_args[] = { { NULL, false, CRYPT_ARG_BOOL }, // UNUSED
+static struct tools_arg tool_core_args[] = { { NULL, false, CRYPT_ARG_BOOL, {}, {} }, // UNUSED
 #define ARG(A, B, C, D, E, F, G, H) { A, false, F, G, H },
 #include "integritysetup_arg_list.h"
 #undef ARG

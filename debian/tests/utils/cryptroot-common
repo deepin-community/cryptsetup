@@ -81,6 +81,7 @@ load_os_release() {
 }
 case "${DISTRIBUTOR_ID:="$(load_os_release && printf "%s" "${ID,,[A-Z]}")"}" in
     debian) APT_REPO_ORIGIN="Debian"; APT_REPO_URI="http://deb.debian.org/debian";;
+    ubuntu) APT_REPO_ORIGIN="Ubuntu"; APT_REPO_URI="http://archive.ubuntu.com/ubuntu";;
     # suitable values for derivative can be added here
     *) echo "ERROR: Unknown distributor ID '$DISTRIBUTOR_ID', can't extract APT origin" >&2;
        exit 1;;
@@ -102,7 +103,7 @@ case "$DEB_BUILD_ARCHITECTURE" in
         else
             QEMU_SYSTEM_CMD="qemu-system-$DEB_BUILD_ARCHITECTURE"
         fi
-        QEMU_MACHINE_TYPE="q35"
+        QEMU_MACHINE_TYPE=""
         if [ "${QEMU_ACCEL-}" = "kvm" ]; then
             QEMU_CPU_MODEL="kvm$DEB_BUILD_ARCH_BITS,+aes,+sha-ni"
         else
@@ -132,7 +133,7 @@ fi
 CPU_COUNT="$(getconf _NPROCESSORS_ONLN)" && [ -n "$CPU_COUNT" ] || CPU_COUNT=0
 if [ $CPU_COUNT -ge 8 ]; then
     QEMU_SMP="cpus=4"
-elif [ $CPU_COUNT -ge 4 ]; then
+elif [ $CPU_COUNT -ge 2 ]; then
     QEMU_SMP="cpus=2"
 else
     QEMU_SMP="cpus=1"
@@ -164,12 +165,19 @@ case "$BOOT" in
     efi) PKG_BOOTLOADER="grub-efi";;
     *) echo "ERROR unknown boot method '$BOOT'" >&2; exit 1;;
 esac
+
+if [ "$DISTRIBUTOR_ID" = "ubuntu" ]; then
+    echo "Overriding kernel arch to generic"
+    KERNEL_ARCH="generic"
+fi
+
 PKG_KERNEL="linux-image-$KERNEL_ARCH"
 PKG_INIT="systemd-sysv" # default pid1
 MERGED_USR="" # use default layout for the target version
 declare -a PKGS_EXTRA=() DRIVE_SIZES=( "2G" )
 PKGS_EXTRA+=( "zstd" ) # default initrd compression, see #976054
-PKGS_EXTRA+=( "login" "passwd" ) # for login(1) and passwd(1)
+PKGS_EXTRA+=( "login" "passwd" "mount" ) # for login(1), passwd(1) and mount(8)
+PKGS_EXTRA+=( "initramfs-tools" )
 
 if [ -f "$TESTDIR/$TESTNAME.d/config" ]; then
     . "$TESTDIR/$TESTNAME.d/config" || exit 1
@@ -302,6 +310,12 @@ setup_apt() {
         esac >"$TEMPDIR/apt/sources.list"
     fi
 
+    # ubuntu CI populates sources.list.d with PPA source, append them to the list
+    if [ "$DISTRIBUTOR_ID" = "ubuntu" ] && [ -d /etc/apt/sources.list.d ]; then
+        echo "Append contents of /etc/apt/sources.list.d to $TEMPDIR/apt/sources.list"
+        find /etc/apt/sources.list.d -type f -name "*.list" -execdir cat {} + >> "$TEMPDIR/apt/sources.list"
+    fi
+
     local apt_repo
     for apt_repo in "${EXTRA_REPOS[@]}"; do
         printf "%s\\n" "$apt_repo" >>"$TEMPDIR/apt/sources.list"
@@ -419,10 +433,12 @@ extract_kernel() {
     mkdir "$destdir"
     mkdir "$destdir/usr" "$destdir/usr/lib"
     ln -sT "usr/lib" "$destdir/lib"
-    dpkg-deb --fsys-tarfile "$APT_CACHE/archives/$KERNEL_DEB" | tar -C "$destdir" -xf- \
-        --wildcards --wildcards-match-slash \
-        "./boot/vmlinuz-$KERNEL_VERSION" \
-        "*/lib/modules/$KERNEL_VERSION"
+    dpkg-deb --fsys-tarfile "$APT_CACHE/archives/linux-binary-${KERNEL_DEB#linux-image-}" \
+        | tar -C "$destdir" -xf- "./boot/vmlinuz-$KERNEL_VERSION"
+    dpkg-deb --fsys-tarfile "$APT_CACHE/archives/linux-modules-${KERNEL_DEB#linux-image-}" \
+        | tar -C "$destdir" -xf- "./usr/lib/modules/$KERNEL_VERSION"
+    dpkg-deb --fsys-tarfile "$APT_CACHE/archives/linux-base-${KERNEL_DEB#linux-image-}" \
+        | tar -C "$destdir" -xf- "./usr/lib/modules/$KERNEL_VERSION"
     ln -T -- "$destdir/boot/vmlinuz-$KERNEL_VERSION" "$TEMPDIR/vmlinuz-$KERNEL_VERSION"
 }
 

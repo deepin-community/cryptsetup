@@ -2,8 +2,8 @@
 /*
  * loopback block device utilities
  *
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2026 Milan Broz
  */
 
 #include <stdlib.h>
@@ -15,7 +15,7 @@
 #include <limits.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#ifdef HAVE_SYS_SYSMACROS_H
+#if HAVE_SYS_SYSMACROS_H
 # include <sys/sysmacros.h>     /* for major, minor */
 #endif
 #include <linux/types.h>

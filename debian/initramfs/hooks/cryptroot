@@ -51,10 +51,11 @@ crypttab_find_and_print_entry() {
 #   crypttab_parse_options().
 #   Return 0 on success, 1 on error.
 crypttab_print_entry() {
-    local DEV MAJ MIN uuid keyfile
+    local DEV MAJ MIN name_uses uuid keyfile
     if _resolve_device "$CRYPTTAB_SOURCE"; then
-        if [ "$(dmsetup info -c --noheadings -o devnos_used -- "$CRYPTTAB_NAME" 2>/dev/null)" != "$MAJ:$MIN" ]; then
-            cryptsetup_message "ERROR: $CRYPTTAB_NAME: Source mismatch"
+        name_uses="$(dmsetup info -c --noheadings -o devnos_used -- "$CRYPTTAB_NAME" 2>/dev/null)" || name_uses="N/A"
+        if [ "$name_uses" != "$MAJ:$MIN" ]; then
+            cryptsetup_message "ERROR: Source mismatch: $CRYPTTAB_NAME uses $name_uses, but $CRYPTTAB_SOURCE is $MAJ:$MIN"
         elif [ "${_CRYPTTAB_SOURCE#[A-Za-z]*=}" = "$_CRYPTTAB_SOURCE" ] && \
                 [ "${CRYPTTAB_SOURCE#/dev/disk/by-}" = "$CRYPTTAB_SOURCE" ] && \
                 [ "${CRYPTTAB_SOURCE#/dev/mapper/}" = "$CRYPTTAB_SOURCE" ] && \
@@ -177,6 +178,9 @@ generate_initrd_crypttab() {
     true >"$DESTDIR/cryptroot/targets"
 
     {
+        # add crypttab entries with the 'initramfs' option set
+        crypttab_foreach_entry crypttab_print_initramfs_entry
+
         if devnos="$(get_mnt_devno /)"; then
             usage=rootfs foreach_cryptdev crypttab_find_and_print_entry $devnos
         else
@@ -190,9 +194,6 @@ generate_initrd_crypttab() {
         if devnos="$(get_mnt_devno /usr)"; then
             usage="" foreach_cryptdev crypttab_find_and_print_entry $devnos
         fi
-
-        # add crypttab entries with the 'initramfs' option set
-        crypttab_foreach_entry crypttab_print_initramfs_entry
     } 3>"$DESTDIR/cryptroot/crypttab"
     rm -f "$DESTDIR/cryptroot/targets"
 }
@@ -351,10 +352,6 @@ copy_exec /sbin/dmsetup
 
 [ "$ASKPASS" = n ] || copy_exec /lib/cryptsetup/askpass
 
-copy_exec /bin/gettext
-mkdir -p $DESTDIR/usr/share/locale/zh_CN/LC_MESSAGES/
-cp /usr/share/locale/zh_CN/LC_MESSAGES/cryptroot.mo $DESTDIR/usr/share/locale/zh_CN/LC_MESSAGES/
-
 # We need sed. Either via busybox or as standalone binary.
 if [ "$BUSYBOX" = n ] || [ -z "$BUSYBOXDIR" ]; then
     copy_exec /bin/sed
@@ -380,7 +377,7 @@ if [ "$MODULES" = most ]; then
 else
     if [ "$MODULES" != "dep" ]; then
         # with large initramfs, we always add a basic subset of modules
-        add_crypto_modules aes cbc chainiv cryptomgr krng sha256 xts
+        add_crypto_modules aes cbc chainiv cryptomgr krng sha256 xts vmx_crypto
     fi
     add_crypto_modules $(printf '%s' "${CRYPTO_MODULES-}" | tr ' ' '\n' | sort -u)
 fi

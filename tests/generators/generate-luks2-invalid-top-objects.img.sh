@@ -12,9 +12,9 @@
 # $1 full target dir
 # $2 full source luks2 image
 
-function generate()
+generate()
 {
-	json_str=$(jq -c 'del(.tokens) | .tokens = 42 |
+	json_str=$(_jq 'del(.tokens) | .tokens = 42 |
 			  del(.digests) | .digests = 42 |
 			  del(.keyslots) | .keyslots = [] |
 			  del(.segments) | .segments = "hi"' $TMPDIR/json0)
@@ -27,13 +27,13 @@ function generate()
 	lib_mangle_json_hdr1
 }
 
-function check()
+check()
 {
 	lib_hdr0_checksum || exit 2
 	lib_hdr1_checksum || exit 2
 
 	read_luks2_json0 $TGT_IMG $TMPDIR/json_res0
-	jq -c 'if (.tokens != 42) or (.digests != 42) or (.keyslots != []) or (.segments != "hi")
+	_jq 'if (.tokens != 42) or (.digests != 42) or (.keyslots != []) or (.segments != "hi")
 	       then error("Unexpected value in result json") else empty end' $TMPDIR/json_res0 || exit 5
 }
 

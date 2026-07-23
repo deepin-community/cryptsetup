@@ -229,13 +229,13 @@ static int _unwrap_key(
 	if (r < 0)
 		goto out;
 
-	cipher_in = malloc(16);
+	cipher_in = crypt_safe_alloc(16);
 	if (cipher_in == NULL) {
 		r = -ENOMEM;
 		goto out;
 	}
 
-	cipher_out = malloc(16);
+	cipher_out = crypt_safe_alloc(16);
 	if (cipher_out == NULL) {
 		r = -ENOMEM;
 		goto out;
@@ -283,8 +283,8 @@ static int _unwrap_key(
 	((uint64_t *)key_buf)[0] = r2;
 	((uint64_t *)key_buf)[1] = r3;
 out:
-	free(cipher_in);
-	free(cipher_out);
+	crypt_safe_free(cipher_in);
+	crypt_safe_free(cipher_out);
 	if (cipher != NULL)
 		crypt_cipher_destroy(cipher);
 	return r;
@@ -371,7 +371,8 @@ static int _parse_metadata_block_0x0019(
 	uint32_t xml_off = le32_to_cpu(md_block->xml_off);
 	uint32_t xml_size = le32_to_cpu(md_block->xml_size);
 
-	if (xml_off + xml_size > FVAULT2_MD_BLOCK_SIZE)
+	if (xml_off >= FVAULT2_MD_BLOCK_SIZE ||
+	    xml_size > FVAULT2_MD_BLOCK_SIZE - xml_off)
 		return -EINVAL;
 
 	xml = strndup((const char *)md_block + xml_off, xml_size);
@@ -451,7 +452,8 @@ static int _parse_metadata_block_0x001a(
 	uint32_t xml_off = le32_to_cpu(md_block->xml_off);
 	uint32_t xml_size = le32_to_cpu(md_block->xml_size);
 
-	if (xml_off + xml_size > FVAULT2_MD_BLOCK_SIZE)
+	if (xml_off >= FVAULT2_MD_BLOCK_SIZE ||
+	    xml_size > FVAULT2_MD_BLOCK_SIZE - xml_off)
 		return -EINVAL;
 
 	xml = strndup((const char *)md_block + xml_off, xml_size);
@@ -513,6 +515,7 @@ static int _read_volume_header(
 	int r = 0;
 	struct device *dev = crypt_metadata_device(cd);
 	struct volume_header *vol_header = NULL;
+	void *enc_key = NULL;
 
 	assert(sizeof(*vol_header) == FVAULT2_VOL_HEADER_SIZE);
 
@@ -523,9 +526,9 @@ static int _read_volume_header(
 	}
 
 	log_dbg(cd, "Reading FVAULT2 volume header of size %u bytes.", FVAULT2_VOL_HEADER_SIZE);
-	if (read_blockwise(devfd, device_block_size(cd, dev),
+	if (read_lseek_blockwise(devfd, device_block_size(cd, dev),
 			device_alignment(dev), vol_header,
-			FVAULT2_VOL_HEADER_SIZE) != FVAULT2_VOL_HEADER_SIZE) {
+			FVAULT2_VOL_HEADER_SIZE, 0) != FVAULT2_VOL_HEADER_SIZE) {
 		log_err(cd, _("Could not read %u bytes of volume header."), FVAULT2_VOL_HEADER_SIZE);
 		r = -EIO;
 		goto out;
@@ -557,8 +560,8 @@ static int _read_volume_header(
 		goto out;
 	}
 
-	*enc_md_key = crypt_alloc_volume_key(FVAULT2_XTS_KEY_SIZE, NULL);
-	if (*enc_md_key == NULL) {
+	enc_key = crypt_safe_alloc(FVAULT2_XTS_KEY_SIZE);
+	if (!enc_key) {
 		r = -ENOMEM;
 		goto out;
 	}
@@ -566,9 +569,15 @@ static int _read_volume_header(
 	*block_size = le32_to_cpu(vol_header->block_size);
 	*disklbl_blkoff = le64_to_cpu(vol_header->disklbl_blkoff);
 	uuid_unparse(vol_header->ph_vol_uuid, ph_vol_uuid);
-	memcpy((*enc_md_key)->key, vol_header->key_data, FVAULT2_AES_KEY_SIZE);
-	memcpy((*enc_md_key)->key + FVAULT2_AES_KEY_SIZE,
+	crypt_safe_memcpy(enc_key, vol_header->key_data, FVAULT2_AES_KEY_SIZE);
+	crypt_safe_memcpy((char *)enc_key + FVAULT2_AES_KEY_SIZE,
 		vol_header->ph_vol_uuid, FVAULT2_AES_KEY_SIZE);
+
+	*enc_md_key = crypt_alloc_volume_key_by_safe_alloc(&enc_key);
+	if (*enc_md_key == NULL) {
+		crypt_safe_free(enc_key);
+		r = -ENOMEM;
+	}
 out:
 	free(vol_header);
 	return r;
@@ -704,7 +713,7 @@ static int _read_encrypted_metadata(
 		goto out;
 	}
 
-	r = crypt_cipher_init(&cipher, "aes", "xts", key->key, FVAULT2_XTS_KEY_SIZE);
+	r = crypt_cipher_init(&cipher, "aes", "xts", crypt_volume_key_get_key(key), FVAULT2_XTS_KEY_SIZE);
 	if (r < 0)
 		goto out;
 
@@ -835,8 +844,7 @@ static int _activate(
 	r = dm_crypt_target_set(&dm_dev.segment, 0, dm_dev.size,
 		crypt_data_device(cd), vol_key, cipher,
 		crypt_get_iv_offset(cd), crypt_get_data_offset(cd),
-		crypt_get_integrity(cd), crypt_get_integrity_tag_size(cd),
-		crypt_get_sector_size(cd));
+		NULL, 0, 0, crypt_get_sector_size(cd));
 
 	if (!r)
 		r = dm_create_device(cd, name, CRYPT_FVAULT2, &dm_dev);
@@ -893,15 +901,14 @@ int FVAULT2_get_volume_key(
 	const char *passphrase,
 	size_t passphrase_len,
 	const struct fvault2_params *params,
-	struct volume_key **vol_key)
+	struct volume_key **r_vol_key)
 {
 	int r = 0;
 	uint8_t family_uuid_bin[FVAULT2_UUID_BIN_SIZE];
-	struct volume_key *passphrase_key = NULL;
-	struct volume_key *kek = NULL;
 	struct crypt_hash *hash = NULL;
+	void *passphrase_key = NULL, *kek = NULL, *vol_key= NULL;
 
-	*vol_key = NULL;
+	*r_vol_key = NULL;
 
 	if (uuid_parse(params->family_uuid, family_uuid_bin) < 0) {
 		log_dbg(cd, "Could not parse logical volume family UUID: %s.",
@@ -910,61 +917,62 @@ int FVAULT2_get_volume_key(
 		goto out;
 	}
 
-	passphrase_key = crypt_alloc_volume_key(FVAULT2_AES_KEY_SIZE, NULL);
+	passphrase_key = crypt_safe_alloc(FVAULT2_AES_KEY_SIZE);
 	if (passphrase_key == NULL) {
 		r = -ENOMEM;
 		goto out;
 	}
 
 	r = crypt_pbkdf("pbkdf2", "sha256", passphrase, passphrase_len,
-		params->pbkdf2_salt, FVAULT2_PBKDF2_SALT_SIZE, passphrase_key->key,
+		params->pbkdf2_salt, FVAULT2_PBKDF2_SALT_SIZE, passphrase_key,
 		FVAULT2_AES_KEY_SIZE, params->pbkdf2_iters, 0, 0);
 	if (r < 0)
 		goto out;
 
-	kek = crypt_alloc_volume_key(FVAULT2_AES_KEY_SIZE, NULL);
+	kek = crypt_safe_alloc(FVAULT2_AES_KEY_SIZE);
 	if (kek == NULL) {
 		r = -ENOMEM;
 		goto out;
 	}
 
-	r = _unwrap_key(passphrase_key->key, FVAULT2_AES_KEY_SIZE, params->wrapped_kek,
-			FVAULT2_WRAPPED_KEY_SIZE, kek->key, FVAULT2_AES_KEY_SIZE);
+	r = _unwrap_key(passphrase_key, FVAULT2_AES_KEY_SIZE, params->wrapped_kek,
+			FVAULT2_WRAPPED_KEY_SIZE, kek, FVAULT2_AES_KEY_SIZE);
 	if (r < 0)
 		goto out;
 
-	*vol_key = crypt_alloc_volume_key(FVAULT2_XTS_KEY_SIZE, NULL);
-	if (*vol_key == NULL) {
+	vol_key = crypt_safe_alloc(FVAULT2_XTS_KEY_SIZE);
+	if (vol_key == NULL) {
 		r = -ENOMEM;
 		goto out;
 	}
 
-	r = _unwrap_key(kek->key, FVAULT2_AES_KEY_SIZE, params->wrapped_vk,
-		FVAULT2_WRAPPED_KEY_SIZE, (*vol_key)->key, FVAULT2_AES_KEY_SIZE);
+	r = _unwrap_key(kek, FVAULT2_AES_KEY_SIZE, params->wrapped_vk,
+		FVAULT2_WRAPPED_KEY_SIZE, vol_key, FVAULT2_AES_KEY_SIZE);
 	if (r < 0)
 		goto out;
 
 	r = crypt_hash_init(&hash, "sha256");
 	if (r < 0)
 		goto out;
-	r = crypt_hash_write(hash, (*vol_key)->key, FVAULT2_AES_KEY_SIZE);
+	r = crypt_hash_write(hash, vol_key, FVAULT2_AES_KEY_SIZE);
 	if (r < 0)
 		goto out;
 	r = crypt_hash_write(hash, (char *)family_uuid_bin,
 		FVAULT2_UUID_BIN_SIZE);
 	if (r < 0)
 		goto out;
-	r = crypt_hash_final(hash, (*vol_key)->key + FVAULT2_AES_KEY_SIZE,
+	r = crypt_hash_final(hash, (char *)vol_key + FVAULT2_AES_KEY_SIZE,
 		FVAULT2_AES_KEY_SIZE);
 	if (r < 0)
 		goto out;
+
+	*r_vol_key = crypt_alloc_volume_key_by_safe_alloc(&vol_key);
+	if (!*r_vol_key)
+		r = -ENOMEM;
 out:
-	crypt_free_volume_key(passphrase_key);
-	crypt_free_volume_key(kek);
-	if (r < 0) {
-		crypt_free_volume_key(*vol_key);
-		*vol_key = NULL;
-	}
+	crypt_safe_free(passphrase_key);
+	crypt_safe_free(kek);
+	crypt_safe_free(vol_key);
 	if (hash != NULL)
 		crypt_hash_destroy(hash);
 	return r;
@@ -997,48 +1005,19 @@ int FVAULT2_dump(
 	return 0;
 }
 
-int FVAULT2_activate_by_passphrase(
-	struct crypt_device *cd,
-	const char *name,
-	const char *passphrase,
-	size_t passphrase_len,
-	const struct fvault2_params *params,
-	uint32_t flags)
-{
-	int r;
-	struct volume_key *vol_key = NULL;
-
-	r = FVAULT2_get_volume_key(cd, passphrase, passphrase_len, params, &vol_key);
-	if (r < 0)
-		return r;
-
-	if (name)
-	    r = _activate(cd, name, vol_key, params, flags);
-
-	crypt_free_volume_key(vol_key);
-	return r;
-}
-
 int FVAULT2_activate_by_volume_key(
 	struct crypt_device *cd,
 	const char *name,
-	const char *key,
-	size_t key_size,
+	struct volume_key *vk,
 	const struct fvault2_params *params,
 	uint32_t flags)
 {
-	int r = 0;
-	struct volume_key *vol_key = NULL;
+	assert(crypt_volume_key_length(vk) == FVAULT2_XTS_KEY_SIZE);
 
-	if (key_size != FVAULT2_XTS_KEY_SIZE)
-		return -EINVAL;
+	return _activate(cd, name, vk, params, flags);
+}
 
-	vol_key = crypt_alloc_volume_key(FVAULT2_XTS_KEY_SIZE, key);
-	if (vol_key == NULL)
-		return -ENOMEM;
-
-	r = _activate(cd, name, vol_key, params, flags);
-
-	crypt_free_volume_key(vol_key);
-	return r;
+size_t FVAULT2_volume_key_size(void)
+{
+	return FVAULT2_XTS_KEY_SIZE;
 }

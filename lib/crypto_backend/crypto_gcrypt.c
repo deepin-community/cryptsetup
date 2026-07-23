@@ -2,8 +2,8 @@
 /*
  * GCRYPT crypto backend implementation
  *
- * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2024 Milan Broz
+ * Copyright (C) 2010-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2026 Milan Broz
  */
 
 #include <stdio.h>
@@ -40,6 +40,12 @@ struct crypt_cipher {
 
 struct hash_alg {
 	const char *name;
+	const char *gcrypt_name;
+};
+
+struct cipher_alg {
+	const char *name;
+	size_t key_bytes;
 	const char *gcrypt_name;
 };
 
@@ -186,6 +192,37 @@ static const char *crypt_hash_compat_name(const char *name, unsigned int *flags)
 	return hash_name;
 }
 
+static const char *crypt_cipher_compat_name(const char *name, const char *mode, size_t key_bytes)
+{
+	const char *cipher_name = name;
+	int i;
+	static struct cipher_alg cipher_algs[] = {
+	{ "aria",     16,     "aria128" },
+	{ "aria",     24,     "aria192" },
+	{ "aria",     32,     "aria256" },
+	{ "camellia", 16, "camellia128" },
+	{ "camellia", 24, "camellia192" },
+	{ "camellia", 32, "camellia256" },
+	{ NULL,        0,         NULL }};
+
+	if (!name)
+		return NULL;
+
+	if (mode && !strcmp(mode, "xts"))
+		key_bytes /= 2;
+
+	i = 0;
+	while (cipher_algs[i].name) {
+		if (!strcasecmp(name, cipher_algs[i].name) && cipher_algs[i].key_bytes == key_bytes) {
+			cipher_name =  cipher_algs[i].gcrypt_name;
+			break;
+		}
+		i++;
+	}
+
+	return cipher_name;
+}
+
 /* HASH */
 int crypt_hash_size(const char *name)
 {
@@ -249,7 +286,7 @@ int crypt_hash_final(struct crypt_hash *ctx, char *buffer, size_t length)
 	if (!hash)
 		return -EINVAL;
 
-	memcpy(buffer, hash, length);
+	crypt_backend_memcpy(buffer, hash, length);
 	crypt_hash_restart(ctx);
 
 	return 0;
@@ -323,7 +360,7 @@ int crypt_hmac_final(struct crypt_hmac *ctx, char *buffer, size_t length)
 	if (!hash)
 		return -EINVAL;
 
-	memcpy(buffer, hash, length);
+	crypt_backend_memcpy(buffer, hash, length);
 	crypt_hmac_restart(ctx);
 
 	return 0;
@@ -451,6 +488,7 @@ static int gcrypt_argon2(const char *type,
 		.dispatch_job = gcrypt_dispatch_job,
 		.wait_all_jobs = gcrypt_wait_all_jobs
 	};
+	gpg_error_t err;
 
 	if (!strcmp(type, "argon2i"))
 		atype = GCRY_KDF_ARGON2I;
@@ -464,12 +502,11 @@ static int gcrypt_argon2(const char *type,
 	param[2] = memory;
 	param[3] = parallel;
 
-	if (gcry_kdf_open(&hd, GCRY_KDF_ARGON2, atype, param, 4,
+	err = gcry_kdf_open(&hd, GCRY_KDF_ARGON2, atype, param, 4,
 			password, password_length, salt, salt_length,
-			NULL, 0, NULL, 0)) {
-		free(threads.jobs_ctx);
-		return -EINVAL;
-	}
+			NULL, 0, NULL, 0);
+	if (err)
+		return ((err & GPG_ERR_CODE_MASK) == GPG_ERR_ENOMEM) ? -ENOMEM : -EINVAL;
 
 	if (parallel == 1) {
 		/* Do not use threads here */
@@ -529,8 +566,13 @@ static int _cipher_init(gcry_cipher_hd_t *hd, const char *name,
 			const char *mode, const void *buffer, size_t length)
 {
 	int cipher_id, mode_id;
+	const char *gcrypt_name;
 
-	cipher_id = gcry_cipher_map_name(name);
+	if (!name)
+		return -EINVAL;
+
+	gcrypt_name = crypt_cipher_compat_name(name, mode, length);
+	cipher_id = gcry_cipher_map_name(gcrypt_name);
 	if (cipher_id == GCRY_CIPHER_MODE_NONE)
 		return -ENOENT;
 

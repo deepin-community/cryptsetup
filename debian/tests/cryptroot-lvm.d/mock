@@ -36,8 +36,13 @@ else {
     expect($SERIAL => qr/(?:^|\s)?PM: suspend exit\r\n/m);
     unlock_disk("topsecret");
 
-    # consume PS1 to make sure we're at a shell prompt
-    expect($CONSOLE => qr/\A $PS1 \z/aamsx);
+    # suspend() leaves clutter in the console due to the retries
+    # that prevents test from succeeding.
+    consume($CONSOLE);
+
+    # ensure that shell is available
+    shell(q{echo ready}, rv => 0);
+
     my $out = shell(q{dmsetup info -c --noheadings -omangled_name,suspended --separator ' '});
     die if grep !/[:[:blank:]]Active$/i, split(/\r?\n/, $out);
 

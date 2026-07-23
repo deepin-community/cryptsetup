@@ -1,20 +1,183 @@
-cryptsetup (2:2.7.5-1deepin2.3) unstable; urgency=medium
- 
-  * add Chinese localization to cryptroot
- 
- -- Liang Bo <liangbo@uniontech.com>  Thu, 26 Apr 2025 16:40:22 +0800
+cryptsetup (2:2.8.7-1) unstable; urgency=medium
 
-cryptsetup (2:2.7.5-1deepin2.2) unstable; urgency=medium
- 
-  * skip ERROR on usr-overlay device when updating initramfs
- 
- -- Liang Bo <liangbo@uniontech.com>  Mon, 28 Apr 2024 16:00:51 +0800
+  * New upstream bugfix release.
 
-cryptsetup (2:2.7.5-1deepin2.1) unstable; urgency=medium
- 
-  * revert to 2:2.7.5-1
- 
- -- Liang Bo <liangbo@uniontech.com>  Tue, 01 Apr 2024 14:52:13 +0800
+ -- Guilhem Moulin <guilhem@debian.org>  Wed, 22 Jul 2026 01:53:08 +0200
+
+cryptsetup (2:2.8.7~rc2-1) experimental; urgency=medium
+
+  * New upstream release candidate. (Closes: #1141257)
+  * d/rules: Adjust blhc's ignore-line-regexp.
+  * cryptsetup-suspend-wrapper: Replace `find … -execdir {}` call with a shell
+    loop. (Closes: #1141157)
+  * Refresh d/patches.
+  * d/t/cryptroot-*: Install mount in the guests.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Mon, 13 Jul 2026 16:47:12 +0200
+
+cryptsetup (2:2.8.7~rc1-1) experimental; urgency=medium
+
+  * New upstream release candidate.
+  * Drop d/patches/* applied upstream.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 30 Jun 2026 12:24:18 +0200
+
+cryptsetup (2:2.8.6-2) unstable; urgency=medium
+
+  * Backport upstream changes to fix FTBFS with recent jq(1). The jq upstream
+    fix for CVE-2026-33948 breaks cryptsetup's test suite. (Closes: #1135390)
+  * Update Standards-Version to 4.7.4 (no changes necessary).
+  * d/t/cryptroot-*: Add "Depends: cpio".
+
+ -- Guilhem Moulin <guilhem@debian.org>  Sun, 03 May 2026 15:26:25 +0200
+
+cryptsetup (2:2.8.6-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+  * askpass: Fix FTBFS with glibc 2.43. (Closes: #1128538)
+  * d/control: Replace B-D: libselinux1-dev with libselinux-dev.
+  * d/t/cryptroot-*: Account for the linux-image package split.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 02 Apr 2026 20:39:12 +0200
+
+cryptsetup (2:2.8.4-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+
+  [ Guilhem Moulin ]
+  * d/t/cryptroot-*: Use default QEMU machine type and lower host CPU count
+    threshold for >1 vCPU guests.  This might fix #1123760.
+  * d/t/cryptroot-*: Load `md_mod` kernel module before calling mdadm(8).
+  * d/t/cryptroot-*: Explicitly install initramfs-tools as extra package.
+  * DEP-8: Add `Depends: initramfs-tools-core` for initramfs-hook and
+    initramfs-hook-legacy.
+  * DEP-8: Temporarily disable cryptroot-nested test.
+  * Update Standards-Version to 4.7.3.
+    + Remove "Priority: optional" which is the current default and spelling it
+      out is no longer recommended per Policy.
+
+  [ Huey Chen ]
+  * Fix typo in cryptsetup-suspend-wrapper. (Closes: #1123990)
+
+  [ Yangfl ]
+  * Add Chinese debconf templates translations. (Closes: #1124408)
+
+  [ Paul Richards ]
+  * Add support for `tcrypt-system` crypttab(5) option. (Closes: #1037973)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 27 Jan 2026 17:27:23 +0100
+
+cryptsetup (2:2.8.3-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Fri, 19 Dec 2025 15:53:17 +0100
+
+cryptsetup (2:2.8.2-1) unstable; urgency=medium
+
+  * New upstream bugfix release.
+  * d/t/cryptdisks: Add calls to `udevadm settle`.
+  * d/control: Remove `Rules-Requires-Root: no`.
+  * d/watch: Port to Version 5.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 18 Dec 2025 22:04:25 +0100
+
+cryptsetup (2:2.8.1-2) unstable; urgency=medium
+
+  * Exclude `reencryption-compat-test` from Makefile.localtest.
+    (Closes: #1122539)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 11 Dec 2025 23:29:35 +0100
+
+cryptsetup (2:2.8.1-1) unstable; urgency=medium
+
+  * New upstream release.
+  * DEP-8: Don't skip TPM trusted upstream tests.  This adds `Depends:
+    swtpm, swtpm-tools, tpm2-tools` to the upstream testsuite autopkgtest.
+  * DEP-8: Don't skip upstream's systemd plugin tests.  This adds `Depends:
+    systemd-cryptsetup` to the upstream testsuite autopkgtest.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 19 Aug 2025 13:38:37 +0200
+
+cryptsetup (2:2.8.0-3) unstable; urgency=medium
+
+  [ Nuri KÜÇÜKLER ]
+  * Add Turkish debconf templates translation.
+
+  [ Luca Boccassi ]
+  * DEP-8: Remove 80-systemd-osc-context.sh bash profile drop-in from
+    cryptroot-* test images in order to fix compatibility with systemd v258.
+    (Closes: #1110818)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Wed, 13 Aug 2025 13:38:32 +0200
+
+cryptsetup (2:2.8.0-2) unstable; urgency=medium
+
+  * Upload to unstable.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Sat, 09 Aug 2025 22:21:31 +0200
+
+cryptsetup (2:2.8.0-1) experimental; urgency=medium
+
+  * New upstream release.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Tue, 24 Jun 2025 11:40:36 +0200
+
+cryptsetup (2:2.8.0~rc1-1) experimental; urgency=low
+
+  * New upstream release candidate.
+  * Drop d/patches/* applied upstream.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Mon, 16 Jun 2025 15:44:19 +0200
+
+cryptsetup (2:2.8.0~rc0-1) experimental; urgency=low
+
+  * New upstream release candidate 2.8.0, with support for inline mode (use HW
+    sectors with additional hardware metadata space).
+  * DEP-8: Add Depends: e2fsprogs.
+  * d/libcryptsetup12.symbols: Add new symbols.
+  * Adjust d/copyright.
+  * DEP-8: Build libcrypto_backend.la and crypto-check before running the
+    upstream test suite.
+
+ -- Guilhem Moulin <guilhem@debian.org>  Thu, 12 Jun 2025 19:00:45 +0200
+
+cryptsetup (2:2.7.5-2) unstable; urgency=medium
+
+  [ Christoph Anton Mitterer ]
+  * d/README.Debian: Minor improvements.
+  * d/README.Debian: Document when during the initramfs devices are mapped.
+  * d/README.Debian: Change initrd to initramfs.
+
+  [ Stephen Gildea ]
+  * initramfs hook: Improve the "Source mismatch" error message when
+    /etc/crypttab gives a source device that does not match the current
+    source.
+
+  [ Guilhem Moulin ]
+  * DEP-8: No longer mark cryptroot-* as flaky and only run them on amd64, see
+    https://bugs.debian.org/1073052#50.
+  * Fix d/t/initramfs-hook and d/t/initramfs-hook-legacy with initramfs-tools
+    ≥0.146. (Closes: #1099818)
+  * cryptsetup-suspend-wrapper, DEP-8: Don't hardcode unmkinitramfs destdir.
+  * d/t/cryptroot-*: Pass --bitmap=internal to mdadm(8).
+  * decrypt_gnupg: Drop obsolete option --secret-keyring. (Closes: #1099760)
+  * initramfs hook: Add vmx_crypto module. (Closes: #1087271)
+  * d/copyright: Replace FSF's old postal address with an URL.
+  * Update Standards-Version to 4.7.2 (no changes necessary).
+  * Boot script: Fix prereq() logic between directories. (Closes: #1081552)
+
+  [ Carles Pina i Estany ]
+  * Added po-debconf Catalan translation. (Closes: #1101115)
+
+  [ Vladimir Petko ]
+  * Fix cryptroot-* autopkgtests on Ubuntu. (Closes: #1031198)
+
+  [ Nicolas Melot ]
+  * initramfs: Process crypttab entries with the 'initramfs' option first and
+    preserve their order. (Closes: #1055024)
+
+ -- Guilhem Moulin <guilhem@debian.org>  Sun, 04 May 2025 21:55:13 +0200
 
 cryptsetup (2:2.7.5-1) unstable; urgency=medium
 

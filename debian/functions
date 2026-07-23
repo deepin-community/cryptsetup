@@ -83,6 +83,7 @@ crypttab_parse_options() {
              CRYPTTAB_OPTION_keyslot \
              CRYPTTAB_OPTION_header \
              CRYPTTAB_OPTION_tcrypthidden \
+             CRYPTTAB_OPTION_tcryptsystem \
              CRYPTTAB_OPTION_same_cpu_crypt \
              CRYPTTAB_OPTION_submit_from_crypt_cpus \
              CRYPTTAB_OPTION_no_read_workqueue \
@@ -150,6 +151,7 @@ crypttab_validate_option() {
         key-slot) OPTION="keyslot";;
         tcrypt-hidden) OPTION="tcrypthidden";;
         tcrypt-veracrypt) OPTION="veracrypt";;
+        tcrypt-system) OPTION="tcryptsystem";;
     esac
 
     # sanitize the option name so CRYPTTAB_OPTION_$OPTION is a valid variable name
@@ -162,7 +164,6 @@ crypttab_validate_option() {
         submit-from-crypt-cpus) OPTION="submit_from_crypt_cpus";;
         no-read-workqueue) OPTION="no_read_workqueue";;
         no-write-workqueue) OPTION="no_write_workqueue";;
-        tpm2-device) OPTION="tpm2_device";;
     esac
 
     case "$o" in
@@ -242,13 +243,13 @@ crypttab_validate_option() {
         tcrypt) ;;
         veracrypt) ;;
         tcrypthidden) ;;
+        tcryptsystem) ;;
         bitlk) ;;
         fvault2) ;;
         same-cpu-crypt) ;;
         submit-from-crypt-cpus) ;;
         no-read-workqueue) ;;
         no-write-workqueue) ;;
-        tpm2-device) ;;
         x-initrd.attach)
             unset -v OPTION ;; # ignored, cf. #1072058
         *)
@@ -359,7 +360,7 @@ unlock_mapping() {
         unset -v CRYPTTAB_OPTION_keyfile_offset
     else
         # ignored for non-TCRYPT devices
-        unset -v CRYPTTAB_OPTION_veracrypt CRYPTTAB_OPTION_tcrypthidden
+        unset -v CRYPTTAB_OPTION_veracrypt CRYPTTAB_OPTION_tcrypthidden CRYPTTAB_OPTION_tcryptsystem
     fi
 
     if [ "$CRYPTTAB_TYPE" != "luks" ]; then
@@ -381,6 +382,7 @@ unlock_mapping() {
         ${CRYPTTAB_OPTION_veracrypt:+--veracrypt} \
         ${CRYPTTAB_OPTION_keyslot:+--key-slot="$CRYPTTAB_OPTION_keyslot"} \
         ${CRYPTTAB_OPTION_tcrypthidden:+--tcrypt-hidden} \
+        ${CRYPTTAB_OPTION_tcryptsystem:+--tcrypt-system} \
         ${CRYPTTAB_OPTION_keyfile_size:+--keyfile-size="$CRYPTTAB_OPTION_keyfile_size"} \
         ${CRYPTTAB_OPTION_keyfile_offset:+--keyfile-offset="$CRYPTTAB_OPTION_keyfile_offset"} \
         ${CRYPTTAB_OPTION_same_cpu_crypt:+--perf-same_cpu_crypt} \
@@ -597,11 +599,9 @@ _resolve_device() {
         MAJ="$maj"
         MIN="$min"
         return 0
+    else
+        cryptsetup_message "ERROR: Couldn't resolve device $spec"
     fi
-    case $spec in
-        overlay|usr-overlay) ;;
-        *) cryptsetup_message "ERROR: Couldn't resolve device $spec";;
-    esac
     return 1
 }
 

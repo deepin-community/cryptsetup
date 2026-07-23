@@ -1,5 +1,10 @@
 PKGS_EXTRA+=( e2fsprogs ) # for fsck.ext4
 PKGS_EXTRA+=( cryptsetup-initramfs cryptsetup )
-PKG_INIT="sysvinit-core"
-
+# "$DISTRIBUTOR_ID" is defined in ../utils/cryptroot-common
+case "$DISTRIBUTOR_ID" in
+    debian) PKG_INIT="sysvinit-core";;
+    ubuntu) PKG_INIT="systemd-sysv";;
+    *) echo "ERROR: Unknown distributor ID '$DISTRIBUTOR_ID', can't determine default init package" >&2;
+       exit 1;;
+esac
 # vim: set filetype=bash :

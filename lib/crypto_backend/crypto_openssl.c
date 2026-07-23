@@ -2,8 +2,8 @@
 /*
  * OPENSSL crypto backend implementation
  *
- * Copyright (C) 2010-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2010-2024 Milan Broz
+ * Copyright (C) 2010-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2010-2026 Milan Broz
  */
 
 #include <stdio.h>
@@ -15,16 +15,28 @@
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include "crypto_backend_internal.h"
-#if OPENSSL_VERSION_MAJOR >= 3
+
+/*
+ * LibreSSL defines OPENSSL_VERSION_MAJOR >= 3 for compatibility but does not
+ * implement the OpenSSL 3.x provider/KDF API. Use this macro instead.
+ */
+#if OPENSSL_VERSION_MAJOR >= 3 && !defined(LIBRESSL_VERSION_NUMBER)
+#define OPENSSL3_API 1
+#else
+#define OPENSSL3_API 0
+#endif
+
+#if OPENSSL3_API
 #include <openssl/provider.h>
 #include <openssl/kdf.h>
 #include <openssl/core_names.h>
+#include <openssl/err.h>
 static OSSL_PROVIDER *ossl_legacy = NULL;
 static OSSL_PROVIDER *ossl_default = NULL;
 static OSSL_LIB_CTX  *ossl_ctx = NULL;
 static char backend_version[256] = "OpenSSL";
 
-#define MAX_THREADS 8
+#define MAX_THREADS 64
 #if !HAVE_DECL_OSSL_GET_MAX_THREADS
 static int OSSL_set_max_threads(OSSL_LIB_CTX *ctx __attribute__((unused)),
 				uint64_t max_threads __attribute__((unused))) { return 0; }
@@ -47,7 +59,7 @@ struct crypt_hash {
 };
 
 struct crypt_hmac {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	EVP_MAC *mac;
 	EVP_MAC_CTX *md;
 	EVP_MAC_CTX *md_org;
@@ -131,7 +143,7 @@ static void HMAC_CTX_free(HMAC_CTX *md)
 #else
 static void openssl_backend_exit(void)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	if (ossl_legacy)
 		OSSL_PROVIDER_unload(ossl_legacy);
 	if (ossl_default)
@@ -150,7 +162,7 @@ static int openssl_backend_init(bool fips)
 /*
  * OpenSSL >= 3.0.0 provides some algorithms in legacy provider
  */
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	int r;
 	bool ossl_threads = false;
 
@@ -196,7 +208,7 @@ static int openssl_backend_init(bool fips)
 
 static const char *openssl_backend_version(void)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	return backend_version;
 #else
 	return OpenSSL_version(OPENSSL_VERSION);
@@ -232,10 +244,10 @@ void crypt_backend_destroy(void)
 uint32_t crypt_backend_flags(void)
 {
 	uint32_t flags = 0;
-#if OPENSSL_VERSION_MAJOR < 3
+#if !OPENSSL3_API
 	flags |= CRYPT_BACKEND_PBKDF2_INT;
 #endif
-#if HAVE_DECL_OSSL_KDF_PARAM_ARGON2_VERSION
+#if OPENSSL3_API && HAVE_DECL_OSSL_KDF_PARAM_ARGON2_VERSION
 	flags |= CRYPT_BACKEND_ARGON2;
 #endif
 	return flags;
@@ -272,7 +284,7 @@ static const char *crypt_hash_compat_name(const char *name)
 
 static const EVP_MD *hash_id_get(const char *name)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	return EVP_MD_fetch(ossl_ctx, crypt_hash_compat_name(name), NULL);
 #else
 	return EVP_get_digestbyname(crypt_hash_compat_name(name));
@@ -281,7 +293,7 @@ static const EVP_MD *hash_id_get(const char *name)
 
 static void hash_id_free(const EVP_MD *hash_id)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	EVP_MD_free(CONST_CAST(EVP_MD*)hash_id);
 #else
 	UNUSED(hash_id);
@@ -290,7 +302,7 @@ static void hash_id_free(const EVP_MD *hash_id)
 
 static const EVP_CIPHER *cipher_type_get(const char *name)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	return EVP_CIPHER_fetch(ossl_ctx, name, NULL);
 #else
 	return EVP_get_cipherbyname(name);
@@ -299,7 +311,7 @@ static const EVP_CIPHER *cipher_type_get(const char *name)
 
 static void cipher_type_free(const EVP_CIPHER *cipher_type)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	EVP_CIPHER_free(CONST_CAST(EVP_CIPHER*)cipher_type);
 #else
 	UNUSED(cipher_type);
@@ -381,11 +393,13 @@ int crypt_hash_final(struct crypt_hash *ctx, char *buffer, size_t length)
 	if (EVP_DigestFinal_ex(ctx->md, tmp, &tmp_len) != 1)
 		return -EINVAL;
 
-	memcpy(buffer, tmp, length);
-	crypt_backend_memzero(tmp, sizeof(tmp));
-
-	if (tmp_len < length)
+	if (tmp_len < length) {
+		crypt_backend_memzero(tmp, sizeof(tmp));
 		return -EINVAL;
+	}
+
+	crypt_backend_memcpy(buffer, tmp, length);
+	crypt_backend_memzero(tmp, sizeof(tmp));
 
 	if (crypt_hash_restart(ctx))
 		return -EINVAL;
@@ -410,7 +424,7 @@ int crypt_hmac_init(struct crypt_hmac **ctx, const char *name,
 		    const void *key, size_t key_length)
 {
 	struct crypt_hmac *h;
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	OSSL_PARAM params[] = {
 		OSSL_PARAM_utf8_string(OSSL_MAC_PARAM_DIGEST, CONST_CAST(void*)name, 0),
 		OSSL_PARAM_END
@@ -442,6 +456,12 @@ int crypt_hmac_init(struct crypt_hmac **ctx, const char *name,
 
 	h->hash_len = EVP_MAC_CTX_get_mac_size(h->md);
 	h->md_org = EVP_MAC_CTX_dup(h->md);
+	if (!h->md_org) {
+		EVP_MAC_CTX_free(h->md);
+		EVP_MAC_free(h->mac);
+		free(h);
+		return -EINVAL;
+	}
 #else
 	h = malloc(sizeof(*h));
 	if (!h)
@@ -460,7 +480,12 @@ int crypt_hmac_init(struct crypt_hmac **ctx, const char *name,
 		return -EINVAL;
 	}
 
-	HMAC_Init_ex(h->md, key, key_length, h->hash_id, NULL);
+	if (HMAC_Init_ex(h->md, key, key_length, h->hash_id, NULL) != 1) {
+		hash_id_free(h->hash_id);
+		HMAC_CTX_free(h->md);
+		free(h);
+		return -EINVAL;
+	}
 
 	h->hash_len = EVP_MD_size(h->hash_id);
 #endif
@@ -470,31 +495,31 @@ int crypt_hmac_init(struct crypt_hmac **ctx, const char *name,
 
 static int crypt_hmac_restart(struct crypt_hmac *ctx)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	EVP_MAC_CTX_free(ctx->md);
 	ctx->md = EVP_MAC_CTX_dup(ctx->md_org);
 	if (!ctx->md)
 		return -EINVAL;
 #else
-	HMAC_Init_ex(ctx->md, NULL, 0, ctx->hash_id, NULL);
+	if (HMAC_Init_ex(ctx->md, NULL, 0, ctx->hash_id, NULL) != 1)
+		return -EINVAL;
 #endif
 	return 0;
 }
 
 int crypt_hmac_write(struct crypt_hmac *ctx, const char *buffer, size_t length)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	return EVP_MAC_update(ctx->md, (const unsigned char *)buffer, length) == 1 ? 0 : -EINVAL;
 #else
-	HMAC_Update(ctx->md, (const unsigned char *)buffer, length);
-	return 0;
+	return HMAC_Update(ctx->md, (const unsigned char *)buffer, length) == 1 ? 0 : -EINVAL;
 #endif
 }
 
 int crypt_hmac_final(struct crypt_hmac *ctx, char *buffer, size_t length)
 {
 	unsigned char tmp[EVP_MAX_MD_SIZE];
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	size_t tmp_len = 0;
 
 	if (length > (size_t)ctx->hash_len)
@@ -508,13 +533,16 @@ int crypt_hmac_final(struct crypt_hmac *ctx, char *buffer, size_t length)
 	if (length > (size_t)ctx->hash_len)
 		return -EINVAL;
 
-	HMAC_Final(ctx->md, tmp, &tmp_len);
-#endif
-	memcpy(buffer, tmp, length);
-	crypt_backend_memzero(tmp, sizeof(tmp));
-
-	if (tmp_len < length)
+	if (HMAC_Final(ctx->md, tmp, &tmp_len) != 1)
 		return -EINVAL;
+#endif
+	if (tmp_len < length) {
+		crypt_backend_memzero(tmp, sizeof(tmp));
+		return -EINVAL;
+	}
+
+	crypt_backend_memcpy(buffer, tmp, length);
+	crypt_backend_memzero(tmp, sizeof(tmp));
 
 	if (crypt_hmac_restart(ctx))
 		return -EINVAL;
@@ -524,7 +552,7 @@ int crypt_hmac_final(struct crypt_hmac *ctx, char *buffer, size_t length)
 
 void crypt_hmac_destroy(struct crypt_hmac *ctx)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	EVP_MAC_CTX_free(ctx->md);
 	EVP_MAC_CTX_free(ctx->md_org);
 	EVP_MAC_free(ctx->mac);
@@ -539,6 +567,9 @@ void crypt_hmac_destroy(struct crypt_hmac *ctx)
 int crypt_backend_rng(char *buffer, size_t length,
 	int quality __attribute__((unused)), int fips __attribute__((unused)))
 {
+	if (length > INT_MAX)
+		return -EINVAL;
+
 	if (RAND_bytes((unsigned char *)buffer, length) != 1)
 		return -EINVAL;
 
@@ -550,7 +581,7 @@ static int openssl_pbkdf2(const char *password, size_t password_length,
 	const char *hash, char *key, size_t key_length)
 {
 	int r;
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	EVP_KDF_CTX *ctx;
 	EVP_KDF *pbkdf2;
 	OSSL_PARAM params[] = {
@@ -587,6 +618,9 @@ static int openssl_pbkdf2(const char *password, size_t password_length,
 	if (iterations > INT_MAX)
 		return -EINVAL;
 
+	if (password_length > INT_MAX || salt_length > INT_MAX || key_length > INT_MAX)
+		return -EINVAL;
+
 	r = PKCS5_PBKDF2_HMAC(password, (int)password_length, (const unsigned char *)salt,
 		(int)salt_length, iterations, hash_id, (int)key_length, (unsigned char*) key);
 #endif
@@ -597,7 +631,7 @@ static int openssl_argon2(const char *type, const char *password, size_t passwor
 	const char *salt, size_t salt_length, char *key, size_t key_length,
 	uint32_t iterations, uint32_t memory, uint32_t parallel)
 {
-#if HAVE_DECL_OSSL_KDF_PARAM_ARGON2_VERSION
+#if OPENSSL3_API && HAVE_DECL_OSSL_KDF_PARAM_ARGON2_VERSION
 	EVP_KDF_CTX *ctx;
 	EVP_KDF *argon2;
 	unsigned int threads = parallel;
@@ -637,6 +671,10 @@ static int openssl_argon2(const char *type, const char *password, size_t passwor
 
 	EVP_KDF_CTX_free(ctx);
 	EVP_KDF_free(argon2);
+
+	/* Memory allocation is common issue with memory-hard Argon2 */
+	if (r == 0 && ERR_GET_REASON(ERR_get_error()) == ERR_R_MALLOC_FAILURE)
+		return -ENOMEM;
 
 	/* _derive() returns 0 or negative value on error, 1 on success */
 	return r == 1 ? 0 : -EINVAL;
@@ -766,9 +804,12 @@ void crypt_cipher_destroy(struct crypt_cipher *ctx)
 }
 
 static int _cipher_encrypt(struct crypt_cipher *ctx, const unsigned char *in, unsigned char *out,
-			   int length, const unsigned char *iv, size_t iv_length)
+			   size_t length, const unsigned char *iv, size_t iv_length)
 {
 	int len;
+
+	if (length > INT_MAX)
+		return -EINVAL;
 
 	if (ctx->u.lib.iv_length != iv_length)
 		return -EINVAL;
@@ -776,7 +817,7 @@ static int _cipher_encrypt(struct crypt_cipher *ctx, const unsigned char *in, un
 	if (EVP_EncryptInit_ex(ctx->u.lib.hd_enc, NULL, NULL, NULL, iv) != 1)
 		return -EINVAL;
 
-	if (EVP_EncryptUpdate(ctx->u.lib.hd_enc, out, &len, in, length) != 1)
+	if (EVP_EncryptUpdate(ctx->u.lib.hd_enc, out, &len, in, (int)length) != 1)
 		return -EINVAL;
 
 	if (EVP_EncryptFinal(ctx->u.lib.hd_enc, out + len, &len) != 1)
@@ -786,9 +827,12 @@ static int _cipher_encrypt(struct crypt_cipher *ctx, const unsigned char *in, un
 }
 
 static int _cipher_decrypt(struct crypt_cipher *ctx, const unsigned char *in, unsigned char *out,
-			   int length, const unsigned char *iv, size_t iv_length)
+			   size_t length, const unsigned char *iv, size_t iv_length)
 {
 	int len;
+
+	if (length > INT_MAX)
+		return -EINVAL;
 
 	if (ctx->u.lib.iv_length != iv_length)
 		return -EINVAL;
@@ -796,7 +840,7 @@ static int _cipher_decrypt(struct crypt_cipher *ctx, const unsigned char *in, un
 	if (EVP_DecryptInit_ex(ctx->u.lib.hd_dec, NULL, NULL, NULL, iv) != 1)
 		return -EINVAL;
 
-	if (EVP_DecryptUpdate(ctx->u.lib.hd_dec, out, &len, in, length) != 1)
+	if (EVP_DecryptUpdate(ctx->u.lib.hd_dec, out, &len, in, (int)length) != 1)
 		return -EINVAL;
 
 	if (EVP_DecryptFinal(ctx->u.lib.hd_dec, out + len, &len) != 1)
@@ -876,7 +920,7 @@ bool crypt_fips_mode(void) { return false; }
 #else
 static bool openssl_fips_mode(void)
 {
-#if OPENSSL_VERSION_MAJOR >= 3
+#if OPENSSL3_API
 	return EVP_default_properties_is_fips_enabled(NULL);
 #else
 	return FIPS_mode();

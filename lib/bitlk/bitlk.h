@@ -2,9 +2,9 @@
 /*
  * BITLK (BitLocker-compatible) header definition
  *
- * Copyright (C) 2019-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2019-2024 Milan Broz
- * Copyright (C) 2019-2024 Vojtech Trefny
+ * Copyright (C) 2019-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2019-2026 Milan Broz
+ * Copyright (C) 2019-2026 Vojtech Trefny
  */
 
 #ifndef _CRYPTSETUP_BITLK_H
@@ -21,6 +21,8 @@ struct volume_key;
 #define BITLK_NONCE_SIZE 12
 #define BITLK_SALT_SIZE 16
 #define BITLK_VMK_MAC_TAG_SIZE 16
+#define BITLK_VALIDATION_VMK_HEADER_SIZE 8
+#define BITLK_VALIDATION_VMK_DATA_SIZE 72
 
 #define BITLK_STATE_NORMAL 0x0004
 
@@ -85,6 +87,13 @@ struct bitlk_fvek {
 	struct volume_key *vk;
 };
 
+struct bitlk_validation {
+	uint8_t mac_tag[BITLK_VMK_MAC_TAG_SIZE];
+	uint8_t nonce[BITLK_NONCE_SIZE];
+	/* technically, this is not "VMK", but some sources call it this way */
+	uint8_t enc_datum[BITLK_VALIDATION_VMK_DATA_SIZE];
+};
+
 struct bitlk_metadata {
 	uint16_t sector_size;
 	uint64_t volume_size;
@@ -101,8 +110,10 @@ struct bitlk_metadata {
 	uint32_t metadata_version;
 	uint64_t volume_header_offset;
 	uint64_t volume_header_size;
+	const char *sha256_fve[32];
 	struct bitlk_vmk *vmks;
 	struct bitlk_fvek *fvek;
+	struct bitlk_validation *validation;
 };
 
 int BITLK_read_sb(struct crypt_device *cd, struct bitlk_metadata *params);
@@ -115,17 +126,9 @@ int BITLK_get_volume_key(struct crypt_device *cd,
 			 const struct bitlk_metadata *params,
 			 struct volume_key **open_fvek_key);
 
-int BITLK_activate_by_passphrase(struct crypt_device *cd,
-				 const char *name,
-				 const char *password,
-				 size_t passwordLen,
-				 const struct bitlk_metadata *params,
-				 uint32_t flags);
-
 int BITLK_activate_by_volume_key(struct crypt_device *cd,
 				 const char *name,
-				 const char *volume_key,
-				 size_t volume_key_size,
+				 struct volume_key *vk,
 				 const struct bitlk_metadata *params,
 				 uint32_t flags);
 

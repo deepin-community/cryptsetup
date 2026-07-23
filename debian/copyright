@@ -6,8 +6,8 @@ Upstream-Name: cryptsetup
 Files: *
 Copyright: © 2004      Christophe Saout <christophe@saout.de>
            © 2004-2008 Clemens Fruhwirth <clemens@endorphin.org>
-           © 2008-2023 Red Hat, Inc.
-           © 2008-2023 Milan Broz <gmazyland@gmail.com>
+           © 2008-2025 Red Hat, Inc.
+           © 2008-2025 Milan Broz <gmazyland@gmail.com>
 License: GPL-2+ with OpenSSL exception
 
 Files: debian/*
@@ -15,7 +15,7 @@ Copyright: © 2004-2005 Wesley W. Terpstra <terpstra@debian.org>
            © 2005-2006 Michael Gebetsroither <michael.geb@gmx.at>
            © 2006-2008 David Härdeman <david@hardeman.nu>
            © 2005-2015 Jonas Meurer <jonas@freesources.org>
-           © 2016-2023 Guilhem Moulin <guilhem@debian.org>
+           © 2016-2025 Guilhem Moulin <guilhem@debian.org>
 License: GPL-2+
 
 Files: debian/scripts/suspend/cryptsetup-suspend.c
@@ -57,37 +57,37 @@ Copyright: © 2005-2015 Jonas Meurer <jonas@freesources.org>
 License: GPL-2+
 
 Files: debian/tests/*
-Copyright: © 2021-2022 Guilhem Moulin <guilhem@debian.org>
+Copyright: © 2021-2025 Guilhem Moulin <guilhem@debian.org>
 License: GPL-3+
 
-Files: docs/examples/* tests/all-symbols-test.c
-Copyright: © 2011-2023 Red Hat, Inc.
+Files: docs/examples/* tests/all-symbols-test.c tests/crypto-check.c
+Copyright: © 2011-2025 Red Hat, Inc.
 License: LGPL-2.1+
 
 Files: lib/bitlk/*
-Copyright: © 2019-2023 Red Hat, Inc.
-           © 2019-2023 Milan Broz <gmazyland@gmail.com>
-           © 2019-2023 Vojtech Trefny
+Copyright: © 2019-2025 Red Hat, Inc.
+           © 2019-2025 Milan Broz <gmazyland@gmail.com>
+           © 2019-2025 Vojtech Trefny
 License: LGPL-2.1+
 
 Files: tokens/ssh/*
-Copyright: © 2016-2023 Milan Broz <gmazyland@gmail.com>
-           © 2020-2023 Vojtech Trefny
+Copyright: © 2016-2025 Milan Broz <gmazyland@gmail.com>
+           © 2020-2025 Vojtech Trefny
 License: LGPL-2.1+
 
 Files: tokens/ssh/cryptsetup-ssh.c
-Copyright: © 2016-2023 Milan Broz <gmazyland@gmail.com>
-           © 2021-2023 Vojtech Trefny
+Copyright: © 2016-2025 Milan Broz <gmazyland@gmail.com>
+           © 2021-2025 Vojtech Trefny
 License: GPL-2+
 
-Files: lib/crypto_backend/* lib/integrity/* lib/loopaes/* lib/tcrypt/* lib/verity/*
-Copyright: © 2009-2023 Red Hat, Inc.
-           © 2010-2023 Milan Broz <gmazyland@gmail.com>
+Files: lib/crypto_backend/* lib/integrity/* lib/loopaes/* lib/luks2/hw_opal/* lib/tcrypt/* lib/utils_storage_wrappers.* lib/verity/*
+Copyright: © 2009-2025 Red Hat, Inc.
+           © 2010-2025 Milan Broz <gmazyland@gmail.com>
 License: LGPL-2.1+
 
 Files: lib/crypto_backend/base64.c
 Copyright: © 2010 Lennart Poettering
-           © 2021-2023 Milan Broz <gmazyland@gmail.com>
+           © 2021-2025 Milan Broz <gmazyland@gmail.com>
 License: LGPL-2.1+
 
 Files: lib/crypto_backend/utf8.c
@@ -98,8 +98,8 @@ Copyright: © 2010 Lennart Poettering
 License: GPL-2+
 
 Files: lib/crypto_backend/crypto_openssl.c
-Copyright: © 2009-2023 Red Hat, Inc.
-           © 2010-2023 Milan Broz <gmazyland@gmail.com>
+Copyright: © 2009-2025 Red Hat, Inc.
+           © 2010-2025 Milan Broz <gmazyland@gmail.com>
 License: LGPL-2.1+ with OpenSSL exception
 
 Files: lib/fvault2/fvault2.c lib/fvault2/fvault2.h
@@ -107,8 +107,8 @@ Copyright: © 2021-2022 Pavel Tobias
 License: LGPL-2.1+ with OpenSSL exception
 
 Files: lib/keyslot_context.c lib/keyslot_context.h
-Copyright: © 2022-2023 Red Hat, Inc.
-           © 2022-2023 Ondrej Kozina <okozina@redhat.com>
+Copyright: © 2022-2025 Red Hat, Inc.
+           © 2022-2025 Ondrej Kozina <okozina@redhat.com>
 License: GPL-2+
 
 Files: lib/crypto_backend/argon2/*
@@ -121,6 +121,14 @@ License: CC0 or Apache-2.0
 Files: lib/crypto_backend/argon2/encoding.c
 Copyright: © 2015 Thomas Pornin <pornin@bolet.org>
 License: CC0 or Apache-2.0
+
+Files: tests/fuzz/FuzzerInterface.h
+Copyright: © LLVM Project
+License: Apache-2.0
+
+Files: tests/fuzz/json_proto_converter.cc tests/fuzz/json_proto_converter.h
+Copyright: © 2020 Google, Inc.
+License: Apache-2.0
 
 Files: lib/crypto_backend/crc32.c
 Copyright: © 1986 Gary S. Brown
@@ -139,7 +147,7 @@ License: public-domain
  what you wish.
 
 Files: misc/luks-header-from-active
-Copyright: © 2011-2024 Milan Broz <gmazyland@gmail.com>
+Copyright: © 2011-2025 Milan Broz <gmazyland@gmail.com>
 License: LGPL-2.1+
 
 Files: FAQ.md
@@ -158,10 +166,8 @@ License: GPL-2+
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
  .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- 02110-1301 USA.
+ You should have received a copy of the GNU General Public License along
+ with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the complete text of the GNU General Public
  License version 2 can be found in `/usr/share/common-licenses/GPL-2'.
@@ -177,10 +183,8 @@ License: GPL-2+ with OpenSSL exception
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
  .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- 02110-1301 USA.
+ You should have received a copy of the GNU General Public License along
+ with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the complete text of the GNU General Public
  License version 2 can be found in `/usr/share/common-licenses/GPL-2'.
@@ -208,9 +212,8 @@ License: GPL-3+
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
  .
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software Foundation,
- Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ You should have received a copy of the GNU General Public License along
+ with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the complete text of the GNU General Public License
  version 3 can be found in `/usr/share/common-licenses/GPL-3`.
@@ -226,10 +229,8 @@ License: LGPL-2.1+
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Lesser General Public License for more details.
  .
- You should have received a copy of the GNU Lesser General Public
- License along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- 02110-1301 USA.
+ You should have received a copy of the GNU Lesser General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the complete text of the GNU Lesser General Public
  License version 2.1 can be found in `/usr/share/common-licenses/LGPL-2.1'.
@@ -245,10 +246,8 @@ License: LGPL-2.1+ with OpenSSL exception
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Lesser General Public License for more details.
  .
- You should have received a copy of the GNU Lesser General Public
- License along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- 02110-1301 USA.
+ You should have received a copy of the GNU Lesser General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the complete text of the GNU Lesser General Public
  License version 2.1 can be found in `/usr/share/common-licenses/LGPL-2.1'.

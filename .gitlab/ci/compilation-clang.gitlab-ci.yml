@@ -3,25 +3,86 @@ test-clang-compilation:
     - .gitlab-shared-clang
   script:
     - export CFLAGS="-Wall -Werror"
+    - ./autogen.sh
+    - $CC --version
     - ./configure
     - make -j
     - make -j check-programs
 
-test-clang-Wall-script:
+test-clang-Wall-script-ubuntu:
   extends:
     - .gitlab-shared-clang
   script:
     - export CFLAGS="-g -O0"
     - export CC="$CI_PROJECT_DIR/.gitlab/ci/clang-Wall"
+    - ./autogen.sh
+    - $CC --version
     - ./configure
     - make -j CFLAGS="-g -O0 -Werror"
     - make -j CFLAGS="-g -O0 -Werror" check-programs
 
-test-scan-build:
+test-clang-Wall-script-alpine:
+  extends:
+    - .gitlab-shared-clang-alpine
+  allow_failure: true
+  script:
+    - export CFLAGS="-g -O0"
+    - export CC="$CI_PROJECT_DIR/.gitlab/ci/clang-Wall"
+    - ./autogen.sh
+    - $CC --version
+    - ./configure
+    - make -j CFLAGS="-g -O0 -Werror"
+    - make -j CFLAGS="-g -O0 -Werror" check-programs
+
+test-scan-build-ubuntu:
   extends:
     - .gitlab-shared-clang
   script:
+    - ./autogen.sh
+    - echo "scan-build${COMPILER_VERSION:+-$COMPILER_VERSION}"
     - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} -V ./configure CFLAGS="-g -O0"
     - make clean
     - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j
     - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j check-programs
+
+test-scan-build-alpine:
+  extends:
+    - .gitlab-shared-clang-alpine
+  allow_failure: true
+  script:
+    - ./autogen.sh
+    - echo "scan-build${COMPILER_VERSION:+-$COMPILER_VERSION}"
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} -V ./configure CFLAGS="-g -O0"
+    - make clean
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j check-programs
+
+test-scan-build-backends:
+  extends:
+    - .gitlab-shared-clang
+  parallel:
+    matrix:
+      - BACKENDS: [
+          "openssl",
+          "gcrypt",
+          "nss",
+          "kernel",
+          "nettle",
+          "mbedtls"
+      ]
+  rules:
+    - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /v2\..\.x$/
+      changes:
+        - lib/crypto_backend/*
+  script:
+    - DEBIAN_FRONTEND=noninteractive apt-get -yq install libgcrypt20-dev libnss3-dev nettle-dev libmbedtls-dev
+    - ./autogen.sh
+    - echo "Configuring with crypto backend $BACKENDS"
+    - echo "scan-build${COMPILER_VERSION:+-$COMPILER_VERSION}"
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} -V ./configure CFLAGS="-g -O0" --with-crypto_backend=$BACKENDS
+    - make clean
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j
+    - scan-build${COMPILER_VERSION:+-$COMPILER_VERSION} --status-bugs -maxloop 10 make -j check-programs
+    - ./tests/vectors-test

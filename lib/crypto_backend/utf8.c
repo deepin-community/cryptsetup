@@ -5,7 +5,7 @@
  * Copyright (C) 2010 Lennart Poettering
  *
  * cryptsetup related changes
- * Copyright (C) 2021-2024 Vojtech Trefny
+ * Copyright (C) 2021-2026 Vojtech Trefny
 
  * Parts of the original systemd implementation are based on the GLIB utf8
  * validation functions.
@@ -16,9 +16,9 @@
  */
 
 #include <errno.h>
-#include <endian.h>
 
 #include "crypto_backend.h"
+#include "bitops.h"
 
 static inline bool utf16_is_surrogate(char16_t c)
 {
@@ -273,4 +273,21 @@ int crypt_utf8_to_utf16(char16_t **out, const char *s, size_t length)
 
 	*p = 0;
 	return 0;
+}
+
+/**
+ * crypt_char16_strlen()
+ * @s: string to get length of
+ *
+ * Returns: number of 16-bit words in the string
+ */
+size_t crypt_char16_strlen(const char16_t *s) {
+	size_t n = 0;
+
+	assert(s);
+
+	while (*s != 0)
+		n++, s++;
+
+	return n;
 }

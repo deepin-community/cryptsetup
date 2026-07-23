@@ -13,10 +13,10 @@
 # $1 full target dir
 # $2 full source luks2 image
 
-function generate()
+generate()
 {
 	# make area 7 being included in area 6
-	json_str=$(jq -c '.keyslots."7".area.offset = ([ .keyslots."6".area.offset, .keyslots."6".area.size ] | map(tonumber) | add - 1 | tostring)' $TMPDIR/json0)
+	json_str=$(_jq '.keyslots."7".area.offset = ([ .keyslots."6".area.offset, .keyslots."6".area.size ] | map(tonumber) | add - 1 | tostring)' $TMPDIR/json0)
 	test ${#json_str} -lt $((LUKS2_JSON_SIZE*512)) || exit 2
 
 	write_luks2_json "$json_str" $TMPDIR/json0
@@ -24,12 +24,12 @@ function generate()
 	lib_mangle_json_hdr0_kill_hdr1
 }
 
-function check()
+check()
 {
 	lib_hdr1_killed || exit 2
 
 	read_luks2_json0 $TGT_IMG $TMPDIR/json_res0
-	jq -c 'if .keyslots."7".area.offset != ([.keyslots."6".area.offset, .keyslots."6".area.size ] | map(tonumber) | add - 1 | tostring)
+	_jq 'if .keyslots."7".area.offset != ([.keyslots."6".area.offset, .keyslots."6".area.size ] | map(tonumber) | add - 1 | tostring)
 	       then error("Unexpected value in result json") else empty end' $TMPDIR/json_res0 || exit 5
 }
 

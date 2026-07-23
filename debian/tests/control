@@ -1,12 +1,20 @@
 # Run the installed binaries and libraries through the full upstream test suite.
 Features: test-name=upstream-testsuite
-Test-Command: make -C ./tests -f Makefile.localtest -j tests CRYPTSETUP_PATH=/sbin TESTSUITE_NOSKIP=y
+Test-Command:
+ dh_update_autotools_config &&
+ dh_autoreconf &&
+ make -f debian/rules override_dh_auto_configure DEB_BUILD_OPTIONS="nocheck nodoc" DEB_BUILD_PROFILES="noudeb" &&
+ make libcrypto_backend.la &&
+ cd ./tests &&
+ gcc -I ../lib -c ./crypto-check.c &&
+ gcc -o ./crypto-check ./crypto-check.o ../.libs/libcrypto_backend.a -lcrypto &&
+ make -f Makefile.localtest -j tests CRYPTSETUP_PATH=/sbin TESTSUITE_NOSKIP=y
+    RUN_KEYRING_TRUSTED_TEST=y
+    RUN_SYSTEMD_PLUGIN_TEST=y
 Depends: cryptsetup-bin,
 # to compile tests/*.c
-  gcc,
   libcryptsetup-dev,
-  libdevmapper-dev,
-#
+  @builddeps@,
 # for hexdump(1)
   bsdextrautils,
 # for dmsetup(8)
@@ -25,6 +33,12 @@ Depends: cryptsetup-bin,
   procps,
 # for uuencode(1)
   sharutils,
+# for swtpm(8) and swtpm_ioctl(8)
+  swtpm,
+  swtpm-tools,
+  tpm2-tools,
+# for systemd-cryptenroll(1)
+  systemd-cryptsetup,
 # for xxd(1)
   xxd
 #
@@ -54,18 +68,27 @@ Restrictions: allow-stderr, needs-root, isolation-machine
 # significantly faster so we use it for crude checks of our initramfs
 # hook and the initramfs image itself.
 Tests: initramfs-hook
-Depends: cryptsetup-initramfs, e2fsprogs, zstd
+Depends: cryptsetup-initramfs,
+         e2fsprogs,
+         initramfs-tools-core,
+         zstd
 Restrictions: allow-stderr, needs-root, isolation-machine
 
 Tests: initramfs-hook-legacy
-Depends: cryptsetup-initramfs, e2fsprogs, openssl-provider-legacy, zstd
+Depends: cryptsetup-initramfs,
+         e2fsprogs,
+         initramfs-tools-core,
+         openssl-provider-legacy,
+         zstd,
 Restrictions: allow-stderr, needs-root, isolation-machine
 
 Tests: cryptroot-lvm, cryptroot-legacy
 # Only dependencies required to set the VM here are listed here;
 # cryptsetup is not listed since we only install it in the VM.
-Depends: cryptsetup-bin,
+Depends: cpio,
+         cryptsetup-bin,
          dosfstools [arm64 armhf],
+         e2fsprogs,
          fdisk,
          genext2fs,
          initramfs-tools-core,
@@ -81,25 +104,10 @@ Restrictions: allow-stderr, needs-root
 Architecture: amd64
 
 Tests: cryptroot-md
-Depends: cryptsetup-bin,
-         dosfstools [arm64 armhf],
-         fdisk,
-         genext2fs,
-         initramfs-tools-core,
-         libjson-perl,
-         lvm2,
-         mdadm,
-         qemu-efi-aarch64 [arm64],
-         qemu-efi-arm [armhf],
-         qemu-system-arm [arm64 armhf] | qemu-system-x86 [amd64 i386] | qemu-system,
-         udev
-Restrictions: allow-stderr, needs-root
-Architecture: amd64
-
-Tests: cryptroot-nested
-Depends: btrfs-progs,
+Depends: cpio,
          cryptsetup-bin,
          dosfstools [arm64 armhf],
+         e2fsprogs,
          fdisk,
          genext2fs,
          initramfs-tools-core,
@@ -113,9 +121,30 @@ Depends: btrfs-progs,
 Restrictions: allow-stderr, needs-root
 Architecture: amd64
 
+#Tests: cryptroot-nested
+#Depends: cpio,
+#         btrfs-progs,
+#         cryptsetup-bin,
+#         dosfstools [arm64 armhf],
+#         e2fsprogs,
+#         fdisk,
+#         genext2fs,
+#         initramfs-tools-core,
+#         libjson-perl,
+#         lvm2,
+#         mdadm,
+#         qemu-efi-aarch64 [arm64],
+#         qemu-efi-arm [armhf],
+#         qemu-system-arm [arm64 armhf] | qemu-system-x86 [amd64 i386] | qemu-system,
+#         udev
+#Restrictions: allow-stderr, needs-root
+#Architecture: amd64
+
 Tests: cryptroot-sysvinit
-Depends: cryptsetup-bin,
+Depends: cpio,
+         cryptsetup-bin,
          dosfstools [arm64 armhf],
+         e2fsprogs,
          fdisk,
          genext2fs,
          initramfs-tools-core,

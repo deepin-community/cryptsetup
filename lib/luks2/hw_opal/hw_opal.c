@@ -3,7 +3,8 @@
  * OPAL utilities
  *
  * Copyright (C) 2022-2023 Luca Boccassi <bluca@debian.org>
- *               2023 Ondrej Kozina <okozina@redhat.com>
+ * Copyright (C) 2023-2026 Ondrej Kozina <okozina@redhat.com>
+ * Copyright (C) 2024-2026 Milan Broz
  */
 
 #include <stdio.h>
@@ -16,7 +17,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef HAVE_SYS_SYSMACROS_H
+#if HAVE_SYS_SYSMACROS_H
 # include <sys/sysmacros.h>     /* for major, minor */
 #endif
 
@@ -35,33 +36,32 @@
  * Section 5.1.5: Method Status Codes
  * Names and values from table 166 */
 typedef enum OpalStatus {
-	OPAL_STATUS_SUCCESS,
-	OPAL_STATUS_NOT_AUTHORIZED,
-	OPAL_STATUS_OBSOLETE0, /* Undefined but possible return values are called 'obsolete' */
-	OPAL_STATUS_SP_BUSY,
-	OPAL_STATUS_SP_FAILED,
-	OPAL_STATUS_SP_DISABLED,
-	OPAL_STATUS_SP_FROZEN,
-	OPAL_STATUS_NO_SESSIONS_AVAILABLE,
-	OPAL_STATUS_UNIQUENESS_CONFLICT,
-	OPAL_STATUS_INSUFFICIENT_SPACE,
-	OPAL_STATUS_INSUFFICIENT_ROWS,
-	OPAL_STATUS_INVALID_PARAMETER,
-	OPAL_STATUS_OBSOLETE1,
-	OPAL_STATUS_OBSOLETE2,
-	OPAL_STATUS_TPER_MALFUNCTION,
-	OPAL_STATUS_TRANSACTION_FAILURE,
-	OPAL_STATUS_RESPONSE_OVERFLOW,
-	OPAL_STATUS_AUTHORITY_LOCKED_OUT,
-	OPAL_STATUS_FAIL = 0x3F, /* As defined by specification */
-	_OPAL_STATUS_MAX,
-	_OPAL_STATUS_INVALID = -EINVAL,
+	OPAL_STATUS_SUCCESS = 0x00,
+	OPAL_STATUS_NOT_AUTHORIZED = 0x01,
+	OPAL_STATUS_OBSOLETE0 = 0x02, /* Undefined but possible return values are called 'obsolete' */
+	OPAL_STATUS_SP_BUSY = 0x03,
+	OPAL_STATUS_SP_FAILED = 0x04,
+	OPAL_STATUS_SP_DISABLED = 0x05,
+	OPAL_STATUS_SP_FROZEN = 0x06,
+	OPAL_STATUS_NO_SESSIONS_AVAILABLE = 0x07,
+	OPAL_STATUS_UNIQUENESS_CONFLICT = 0x08,
+	OPAL_STATUS_INSUFFICIENT_SPACE = 0x09,
+	OPAL_STATUS_INSUFFICIENT_ROWS = 0x0a,
+	OPAL_STATUS_OBSOLETE1 = 0x0b, /* Undefined but possible return values are called 'obsolete' */
+	OPAL_STATUS_INVALID_PARAMETER = 0x0c,
+	OPAL_STATUS_OBSOLETE2 = 0x0d,
+	OPAL_STATUS_OBSOLETE3 = 0x0e,
+	OPAL_STATUS_TPER_MALFUNCTION = 0x0f,
+	OPAL_STATUS_TRANSACTION_FAILURE = 0x10,
+	OPAL_STATUS_RESPONSE_OVERFLOW = 0x11,
+	OPAL_STATUS_AUTHORITY_LOCKED_OUT = 0x12,
+	_OPAL_STATUS_MAX = 0x13,
 } OpalStatus;
 
 static const char* const opal_status_table[_OPAL_STATUS_MAX] = {
 	[OPAL_STATUS_SUCCESS]               = "success",
 	[OPAL_STATUS_NOT_AUTHORIZED]        = "not authorized",
-	[OPAL_STATUS_OBSOLETE0]             = "obsolete",
+	[OPAL_STATUS_OBSOLETE0]             = "obsolete (0x02)",
 	[OPAL_STATUS_SP_BUSY]               = "SP busy",
 	[OPAL_STATUS_SP_FAILED]             = "SP failed",
 	[OPAL_STATUS_SP_DISABLED]           = "SP disabled",
@@ -70,20 +70,24 @@ static const char* const opal_status_table[_OPAL_STATUS_MAX] = {
 	[OPAL_STATUS_UNIQUENESS_CONFLICT]   = "uniqueness conflict",
 	[OPAL_STATUS_INSUFFICIENT_SPACE]    = "insufficient space",
 	[OPAL_STATUS_INSUFFICIENT_ROWS]     = "insufficient rows",
+	[OPAL_STATUS_OBSOLETE1]             = "obsolete (0x0b)",
 	[OPAL_STATUS_INVALID_PARAMETER]     = "invalid parameter",
-	[OPAL_STATUS_OBSOLETE1]             = "obsolete",
-	[OPAL_STATUS_OBSOLETE2]             = "obsolete",
+	[OPAL_STATUS_OBSOLETE2]             = "obsolete (0x0d)",
+	[OPAL_STATUS_OBSOLETE3]             = "obsolete (0x0e)",
 	[OPAL_STATUS_TPER_MALFUNCTION]      = "TPer malfunction",
 	[OPAL_STATUS_TRANSACTION_FAILURE]   = "transaction failure",
 	[OPAL_STATUS_RESPONSE_OVERFLOW]     = "response overflow",
 	[OPAL_STATUS_AUTHORITY_LOCKED_OUT]  = "authority locked out",
-	[OPAL_STATUS_FAIL]                  = "unknown failure",
 };
 
 static const char *opal_status_to_string(int t)
 {
 	if (t < 0)
 		return strerror(-t);
+
+	/* Fail, as defined by specification */
+	if (t == 0x3f)
+		return "unknown failure";
 
 	if (t >= _OPAL_STATUS_MAX)
 		return "unknown error";
@@ -232,6 +236,8 @@ static int opal_ioctl(struct crypt_device *cd, int fd, unsigned long rq, void *a
 
 	opal_ioctl_debug(cd, rq, args, false, 0);
 	r = ioctl(fd, rq, args);
+	if (r < 0)
+		r = -errno;
 	opal_ioctl_debug(cd, rq, args, true, r);
 
 	return r;
@@ -306,12 +312,13 @@ static int opal_range_check_attributes_fd(struct crypt_device *cd,
 		.session = {
 			.who = segment_number + 1,
 			.opal_key = {
-				.key_len = vk->keylength,
+				.key_len = crypt_volume_key_length(vk),
 				.lr = segment_number
 			}
 		}
 	};
-	memcpy(lrs->session.opal_key.key, vk->key, vk->keylength);
+	crypt_safe_memcpy(lrs->session.opal_key.key, crypt_volume_key_get_key(vk),
+			  crypt_volume_key_length(vk));
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_GET_LR_STATUS, lrs);
 	if (r != OPAL_STATUS_SUCCESS) {
@@ -413,7 +420,7 @@ int opal_setup_ranges(struct crypt_device *cd,
 	assert(dev);
 	assert(vk);
 	assert(admin_key);
-	assert(vk->keylength <= OPAL_KEY_MAX);
+	assert(crypt_volume_key_length(vk) <= OPAL_KEY_MAX);
 	assert(opal_block_bytes >= SECTOR_SIZE);
 
 	if (admin_key_len > OPAL_KEY_MAX)
@@ -448,7 +455,7 @@ int opal_setup_ranges(struct crypt_device *cd,
 			 */
 			.lr = { 1, 2, 3, 4, 5, 6, 7, 8 },
 		};
-		memcpy(activate->key.key, admin_key, admin_key_len);
+		crypt_safe_memcpy(activate->key.key, admin_key, admin_key_len);
 
 		r = opal_ioctl(cd, fd, IOC_OPAL_TAKE_OWNERSHIP, &activate->key);
 		if (r < 0) {
@@ -470,6 +477,8 @@ int opal_setup_ranges(struct crypt_device *cd,
 		}
 
 		r = opal_ioctl(cd, fd, IOC_OPAL_ACTIVATE_LSP, activate);
+		if (r < 0)
+			goto out;
 		if (r != OPAL_STATUS_SUCCESS) {
 			log_dbg(cd, "Failed to activate OPAL device '%s': %s",
 				crypt_get_device_name(cd), opal_status_to_string(r));
@@ -490,19 +499,16 @@ int opal_setup_ranges(struct crypt_device *cd,
 				.key_len = admin_key_len,
 			},
 		};
-		memcpy(user_session->opal_key.key, admin_key, admin_key_len);
+		crypt_safe_memcpy(user_session->opal_key.key, admin_key, admin_key_len);
 
-		r = opal_ioctl(cd, fd, IOC_OPAL_ERASE_LR, user_session);
+		r = opal_ioctl(cd, fd, IOC_OPAL_SECURE_ERASE_LR, user_session);
+		if (r < 0)
+			goto out;
 		if (r != OPAL_STATUS_SUCCESS) {
-			log_dbg(cd, "Failed to reset (erase) OPAL locking range %u on device '%s': %s",
+			log_dbg(cd, "Failed to reset (secure erase) OPAL locking range %u on device '%s': %s",
 				segment_number, crypt_get_device_name(cd), opal_status_to_string(r));
-			r = opal_ioctl(cd, fd, IOC_OPAL_SECURE_ERASE_LR, user_session);
-			if (r != OPAL_STATUS_SUCCESS) {
-				log_dbg(cd, "Failed to reset (secure erase) OPAL locking range %u on device '%s': %s",
-					segment_number, crypt_get_device_name(cd), opal_status_to_string(r));
-				r = -EINVAL;
-				goto out;
-			}
+			r = -EINVAL;
+			goto out;
 		}
 	}
 
@@ -519,9 +525,11 @@ int opal_setup_ranges(struct crypt_device *cd,
 			.key_len = admin_key_len,
 		},
 	};
-	memcpy(user_session->opal_key.key, admin_key, admin_key_len);
+	crypt_safe_memcpy(user_session->opal_key.key, admin_key, admin_key_len);
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_ACTIVATE_USR, user_session);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
 		log_dbg(cd, "Failed to activate OPAL user on device '%s': %s",
 			crypt_get_device_name(cd), opal_status_to_string(r));
@@ -544,9 +552,11 @@ int opal_setup_ranges(struct crypt_device *cd,
 		},
 		.l_state = OPAL_RO,
 	};
-	memcpy(user_add_to_lr->session.opal_key.key, admin_key, admin_key_len);
+	crypt_safe_memcpy(user_add_to_lr->session.opal_key.key, admin_key, admin_key_len);
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_ADD_USR_TO_LR, user_add_to_lr);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
 		log_dbg(cd, "Failed to add OPAL user to locking range %u (RO) on device '%s': %s",
 			segment_number, crypt_get_device_name(cd), opal_status_to_string(r));
@@ -555,6 +565,8 @@ int opal_setup_ranges(struct crypt_device *cd,
 	}
 	user_add_to_lr->l_state = OPAL_RW;
 	r = opal_ioctl(cd, fd, IOC_OPAL_ADD_USR_TO_LR, user_add_to_lr);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
 		log_dbg(cd, "Failed to add OPAL user to locking range %u (RW) on device '%s': %s",
 			segment_number, crypt_get_device_name(cd), opal_status_to_string(r));
@@ -578,15 +590,18 @@ int opal_setup_ranges(struct crypt_device *cd,
 		.new_user_pw = {
 			.who = segment_number + 1,
 			.opal_key = {
-				.key_len = vk->keylength,
+				.key_len = crypt_volume_key_length(vk),
 				.lr = segment_number,
 			},
 		},
 	};
-	memcpy(new_pw->new_user_pw.opal_key.key, vk->key, vk->keylength);
-	memcpy(new_pw->session.opal_key.key, admin_key, admin_key_len);
+	crypt_safe_memcpy(new_pw->new_user_pw.opal_key.key, crypt_volume_key_get_key(vk),
+			  crypt_volume_key_length(vk));
+	crypt_safe_memcpy(new_pw->session.opal_key.key, admin_key, admin_key_len);
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_SET_PW, new_pw);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
 		log_dbg(cd, "Failed to set OPAL user password on device '%s': (%d) %s",
 			crypt_get_device_name(cd), r, opal_status_to_string(r));
@@ -616,9 +631,11 @@ int opal_setup_ranges(struct crypt_device *cd,
 			},
 		},
 	};
-	memcpy(setup->session.opal_key.key, admin_key, admin_key_len);
+	crypt_safe_memcpy(setup->session.opal_key.key, admin_key, admin_key_len);
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_LR_SETUP, setup);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
 		log_dbg(cd, "Failed to setup locking range of length %llu at offset %llu on OPAL device '%s': %s",
 			setup->range_length, setup->range_start, crypt_get_device_name(cd), opal_status_to_string(r));
@@ -638,14 +655,17 @@ int opal_setup_ranges(struct crypt_device *cd,
 		.session = {
 			.who = segment_number + 1,
 			.opal_key = {
-				.key_len = vk->keylength,
+				.key_len = crypt_volume_key_length(vk),
 				.lr = segment_number,
 			},
 		}
 	};
-	memcpy(lock->session.opal_key.key, vk->key, vk->keylength);
+	crypt_safe_memcpy(lock->session.opal_key.key, crypt_volume_key_get_key(vk),
+			  crypt_volume_key_length(vk));
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_LOCK_UNLOCK, lock);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
 		log_dbg(cd, "Failed to lock OPAL device '%s': %s",
 			crypt_get_device_name(cd), opal_status_to_string(r));
@@ -696,10 +716,11 @@ static int opal_lock_unlock(struct crypt_device *cd,
 		return -EIO;
 
 	if (!lock) {
-		assert(vk->keylength <= OPAL_KEY_MAX);
+		assert(crypt_volume_key_length(vk) <= OPAL_KEY_MAX);
 
-		unlock.session.opal_key.key_len = vk->keylength;
-		memcpy(unlock.session.opal_key.key, vk->key, vk->keylength);
+		unlock.session.opal_key.key_len = crypt_volume_key_length(vk);
+		crypt_safe_memcpy(unlock.session.opal_key.key, crypt_volume_key_get_key(vk),
+				  crypt_volume_key_length(vk));
 	}
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_LOCK_UNLOCK, &unlock);
@@ -734,6 +755,8 @@ static int opal_lock_unlock(struct crypt_device *cd,
 		unlock.flags = OPAL_SAVE_FOR_LOCK;
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_SAVE, &unlock);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
 		if (!lock)
 			log_std(cd, "Failed to prepare OPAL device '%s' for sleep resume, be aware before suspending: %s",
@@ -787,11 +810,15 @@ int opal_factory_reset(struct crypt_device *cd,
 	if (password_len > OPAL_KEY_MAX)
 		return -EINVAL;
 
-	fd = device_open(cd, dev, O_RDONLY);
+	/*
+	 * Submit PSID reset on R/W file descriptor so it
+	 * triggers blkid rescan after we close it.
+	 */
+	fd = device_open(cd, dev, O_RDWR);
 	if (fd < 0)
 		return -EIO;
 
-	memcpy(reset.key, password, password_len);
+	crypt_safe_memcpy(reset.key, password, password_len);
 
 	r = opal_ioctl(cd, fd, IOC_OPAL_PSID_REVERT_TPR, &reset);
 	if (r < 0) {
@@ -848,7 +875,7 @@ int opal_reset_segment(struct crypt_device *cd,
 			.key_len = password_len,
 		},
 	};
-	memcpy(user_session->opal_key.key, password, password_len);
+	crypt_safe_memcpy(user_session->opal_key.key, password, password_len);
 
 	fd = device_open(cd, dev, O_RDONLY);
 	if (fd < 0) {
@@ -856,42 +883,39 @@ int opal_reset_segment(struct crypt_device *cd,
 		goto out;
 	}
 
-	r = opal_ioctl(cd, fd, IOC_OPAL_ERASE_LR, user_session);
+	r = opal_ioctl(cd, fd, IOC_OPAL_SECURE_ERASE_LR, user_session);
+	if (r < 0)
+		goto out;
 	if (r != OPAL_STATUS_SUCCESS) {
-		log_dbg(cd, "Failed to reset (erase) OPAL locking range %u on device '%s': %s",
+		log_dbg(cd, "Failed to reset (secure erase) OPAL locking range %u on device '%s': %s",
 			segment_number, crypt_get_device_name(cd), opal_status_to_string(r));
-		r = opal_ioctl(cd, fd, IOC_OPAL_SECURE_ERASE_LR, user_session);
-		if (r != OPAL_STATUS_SUCCESS) {
-			log_dbg(cd, "Failed to reset (secure erase) OPAL locking range %u on device '%s': %s",
-				segment_number, crypt_get_device_name(cd), opal_status_to_string(r));
-			r = -EINVAL;
-			goto out;
-		}
+		r = -EINVAL;
+		goto out;
+	}
 
-		/* Unlike IOC_OPAL_ERASE_LR, IOC_OPAL_SECURE_ERASE_LR does not disable the locking range,
-		 * we have to do that by hand.
-		 */
-		setup = crypt_safe_alloc(sizeof(struct opal_user_lr_setup));
-		if (!setup) {
-			r = -ENOMEM;
-			goto out;
-		}
-		*setup = (struct opal_user_lr_setup) {
-			.range_start = 0,
-			.range_length = 0,
-			.session = {
-				.who = OPAL_ADMIN1,
-				.opal_key = user_session->opal_key,
-			},
-		};
+	/* Disable the locking range */
+	setup = crypt_safe_alloc(sizeof(struct opal_user_lr_setup));
+	if (!setup) {
+		r = -ENOMEM;
+		goto out;
+	}
+	*setup = (struct opal_user_lr_setup) {
+		.range_start = 0,
+		.range_length = 0,
+		.session = {
+			.who = OPAL_ADMIN1,
+			.opal_key = user_session->opal_key,
+		},
+	};
 
-		r = opal_ioctl(cd, fd, IOC_OPAL_LR_SETUP, setup);
-		if (r != OPAL_STATUS_SUCCESS) {
-			log_dbg(cd, "Failed to disable locking range on OPAL device '%s': %s",
-				crypt_get_device_name(cd), opal_status_to_string(r));
-			r = -EINVAL;
-			goto out;
-		}
+	r = opal_ioctl(cd, fd, IOC_OPAL_LR_SETUP, setup);
+	if (r < 0)
+		goto out;
+	if (r != OPAL_STATUS_SUCCESS) {
+		log_dbg(cd, "Failed to disable locking range on OPAL device '%s': %s",
+			crypt_get_device_name(cd), opal_status_to_string(r));
+		r = -EINVAL;
+		goto out;
 	}
 out:
 	crypt_safe_free(user_session);

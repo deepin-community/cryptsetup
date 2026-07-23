@@ -2,16 +2,16 @@
 /*
  * LUKS - Linux Unified Key Setup v2, token handling
  *
- * Copyright (C) 2016-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2016-2024 Milan Broz
+ * Copyright (C) 2016-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2016-2026 Milan Broz
  */
 
 #include <ctype.h>
-#include <dlfcn.h>
 
 #include "luks2_internal.h"
 
 #if USE_EXTERNAL_TOKENS
+#include <dlfcn.h>
 #define TOKENS_PATH_MAX PATH_MAX
 static bool external_tokens_enabled = true;
 static char external_tokens_path[TOKENS_PATH_MAX] = EXTERNAL_LUKS2_TOKENS_PATH;
@@ -101,10 +101,11 @@ static void *token_dlvsym(struct crypt_device *cd,
 	char *error;
 	void *sym;
 
-#ifdef HAVE_DLVSYM
+#if HAVE_DLVSYM
 	log_dbg(cd, "Loading symbol %s@%s.", symbol, version);
 	sym = dlvsym(handle, symbol, version);
 #else
+	UNUSED(version);
 	log_dbg(cd, "Loading default version of symbol %s.", symbol);
 	sym = dlsym(handle, symbol);
 #endif
@@ -443,12 +444,6 @@ crypt_token_info LUKS2_token_status(struct crypt_device *cd,
 	return is_builtin_candidate(tmp) ? CRYPT_TOKEN_INTERNAL_UNKNOWN : CRYPT_TOKEN_EXTERNAL_UNKNOWN;
 }
 
-static const char *token_json_to_string(json_object *jobj_token)
-{
-	return json_object_to_json_string_ext(jobj_token,
-		JSON_C_TO_STRING_PLAIN | JSON_C_TO_STRING_NOSLASHESCAPE);
-}
-
 static int token_is_usable(struct luks2_hdr *hdr, json_object *jobj_token, int keyslot, int segment,
 			   crypt_keyslot_priority minimal_priority, bool requires_keyslot)
 {
@@ -548,7 +543,7 @@ static int token_open(struct crypt_device *cd,
 	if (!(h = LUKS2_token_handler(cd, token)))
 		return -ENOENT;
 
-	if (h->validate && h->validate(cd, token_json_to_string(jobj_token))) {
+	if (h->validate && h->validate(cd, crypt_jobj_to_string_on_disk(jobj_token))) {
 		log_dbg(cd, "Token %d (%s) validation failed.", token, h->name);
 		return -ENOENT;
 	}
@@ -842,71 +837,6 @@ int LUKS2_token_unlock_key(struct crypt_device *cd,
 	return r;
 }
 
-int LUKS2_token_open_and_activate(struct crypt_device *cd,
-	struct luks2_hdr *hdr,
-	int keyslot,
-	int token,
-	const char *name,
-	const char *type,
-	const char *pin,
-	size_t pin_size,
-	uint32_t flags,
-	void *usrptr)
-{
-	bool use_keyring;
-	int r, segment;
-	struct volume_key *p_crypt, *p_opal, *crypt_key = NULL, *opal_key = NULL, *vk = NULL;
-
-	if (flags & CRYPT_ACTIVATE_ALLOW_UNBOUND_KEY)
-		segment = CRYPT_ANY_SEGMENT;
-	else
-		segment = CRYPT_DEFAULT_SEGMENT;
-
-	r = LUKS2_token_unlock_key(cd, hdr, keyslot, token, type, pin, pin_size, segment, usrptr, &vk);
-	if (r < 0)
-		return r;
-
-	assert(vk);
-
-	keyslot = r;
-
-	if (LUKS2_segment_is_hw_opal(hdr, CRYPT_DEFAULT_SEGMENT)) {
-		r = LUKS2_split_crypt_and_opal_keys(cd, hdr, vk, &crypt_key, &opal_key);
-		if (r < 0) {
-			crypt_free_volume_key(vk);
-			return r;
-		}
-
-		p_crypt = crypt_key;
-		p_opal = opal_key ?: vk;
-	} else {
-		p_crypt = vk;
-		p_opal = NULL;
-	}
-
-	if (!crypt_use_keyring_for_vk(cd) || !p_crypt)
-		use_keyring = false;
-	else
-		use_keyring = ((name && !crypt_is_cipher_null(crypt_get_cipher(cd))) ||
-			       (flags & CRYPT_ACTIVATE_KEYRING_KEY));
-
-	if (use_keyring) {
-		if (!(r = LUKS2_volume_key_load_in_keyring_by_keyslot(cd, hdr, p_crypt, keyslot)))
-			flags |= CRYPT_ACTIVATE_KEYRING_KEY;
-	}
-
-	if (r >= 0 && name)
-		r = LUKS2_activate(cd, name, p_crypt, p_opal, flags);
-
-	if (r < 0)
-		crypt_drop_keyring_key(cd, p_crypt);
-	crypt_free_volume_key(vk);
-	crypt_free_volume_key(crypt_key);
-	crypt_free_volume_key(opal_key);
-
-	return r < 0 ? r : keyslot;
-}
-
 void LUKS2_token_dump(struct crypt_device *cd, int token)
 {
 	const crypt_token_handler *h;
@@ -916,8 +846,7 @@ void LUKS2_token_dump(struct crypt_device *cd, int token)
 	if (h && h->dump) {
 		jobj_token = LUKS2_get_token_jobj(crypt_get_hdr(cd, CRYPT_LUKS2), token);
 		if (jobj_token)
-			h->dump(cd, json_object_to_json_string_ext(jobj_token,
-				JSON_C_TO_STRING_PLAIN | JSON_C_TO_STRING_NOSLASHESCAPE));
+			h->dump(cd, crypt_jobj_to_string_on_disk(jobj_token));
 	}
 }
 
@@ -929,7 +858,7 @@ int LUKS2_token_json_get(struct luks2_hdr *hdr, int token, const char **json)
 	if (!jobj_token)
 		return -EINVAL;
 
-	*json = token_json_to_string(jobj_token);
+	*json = crypt_jobj_to_string_on_disk(jobj_token);
 	return 0;
 }
 
@@ -1137,7 +1066,7 @@ out:
 	if (!r) {
 		*passphrase = crypt_safe_alloc(buffer_size);
 		if (*passphrase) {
-			memcpy(*passphrase, buffer, buffer_size);
+			crypt_safe_memcpy(*passphrase, buffer, buffer_size);
 			*passphrase_size = buffer_size;
 		} else
 			r = -ENOMEM;

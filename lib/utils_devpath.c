@@ -4,8 +4,8 @@
  *
  * Copyright (C) 2004 Jana Saout <jana@saout.de>
  * Copyright (C) 2004-2007 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2026 Milan Broz
  */
 
 #include <string.h>
@@ -17,7 +17,7 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#ifdef HAVE_SYS_SYSMACROS_H
+#if HAVE_SYS_SYSMACROS_H
 # include <sys/sysmacros.h>     /* for major, minor */
 #endif
 #include "internal.h"
@@ -262,6 +262,29 @@ int crypt_dev_is_zoned(int major, int minor)
 	return strncmp(buf, "none", 4) ? 1 : 0;
 }
 
+int crypt_dev_is_nop_dif(int major, int minor, uint32_t *tag_size)
+{
+	char buf[64] = {};
+	uint64_t val = 0;
+
+	if (!_sysfs_get_string(major, minor, buf, sizeof(buf), "integrity/format"))
+		return 0;
+
+	if (strncmp(buf, "nop", 3))
+		return 0;
+
+	/* this field is currently supported only for NVMe */
+	_sysfs_get_uint64(major, minor, &val, "metadata_bytes");
+
+	/* tag_size should be 0, but it is set by dm-integrity, try it as a fallback */
+	if (val == 0)
+		_sysfs_get_uint64(major, minor, &val, "integrity/tag_size");
+
+	/* we can still return 0 and support metadata, caller must handle it */
+	*tag_size = (uint32_t)val;
+	return 1;
+}
+
 int crypt_dev_is_partition(const char *dev_path)
 {
 	uint64_t val;
@@ -420,7 +443,7 @@ int lookup_by_disk_id(const char *dm_uuid)
 {
 	struct dirent *entry;
 	struct stat st;
-	int r = 0; /* not found */
+	int dfd, r = 0; /* not found */
 	DIR *dir = opendir("/dev/disk/by-id");
 
 	if (!dir)
@@ -432,7 +455,8 @@ int lookup_by_disk_id(const char *dm_uuid)
 		    !strncmp(entry->d_name, "..", 2))
 			continue;
 
-		if (fstatat(dirfd(dir), entry->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
+		dfd = dirfd(dir);
+		if (dfd < 0 || fstatat(dfd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW)) {
 			r = -EINVAL;
 			break;
 		}
@@ -457,7 +481,7 @@ int lookup_by_sysfs_uuid_field(const char *dm_uuid)
 	char subpath[PATH_MAX], uuid[DM_UUID_LEN];
 	ssize_t s;
 	struct stat st;
-	int fd, len, r = 0; /* not found */
+	int fd, dfd, len, r = 0; /* not found */
 	DIR *dir = opendir("/sys/block/");
 
 	if (!dir)
@@ -476,7 +500,10 @@ int lookup_by_sysfs_uuid_field(const char *dm_uuid)
 		}
 
 		/* looking for dm-X/dm/uuid file, symlinks are fine */
-		fd = openat(dirfd(dir), subpath, O_RDONLY | O_CLOEXEC);
+		dfd = dirfd(dir);
+		if (dfd < 0)
+			continue;
+		fd = openat(dfd, subpath, O_RDONLY | O_CLOEXEC);
 		if (fd < 0)
 			continue;
 

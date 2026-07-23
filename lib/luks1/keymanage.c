@@ -3,8 +3,8 @@
  * LUKS - Linux Unified Key Setup
  *
  * Copyright (C) 2004-2006 Clemens Fruhwirth <clemens@endorphin.org>
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2013-2024 Milan Broz
+ * Copyright (C) 2009-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2013-2026 Milan Broz
  */
 
 #include <sys/types.h>
@@ -378,7 +378,7 @@ static int _keyslot_repair(struct luks_phdr *phdr, struct crypt_device *ctx)
 {
 	struct luks_phdr temp_phdr;
 	const unsigned char *sector = (const unsigned char*)phdr;
-	struct volume_key *vk;
+	struct volume_key *fake_vk;
 	int i, bad, r, need_write = 0;
 
 	if (phdr->keyBytes != 16 && phdr->keyBytes != 32 && phdr->keyBytes != 64) {
@@ -420,12 +420,12 @@ static int _keyslot_repair(struct luks_phdr *phdr, struct crypt_device *ctx)
 		need_write = 1;
 	}
 
-	r = LUKS_check_cipher(ctx, phdr->keyBytes, phdr->cipherName, phdr->cipherMode);
+	r = crypt_check_cipher(ctx, phdr->keyBytes, phdr->cipherName, phdr->cipherMode);
 	if (r < 0)
 		return -EINVAL;
 
-	vk = crypt_alloc_volume_key(phdr->keyBytes, NULL);
-	if (!vk)
+	fake_vk = crypt_generate_volume_key(ctx, phdr->keyBytes, KEY_QUALITY_EMPTY);
+	if (!fake_vk)
 		return -ENOMEM;
 
 	log_verbose(ctx, _("Repairing keyslots."));
@@ -433,7 +433,7 @@ static int _keyslot_repair(struct luks_phdr *phdr, struct crypt_device *ctx)
 	log_dbg(ctx, "Generating second header with the same parameters for check.");
 	/* cipherName, cipherMode, hashSpec, uuid are already null terminated */
 	/* payloadOffset - cannot check */
-	r = LUKS_generate_phdr(&temp_phdr, vk, phdr->cipherName, phdr->cipherMode,
+	r = LUKS_generate_phdr(&temp_phdr, fake_vk, phdr->cipherName, phdr->cipherMode,
 			       phdr->hashSpec, phdr->uuid,
 			       phdr->payloadOffset * SECTOR_SIZE, 0, 0, ctx);
 	if (r < 0)
@@ -492,7 +492,7 @@ static int _keyslot_repair(struct luks_phdr *phdr, struct crypt_device *ctx)
 out:
 	if (r)
 		log_err(ctx, _("Repair failed."));
-	crypt_free_volume_key(vk);
+	crypt_free_volume_key(fake_vk);
 	crypt_safe_memzero(&temp_phdr, sizeof(temp_phdr));
 	return r;
 }
@@ -701,29 +701,6 @@ int LUKS_write_phdr(struct luks_phdr *hdr,
 	return r;
 }
 
-/* Check that kernel supports requested cipher by decryption of one sector */
-int LUKS_check_cipher(struct crypt_device *ctx, size_t keylength, const char *cipher, const char *cipher_mode)
-{
-	int r;
-	struct volume_key *empty_key;
-	char buf[SECTOR_SIZE];
-
-	log_dbg(ctx, "Checking if cipher %s-%s is usable.", cipher, cipher_mode);
-
-	empty_key = crypt_alloc_volume_key(keylength, NULL);
-	if (!empty_key)
-		return -ENOMEM;
-
-	/* No need to get KEY quality random but it must avoid known weak keys. */
-	r = crypt_random_get(ctx, empty_key->key, empty_key->keylength, CRYPT_RND_NORMAL);
-	if (!r)
-		r = LUKS_decrypt_from_storage(buf, sizeof(buf), cipher, cipher_mode, empty_key, 0, ctx);
-
-	crypt_free_volume_key(empty_key);
-	crypt_safe_memzero(buf, sizeof(buf));
-	return r;
-}
-
 int LUKS_generate_phdr(struct luks_phdr *header,
 	const struct volume_key *vk,
 	const char *cipherName,
@@ -748,7 +725,7 @@ int LUKS_generate_phdr(struct luks_phdr *header,
 
 	memset(header, 0, sizeof(struct luks_phdr));
 
-	keyslot_sectors = AF_split_sectors(vk->keylength, LUKS_STRIPES);
+	keyslot_sectors = AF_split_sectors(crypt_volume_key_length(vk), LUKS_STRIPES);
 	header_sectors = LUKS_ALIGN_KEYSLOTS / SECTOR_SIZE;
 
 	for (i = 0; i < LUKS_NUMKEYS; i++) {
@@ -795,7 +772,7 @@ int LUKS_generate_phdr(struct luks_phdr *header,
 	strncpy(header->hashSpec,hashSpec,LUKS_HASHSPEC_L-1);
 	_to_lower(header->hashSpec, LUKS_HASHSPEC_L);
 
-	header->keyBytes=vk->keylength;
+	header->keyBytes = crypt_volume_key_length(vk);
 
 	log_dbg(ctx, "Generating LUKS header version %d using hash %s, %s, %s, MK %d bytes",
 		header->version, header->hashSpec ,header->cipherName, header->cipherMode,
@@ -809,7 +786,7 @@ int LUKS_generate_phdr(struct luks_phdr *header,
 
 	/* Compute volume key digest */
 	pbkdf = crypt_get_pbkdf(ctx);
-	r = crypt_benchmark_pbkdf_internal(ctx, pbkdf, vk->keylength);
+	r = crypt_benchmark_pbkdf_internal(ctx, pbkdf, crypt_volume_key_length(vk));
 	if (r < 0)
 		return r;
 	assert(pbkdf->iterations);
@@ -824,7 +801,9 @@ int LUKS_generate_phdr(struct luks_phdr *header,
 	header->mkDigestIterations = AT_LEAST((uint32_t)PBKDF2_temp, LUKS_MKD_ITERATIONS_MIN);
 	assert(header->mkDigestIterations);
 
-	r = crypt_pbkdf(CRYPT_KDF_PBKDF2, header->hashSpec, vk->key,vk->keylength,
+	r = crypt_pbkdf(CRYPT_KDF_PBKDF2, header->hashSpec,
+			crypt_volume_key_get_key(vk),
+			crypt_volume_key_length(vk),
 			header->mkDigestSalt, LUKS_SALTSIZE,
 			header->mkDigest,LUKS_DIGESTSIZE,
 			header->mkDigestIterations, 0, 0);
@@ -866,8 +845,9 @@ int LUKS_set_key(unsigned int keyIndex,
 		 struct luks_phdr *hdr, struct volume_key *vk,
 		 struct crypt_device *ctx)
 {
-	struct volume_key *derived_key;
+	struct volume_key *derived_vk = NULL;
 	char *AfKey = NULL;
+	void *derived_key = NULL;
 	size_t AFEKSize;
 	struct crypt_pbkdf_type *pbkdf;
 	int r;
@@ -886,7 +866,7 @@ int LUKS_set_key(unsigned int keyIndex,
 
 	log_dbg(ctx, "Calculating data for key slot %d", keyIndex);
 	pbkdf = crypt_get_pbkdf(ctx);
-	r = crypt_benchmark_pbkdf_internal(ctx, pbkdf, vk->keylength);
+	r = crypt_benchmark_pbkdf_internal(ctx, pbkdf, crypt_volume_key_length(vk));
 	if (r < 0)
 		return r;
 	assert(pbkdf->iterations);
@@ -899,9 +879,11 @@ int LUKS_set_key(unsigned int keyIndex,
 	log_dbg(ctx, "Key slot %d use %" PRIu32 " password iterations.", keyIndex,
 		hdr->keyblock[keyIndex].passwordIterations);
 
-	derived_key = crypt_alloc_volume_key(hdr->keyBytes, NULL);
-	if (!derived_key)
-		return -ENOMEM;
+	derived_key = crypt_safe_alloc(hdr->keyBytes);
+	if (!derived_key) {
+		r = -ENOMEM;
+		goto out;
+	}
 
 	r = crypt_random_get(ctx, hdr->keyblock[keyIndex].passwordSalt,
 		       LUKS_SALTSIZE, CRYPT_RND_SALT);
@@ -910,7 +892,7 @@ int LUKS_set_key(unsigned int keyIndex,
 
 	r = crypt_pbkdf(CRYPT_KDF_PBKDF2, hdr->hashSpec, password, passwordLen,
 			hdr->keyblock[keyIndex].passwordSalt, LUKS_SALTSIZE,
-			derived_key->key, hdr->keyBytes,
+			derived_key, hdr->keyBytes,
 			hdr->keyblock[keyIndex].passwordIterations, 0, 0);
 	if (r < 0) {
 		if ((crypt_backend_flags() & CRYPT_BACKEND_PBKDF2_INT) &&
@@ -919,11 +901,17 @@ int LUKS_set_key(unsigned int keyIndex,
 		goto out;
 	}
 
+	derived_vk = crypt_alloc_volume_key_by_safe_alloc(&derived_key);
+	if (!derived_vk) {
+		r = -ENOMEM;
+		goto out;
+	}
+
 	/*
 	 * AF splitting, the volume key stored in vk->key is split to AfKey
 	 */
-	assert(vk->keylength == hdr->keyBytes);
-	AFEKSize = AF_split_sectors(vk->keylength, hdr->keyblock[keyIndex].stripes) * SECTOR_SIZE;
+	assert(crypt_volume_key_length(vk) == hdr->keyBytes);
+	AFEKSize = AF_split_sectors(crypt_volume_key_length(vk), hdr->keyblock[keyIndex].stripes) * SECTOR_SIZE;
 	AfKey = crypt_safe_alloc(AFEKSize);
 	if (!AfKey) {
 		r = -ENOMEM;
@@ -932,7 +920,8 @@ int LUKS_set_key(unsigned int keyIndex,
 
 	log_dbg(ctx, "Using hash %s for AF in key slot %d, %d stripes",
 		hdr->hashSpec, keyIndex, hdr->keyblock[keyIndex].stripes);
-	r = AF_split(ctx, vk->key, AfKey, vk->keylength, hdr->keyblock[keyIndex].stripes, hdr->hashSpec);
+	r = AF_split(ctx, crypt_volume_key_get_key(vk), AfKey, crypt_volume_key_length(vk),
+			hdr->keyblock[keyIndex].stripes, hdr->hashSpec);
 	if (r < 0)
 		goto out;
 
@@ -942,7 +931,7 @@ int LUKS_set_key(unsigned int keyIndex,
 	r = LUKS_encrypt_to_storage(AfKey,
 				    AFEKSize,
 				    hdr->cipherName, hdr->cipherMode,
-				    derived_key,
+				    derived_vk,
 				    hdr->keyblock[keyIndex].keyMaterialOffset,
 				    ctx);
 	if (r < 0)
@@ -960,7 +949,8 @@ int LUKS_set_key(unsigned int keyIndex,
 	r = 0;
 out:
 	crypt_safe_free(AfKey);
-	crypt_free_volume_key(derived_key);
+	crypt_safe_free(derived_key);
+	crypt_free_volume_key(derived_vk);
 	return r;
 }
 
@@ -970,13 +960,17 @@ int LUKS_verify_volume_key(const struct luks_phdr *hdr,
 {
 	char checkHashBuf[LUKS_DIGESTSIZE];
 
-	if (crypt_pbkdf(CRYPT_KDF_PBKDF2, hdr->hashSpec, vk->key, vk->keylength,
+	if (crypt_pbkdf(CRYPT_KDF_PBKDF2, hdr->hashSpec, crypt_volume_key_get_key(vk),
+			crypt_volume_key_length(vk),
 			hdr->mkDigestSalt, LUKS_SALTSIZE,
 			checkHashBuf, LUKS_DIGESTSIZE,
 			hdr->mkDigestIterations, 0, 0) < 0)
 		return -EINVAL;
 
 	if (crypt_backend_memeq(checkHashBuf, hdr->mkDigest, LUKS_DIGESTSIZE))
+		return -EPERM;
+
+	if (hdr->keyBytes != crypt_volume_key_length(vk))
 		return -EPERM;
 
 	return 0;
@@ -987,12 +981,13 @@ static int LUKS_open_key(unsigned int keyIndex,
 		  const char *password,
 		  size_t passwordLen,
 		  struct luks_phdr *hdr,
-		  struct volume_key **vk,
+		  struct volume_key **r_vk,
 		  struct crypt_device *ctx)
 {
 	crypt_keyslot_info ki = LUKS_keyslot_info(hdr, keyIndex);
-	struct volume_key *derived_key;
+	struct volume_key *derived_vk = NULL, *vk = NULL;
 	char *AfKey = NULL;
+	void *key = NULL, *derived_key = NULL;
 	size_t AFEKSize;
 	int r;
 
@@ -1002,12 +997,12 @@ static int LUKS_open_key(unsigned int keyIndex,
 	if (ki < CRYPT_SLOT_ACTIVE)
 		return -ENOENT;
 
-	derived_key = crypt_alloc_volume_key(hdr->keyBytes, NULL);
+	derived_key = crypt_safe_alloc(hdr->keyBytes);
 	if (!derived_key)
 		return -ENOMEM;
 
-	*vk = crypt_alloc_volume_key(hdr->keyBytes, NULL);
-	if (!*vk) {
+	key = crypt_safe_alloc(hdr->keyBytes);
+	if (!key) {
 		r = -ENOMEM;
 		goto out;
 	}
@@ -1021,10 +1016,16 @@ static int LUKS_open_key(unsigned int keyIndex,
 
 	r = crypt_pbkdf(CRYPT_KDF_PBKDF2, hdr->hashSpec, password, passwordLen,
 			hdr->keyblock[keyIndex].passwordSalt, LUKS_SALTSIZE,
-			derived_key->key, hdr->keyBytes,
+			derived_key, hdr->keyBytes,
 			hdr->keyblock[keyIndex].passwordIterations, 0, 0);
 	if (r < 0) {
 		log_err(ctx, _("Cannot open keyslot (using hash %s)."), hdr->hashSpec);
+		goto out;
+	}
+
+	derived_vk = crypt_alloc_volume_key_by_safe_alloc(&derived_key);
+	if (!derived_vk) {
+		r = -ENOMEM;
 		goto out;
 	}
 
@@ -1032,28 +1033,40 @@ static int LUKS_open_key(unsigned int keyIndex,
 	r = LUKS_decrypt_from_storage(AfKey,
 				      AFEKSize,
 				      hdr->cipherName, hdr->cipherMode,
-				      derived_key,
+				      derived_vk,
 				      hdr->keyblock[keyIndex].keyMaterialOffset,
 				      ctx);
 	if (r < 0)
 		goto out;
 
-	r = AF_merge(AfKey, (*vk)->key, (*vk)->keylength, hdr->keyblock[keyIndex].stripes, hdr->hashSpec);
+	r = AF_merge(AfKey, key, hdr->keyBytes, hdr->keyblock[keyIndex].stripes, hdr->hashSpec);
 	if (r < 0)
 		goto out;
 
-	r = LUKS_verify_volume_key(hdr, *vk);
+	vk = crypt_alloc_volume_key_by_safe_alloc(&key);
+	if (!vk) {
+		r = -ENOMEM;
+		goto out;
+	}
+
+	r = LUKS_verify_volume_key(hdr, vk);
+	if (r < 0)
+		goto out;
 
 	/* Allow only empty passphrase with null cipher */
-	if (!r && crypt_is_cipher_null(hdr->cipherName) && passwordLen)
+	if (crypt_is_cipher_null(hdr->cipherName) && passwordLen)
 		r = -EPERM;
+	else
+		*r_vk = vk;
 out:
 	if (r < 0) {
-		crypt_free_volume_key(*vk);
-		*vk = NULL;
+		crypt_free_volume_key(vk);
+		*r_vk = NULL;
 	}
 	crypt_safe_free(AfKey);
-	crypt_free_volume_key(derived_key);
+	crypt_safe_free(key);
+	crypt_safe_free(derived_key);
+	crypt_free_volume_key(derived_vk);
 	return r;
 }
 
@@ -1204,8 +1217,7 @@ int LUKS1_activate(struct crypt_device *cd,
 
 	r = dm_crypt_target_set(&dmd.segment, 0, dmd.size, crypt_data_device(cd),
 			vk, crypt_get_cipher_spec(cd), crypt_get_iv_offset(cd),
-			crypt_get_data_offset(cd), crypt_get_integrity(cd),
-			crypt_get_integrity_tag_size(cd), crypt_get_sector_size(cd));
+			crypt_get_data_offset(cd), NULL, 0, 0, crypt_get_sector_size(cd));
 	if (!r)
 		r = create_or_reload_device(cd, name, CRYPT_LUKS1, &dmd);
 

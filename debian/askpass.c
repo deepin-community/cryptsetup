@@ -381,7 +381,7 @@ console_prepare(const char *prompt)
 {
 	struct termios term_new;
 	const char *prompt_ptr = prompt;
-	char *newline = NULL;
+	const char *newline = NULL;
 
 	if (!isatty(STDIN_FILENO)) {
 		if (access(CONSOLE_PATH, R_OK | W_OK)) {

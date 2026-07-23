@@ -2,7 +2,7 @@
 /*
  * dm-verity volume handling
  *
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2026 Red Hat, Inc. All rights reserved.
  */
 
 #include <errno.h>
@@ -302,6 +302,11 @@ static int VERITY_create_or_verify_hash(struct crypt_device *cd, bool verify,
 		hash_device_offset_max - params->hash_area_offset);
 	log_dbg(cd, "Using %d hash levels.", levels);
 
+	r = device_check_size(cd, crypt_metadata_device(cd),
+			      hash_device_offset_max - params->hash_area_offset, 1);
+	if (r < 0)
+		return r;
+
 	data_file = fopen(device_path(crypt_data_device(cd)), "r");
 	if (!data_file) {
 		log_err(cd, _("Cannot open device %s."),
@@ -331,6 +336,15 @@ static int VERITY_create_or_verify_hash(struct crypt_device *cd, bool verify,
 			if (r)
 				goto out;
 		} else {
+			/*
+			 * Flush the write buffer before re-reading the hash
+			 * device through a second file handle.  On Linux the
+			 * unified page cache makes this optional; on macOS
+			 * and other BSDs, unflushed data is invisible to a
+			 * separate FILE* opened on the same path.
+			 */
+			fflush(hash_file);
+
 			hash_file_2 = fopen(device_path(crypt_metadata_device(cd)), "r");
 			if (!hash_file_2) {
 				log_err(cd, _("Cannot open device %s."),
