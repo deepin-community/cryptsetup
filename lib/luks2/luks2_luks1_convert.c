@@ -2,48 +2,14 @@
 /*
  * LUKS - Linux Unified Key Setup v2, LUKS1 conversion code
  *
- * Copyright (C) 2015-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2015-2024 Ondrej Kozina
- * Copyright (C) 2015-2024 Milan Broz
+ * Copyright (C) 2015-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2015-2026 Ondrej Kozina
+ * Copyright (C) 2015-2026 Milan Broz
  */
 
 #include "luks2_internal.h"
 #include "../luks1/luks.h"
 #include "../luks1/af.h"
-
-/* This differs from LUKS_check_cipher() that it does not check dm-crypt fallback. */
-int LUKS2_check_cipher(struct crypt_device *cd,
-		      size_t keylength,
-		      const char *cipher,
-		      const char *cipher_mode)
-{
-	int r;
-	struct crypt_storage *s;
-	char buf[SECTOR_SIZE], *empty_key;
-
-	log_dbg(cd, "Checking if cipher %s-%s is usable (storage wrapper).", cipher, cipher_mode);
-
-	empty_key = crypt_safe_alloc(keylength);
-	if (!empty_key)
-		return -ENOMEM;
-
-	/* No need to get KEY quality random but it must avoid known weak keys. */
-	r = crypt_random_get(cd, empty_key, keylength, CRYPT_RND_NORMAL);
-	if (r < 0)
-		goto out;
-
-	r = crypt_storage_init(&s, SECTOR_SIZE, cipher, cipher_mode, empty_key, keylength, false);
-	if (r < 0)
-		goto out;
-
-	memset(buf, 0, sizeof(buf));
-	r = crypt_storage_decrypt(s, 0, sizeof(buf), buf);
-	crypt_storage_destroy(s);
-out:
-	crypt_safe_free(empty_key);
-	crypt_safe_memzero(buf, sizeof(buf));
-	return r;
-}
 
 static int json_luks1_keyslot(const struct luks_phdr *hdr_v1, int keyslot, struct json_object **keyslot_object)
 {
@@ -570,6 +536,7 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 	json_object *jobj = NULL;
 	size_t buf_size, buf_offset, luks1_size, luks1_shift = 2 * LUKS2_HDR_16K_LEN - LUKS_ALIGN_KEYSLOTS;
 	uint64_t required_size, max_size = crypt_get_data_offset(cd) * SECTOR_SIZE;
+	char cipher_spec[MAX_CAPI_LEN];
 
 	/* for detached headers max size == device size */
 	if (!max_size && (r = device_size(crypt_metadata_device(cd), &max_size)))
@@ -585,8 +552,17 @@ int LUKS2_luks1_to_luks2(struct crypt_device *cd, struct luks_phdr *hdr1, struct
 		return -EINVAL;
 	}
 
-	if (LUKS2_check_cipher(cd, hdr1->keyBytes, hdr1->cipherName, hdr1->cipherMode)) {
+	if (crypt_check_cipher(cd, hdr1->keyBytes, hdr1->cipherName, hdr1->cipherMode)) {
 		log_err(cd, _("Unable to use cipher specification %s-%s for LUKS2."),
+			hdr1->cipherName, hdr1->cipherMode);
+		return -EINVAL;
+	}
+
+	r = snprintf(cipher_spec, sizeof(cipher_spec), "%s-%s", hdr1->cipherName, hdr1->cipherMode);
+	if (r < 0 || (size_t)r >= sizeof(cipher_spec))
+		return -EINVAL;
+	if (LUKS2_keyslot_cipher_incompatible(cd, cipher_spec)) {
+		log_err(cd, _("Unable to use cipher specification %s-%s for LUKS2 keyslot."),
 			hdr1->cipherName, hdr1->cipherMode);
 		return -EINVAL;
 	}
@@ -687,30 +663,54 @@ static int keyslot_LUKS1_compatible(struct crypt_device *cd, struct luks2_hdr *h
 	if (!jobj_keyslot)
 		return 1;
 
-	if (!json_object_object_get_ex(jobj_keyslot, "type", &jobj) ||
-	    strcmp(json_object_get_string(jobj), "luks2"))
+	/* Keyslot type */
+	if (!json_object_object_get_ex(jobj_keyslot, "type", &jobj))
 		return 0;
+	if (strcmp(json_object_get_string(jobj), "luks2")) {
+		log_dbg(cd, "Keyslot %d type %s is not compatible.",
+			keyslot, json_object_get_string(jobj));
+		return 0;
+	}
 
-	/* Using PBKDF2, this implies memory and parallel is not used. */
+	/* Keyslot uses PBKDF2, this implies memory and parallel is not used. */
 	jobj = NULL;
 	if (!json_object_object_get_ex(jobj_keyslot, "kdf", &jobj_kdf) ||
-	    !json_object_object_get_ex(jobj_kdf, "type", &jobj) ||
-	    strcmp(json_object_get_string(jobj), CRYPT_KDF_PBKDF2) ||
-	    !json_object_object_get_ex(jobj_kdf, "hash", &jobj) ||
-	    strcmp(json_object_get_string(jobj), hash))
+	    !json_object_object_get_ex(jobj_kdf, "type", &jobj))
 		return 0;
+	if (strcmp(json_object_get_string(jobj), CRYPT_KDF_PBKDF2)) {
+		log_dbg(cd, "Keyslot %d does not use PBKDF2.", keyslot);
+		return 0;
+	}
 
+	/* Keyslot KDF hash is the same as the digest hash. */
+	jobj = NULL;
+	if (!json_object_object_get_ex(jobj_kdf, "hash", &jobj))
+		return 0;
+	if (strcmp(json_object_get_string(jobj), hash)) {
+		log_dbg(cd, "Keyslot %d PBKDF uses different hash %s than digest hash %s.",
+			keyslot, json_object_get_string(jobj), hash);
+		return 0;
+	}
+
+	/* Keyslot AF use compatible striptes. */
 	jobj = NULL;
 	if (!json_object_object_get_ex(jobj_keyslot, "af", &jobj_af) ||
-	    !json_object_object_get_ex(jobj_af, "stripes", &jobj) ||
-	    json_object_get_int(jobj) != LUKS_STRIPES)
+	    !json_object_object_get_ex(jobj_af, "stripes", &jobj))
 		return 0;
+	if (json_object_get_int(jobj) != LUKS_STRIPES) {
+		log_dbg(cd, "Keyslot %d AF uses incompatible stripes count.", keyslot);
+		return 0;
+	}
 
+	/* Keyslot AF hash is the same as the digest hash. */
 	jobj = NULL;
-	if (!json_object_object_get_ex(jobj_af, "hash", &jobj) ||
-	    (crypt_hash_size(json_object_get_string(jobj)) < 0) ||
-	    strcmp(json_object_get_string(jobj), hash))
+	if (!json_object_object_get_ex(jobj_af, "hash", &jobj))
 		return 0;
+	if (strcmp(json_object_get_string(jobj), hash)) {
+		log_dbg(cd, "Keyslot %d AF uses different hash %s than digest hash %s.",
+			keyslot, json_object_get_string(jobj), hash);
+		return 0;
+	}
 
 	ks_cipher = LUKS2_get_keyslot_cipher(hdr, keyslot, &ks_key_size);
 	data_cipher = LUKS2_get_cipher(hdr, CRYPT_DEFAULT_SEGMENT);
@@ -743,6 +743,7 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 	int i, r, last_active = 0;
 	uint64_t offset, area_length;
 	char *buf, luksMagic[] = LUKS_MAGIC;
+	crypt_keyslot_info ki;
 
 	jobj_digest  = LUKS2_get_digest_jobj(hdr2, 0);
 	if (!jobj_digest)
@@ -767,6 +768,8 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 	if (!json_object_object_get_ex(jobj_digest, "hash", &jobj2))
 		return -EINVAL;
 	hash = json_object_get_string(jobj2);
+	if (crypt_hash_size(hash) < 0)
+		return -EINVAL;
 
 	r = crypt_parse_name_and_mode(LUKS2_get_cipher(hdr2, CRYPT_DEFAULT_SEGMENT), cipher, NULL, cipher_mode);
 	if (r < 0)
@@ -791,16 +794,25 @@ int LUKS2_luks2_to_luks1(struct crypt_device *cd, struct luks2_hdr *hdr2, struct
 	}
 
 	r = LUKS2_get_volume_key_size(hdr2, 0);
-	if (r < 0)
+	if (r < 0) {
+		log_err(cd, _("Cannot convert to LUKS1 format - there are no active keyslots."), r);
 		return -EINVAL;
+	}
 	key_size = r;
 
 	for (i = 0; i < LUKS2_KEYSLOTS_MAX; i++) {
-		if (LUKS2_keyslot_info(hdr2, i) == CRYPT_SLOT_INACTIVE)
+		ki = LUKS2_keyslot_info(hdr2, i);
+
+		if (ki == CRYPT_SLOT_INACTIVE)
 			continue;
 
-		if (LUKS2_keyslot_info(hdr2, i) == CRYPT_SLOT_INVALID) {
+		if (ki == CRYPT_SLOT_INVALID) {
 			log_err(cd, _("Cannot convert to LUKS1 format - keyslot %u is in invalid state."), i);
+			return -EINVAL;
+		}
+
+		if (ki == CRYPT_SLOT_UNBOUND) {
+			log_err(cd, _("Cannot convert to LUKS1 format - keyslot %u is unbound."), i);
 			return -EINVAL;
 		}
 

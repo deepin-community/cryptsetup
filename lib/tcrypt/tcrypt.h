@@ -2,8 +2,8 @@
 /*
  * TCRYPT (TrueCrypt-compatible)  header definition
  *
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2012-2024 Milan Broz
+ * Copyright (C) 2012-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2026 Milan Broz
  */
 
 #ifndef _CRYPTSETUP_TCRYPT_H

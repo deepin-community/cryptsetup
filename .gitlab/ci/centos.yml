@@ -1,14 +1,16 @@
 .centos-openssl-backend:
   extends:
-    - .dump_kernel_log
+    - .fail_if_coredump_generated
   before_script:
+    - sudo dnf clean all
     - >
       sudo dnf -y -q  install
       autoconf automake device-mapper-devel gcc gettext-devel json-c-devel
       libblkid-devel libpwquality-devel libselinux-devel libssh-devel libtool
       libuuid-devel make popt-devel libsepol-devel nc openssh-clients passwd
       pkgconfig sharutils sshpass tar uuid-devel vim-common device-mapper
-      expect gettext git jq keyutils openssl-devel openssl gem
+      expect gettext git jq keyutils openssl-devel openssl gem swtpm swtpm-tools
+      tpm2-tools
     - sudo gem install asciidoctor
     - sudo -E git clean -xdf
     - ./autogen.sh
@@ -21,11 +23,13 @@ test-main-commit-centos-stream9:
     - .centos-openssl-backend
   tags:
     - libvirt
-    - centos-stream9
+    - cryptsetup-centos-stream-9
   stage: test
   interruptible: true
   variables:
+    DISTRO: cryptsetup-centos-stream-9
     RUN_SSH_PLUGIN_TEST: "1"
+    RUN_KEYRING_TRUSTED_TEST: "1"
   rules:
     - if: $RUN_SYSTEMD_PLUGIN_TEST != null
       when: never
@@ -42,11 +46,59 @@ test-mergerq-centos-stream9:
     - .centos-openssl-backend
   tags:
     - libvirt
-    - centos-stream9
+    - cryptsetup-centos-stream-9
   stage: test
   interruptible: true
   variables:
+    DISTRO: cryptsetup-centos-stream-9
     RUN_SSH_PLUGIN_TEST: "1"
+    RUN_KEYRING_TRUSTED_TEST: "1"
+  rules:
+    - if: $RUN_SYSTEMD_PLUGIN_TEST != null
+      when: never
+    - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - make -j
+    - make -j -C tests check-programs
+    - sudo -E make check
+
+test-main-commit-centos-stream10:
+  extends:
+    - .centos-openssl-backend
+  tags:
+    - libvirt
+    - cryptsetup-centos-stream-10
+  stage: test
+  interruptible: true
+  variables:
+    DISTRO: cryptsetup-centos-stream-10
+    RUN_SSH_PLUGIN_TEST: "1"
+    RUN_KEYRING_TRUSTED_TEST: "1"
+  rules:
+    - if: $RUN_SYSTEMD_PLUGIN_TEST != null
+      when: never
+    - if: $CI_PROJECT_PATH != "cryptsetup/cryptsetup"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH =~ /v2\..\.x$/
+  script:
+    - make -j
+    - make -j -C tests check-programs
+    - sudo -E make check
+
+test-mergerq-centos-stream10:
+  extends:
+    - .centos-openssl-backend
+  tags:
+    - libvirt
+    - cryptsetup-centos-stream-10
+  stage: test
+  interruptible: true
+  variables:
+    DISTRO: cryptsetup-centos-stream-10
+    RUN_SSH_PLUGIN_TEST: "1"
+    RUN_KEYRING_TRUSTED_TEST: "1"
   rules:
     - if: $RUN_SYSTEMD_PLUGIN_TEST != null
       when: never

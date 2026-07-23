@@ -41,27 +41,20 @@ int FVAULT2_get_volume_key(
 	const char *passphrase,
 	size_t passphrase_len,
 	const struct fvault2_params *params,
-	struct volume_key **vol_key);
+	struct volume_key **r_vol_key);
 
 int FVAULT2_dump(
 	struct crypt_device *cd,
 	struct device *device,
 	const struct fvault2_params *params);
 
-int FVAULT2_activate_by_passphrase(
-	struct crypt_device *cd,
-	const char *name,
-	const char *passphrase,
-	size_t passphrase_len,
-	const struct fvault2_params *params,
-	uint32_t flags);
-
 int FVAULT2_activate_by_volume_key(
 	struct crypt_device *cd,
 	const char *name,
-	const char *key,
-	size_t key_size,
+	struct volume_key *vk,
 	const struct fvault2_params *params,
 	uint32_t flags);
+
+size_t FVAULT2_volume_key_size(void);
 
 #endif

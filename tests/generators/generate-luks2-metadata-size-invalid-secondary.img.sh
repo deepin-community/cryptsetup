@@ -15,7 +15,7 @@
 # $1 full target dir
 # $2 full source luks2 image
 
-function generate()
+generate()
 {
 	TEST_MDA_SIZE=$LUKS2_HDR_SIZE_1M
 
@@ -27,7 +27,7 @@ function generate()
 	JSON_SIZE=$((TEST_JSN_SIZE*512))
 	DATA_OFFSET=16777216
 
-	json_str=$(jq -c --arg jdiff $JSON_DIFF --arg jsize $JSON_SIZE --arg off $DATA_OFFSET \
+	json_str=$(_jq --arg jdiff $JSON_DIFF --arg jsize $JSON_SIZE --arg off $DATA_OFFSET \
 		   '.keyslots[].area.offset |= ( . | tonumber + ($jdiff | tonumber) | tostring) |
 		    .config.json_size = $jsize |
 		    .segments."0".offset = $off' $TMPDIR/json0)
@@ -46,12 +46,12 @@ function generate()
 	lib_mangle_json_hdr1 $TEST_MDA_SIZE $TEST_JSN_SIZE
 }
 
-function check()
+check()
 {
 	lib_hdr0_killed $TEST_MDA_SIZE || exit 2
 
 	read_luks2_json1 $TGT_IMG $TMPDIR/json_res1 $TEST_JSN_SIZE
-	jq -c --arg koff $KEYSLOTS_OFFSET --arg jsize $JSON_SIZE \
+	_jq --arg koff $KEYSLOTS_OFFSET --arg jsize $JSON_SIZE \
 		'if ([.keyslots[].area.offset] | map(tonumber) | min | tostring != $koff) or
 		    (.config.json_size != $jsize)
 		then error("Unexpected value in result json") else empty end' $TMPDIR/json_res1 || exit 5

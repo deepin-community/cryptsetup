@@ -59,6 +59,17 @@ api_test_2 = executable('api-test-2',
     ],
     include_directories: includes_lib)
 
+crypto_check = executable('crypto-check',
+    [
+        'crypto-check.c',
+    ],
+    link_with: libcrypto_backend,
+    c_args: [
+        '-Wall',
+        '-O2',
+    ],
+    include_directories: includes_lib)
+
 vectors_test = executable('vectors-test',
     [
         'crypto-vectors.c',
@@ -354,6 +365,7 @@ if get_option('cryptsetup')
         is_parallel: false,
         depends: [
             cryptsetup,
+            crypto_check,
         ])
     test('luks1-compat-test',
         find_program('./luks1-compat-test'),
@@ -362,6 +374,7 @@ if get_option('cryptsetup')
         is_parallel: false,
         depends: [
             cryptsetup,
+            crypto_check,
         ])
     test('device-test',
         find_program('./device-test'),
@@ -373,6 +386,14 @@ if get_option('cryptsetup')
         ])
     test('keyring-compat-test',
         find_program('./keyring-compat-test'),
+        workdir: meson.current_build_dir(),
+        timeout: 14400,
+        is_parallel: false,
+        depends: [
+            cryptsetup,
+        ])
+    test('keyring-trusted-test',
+        find_program('./keyring-trusted-test'),
         workdir: meson.current_build_dir(),
         timeout: 14400,
         is_parallel: false,

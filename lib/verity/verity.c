@@ -2,7 +2,7 @@
 /*
  * dm-verity volume handling
  *
- * Copyright (C) 2012-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2012-2026 Red Hat, Inc. All rights reserved.
  */
 
 #include <errno.h>
@@ -271,7 +271,8 @@ int VERITY_verify_params(struct crypt_device *cd,
 		return 0;
 
 	log_dbg(cd, "Verification of VERITY data in userspace required.");
-	r = VERITY_verify(cd, hdr, root_hash->key, root_hash->keylength);
+	r = VERITY_verify(cd, hdr, crypt_volume_key_get_key(root_hash),
+			  crypt_volume_key_length(root_hash));
 
 	if ((r == -EPERM || r == -EFAULT) && fec_device) {
 		v = r;
@@ -300,9 +301,9 @@ int VERITY_activate(struct crypt_device *cd,
 		     struct crypt_params_verity *verity_hdr,
 		     uint32_t activation_flags)
 {
-	uint32_t dmv_flags;
+	uint64_t dmv_flags = 0;
 	int r;
-	key_serial_t kid;
+	key_serial_t kid = 0;
 	char *description = NULL;
 	struct crypt_dm_active_device dmd = { 0 };
 
@@ -324,7 +325,9 @@ int VERITY_activate(struct crypt_device *cd,
 			return -EINVAL;
 
 		log_dbg(cd, "Adding signature %s (type user) into thread keyring.", description);
-		kid = keyring_add_key_in_thread_keyring(USER_KEY, description, signature->key, signature->keylength);
+		kid = keyring_add_key_in_thread_keyring(USER_KEY, description,
+							crypt_volume_key_get_key(signature),
+							crypt_volume_key_length(signature));
 		if (kid < 0) {
 			log_dbg(cd, "keyring_add_key_in_thread_keyring failed with errno %d.", errno);
 			log_err(cd, _("Failed to load key in kernel keyring."));
@@ -352,8 +355,8 @@ int VERITY_activate(struct crypt_device *cd,
 	}
 
 	r = dm_verity_target_set(&dmd.segment, 0, dmd.size, crypt_data_device(cd),
-			crypt_metadata_device(cd), fec_device, root_hash->key,
-			root_hash->keylength, description,
+			crypt_metadata_device(cd), fec_device, crypt_volume_key_get_key(root_hash),
+			crypt_volume_key_length(root_hash), description,
 			VERITY_hash_offset_block(verity_hdr),
 			VERITY_FEC_blocks(cd, fec_device, verity_hdr), verity_hdr);
 
@@ -381,7 +384,12 @@ int VERITY_activate(struct crypt_device *cd,
 
 	r = 0;
 out:
-	crypt_drop_keyring_key_by_description(cd, description, USER_KEY);
+	if (signature) {
+		log_dbg(cd, "Unlinking signature (id: %" PRIi32 ") from thread keyring.", kid);
+
+		if (keyring_unlink_key_from_thread_keyring(kid))
+			log_dbg(cd, "keyring_unlink_key_from_thread_keyring failed with errno %d.", errno);
+	}
 	free(description);
 	dm_targets_free(cd, &dmd);
 	return r;
@@ -411,13 +419,13 @@ int VERITY_dump(struct crypt_device *cd,
 			verity_blocks += rs_blocks;
 	}
 
-	log_std(cd, "VERITY header information for %s\n", device_path(crypt_metadata_device(cd)));
+	log_std(cd, "VERITY header information for %s.\n", device_path(crypt_metadata_device(cd)));
 	log_std(cd, "UUID:            \t%s\n", crypt_get_uuid(cd) ?: "");
 	log_std(cd, "Hash type:       \t%u\n", verity_hdr->hash_type);
 	log_std(cd, "Data blocks:     \t%" PRIu64 "\n", verity_hdr->data_size);
-	log_std(cd, "Data block size: \t%u\n", verity_hdr->data_block_size);
+	log_std(cd, "Data block size: \t%u [bytes]\n", verity_hdr->data_block_size);
 	log_std(cd, "Hash blocks:     \t%" PRIu64 "\n", hash_blocks);
-	log_std(cd, "Hash block size: \t%u\n", verity_hdr->hash_block_size);
+	log_std(cd, "Hash block size: \t%u [bytes]\n", verity_hdr->hash_block_size);
 	log_std(cd, "Hash algorithm:  \t%s\n", verity_hdr->hash_name);
 	if (fec_device && fec_blocks) {
 		log_std(cd, "FEC RS roots:   \t%" PRIu32 "\n", verity_hdr->fec_roots);

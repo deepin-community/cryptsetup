@@ -2,9 +2,9 @@
 /*
  * cryptsetup library LUKS2 API check functions
  *
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
- * Copyright (C) 2016-2024 Ondrej Kozina
+ * Copyright (C) 2009-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2026 Milan Broz
+ * Copyright (C) 2016-2026 Ondrej Kozina
  */
 
 #include <stdbool.h>
@@ -17,7 +17,7 @@
 #include <sys/stat.h>
 #include <inttypes.h>
 #include <sys/types.h>
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 #include <linux/keyctl.h>
 #include <sys/syscall.h>
 #ifndef HAVE_KEY_SERIAL_T
@@ -32,6 +32,7 @@ typedef int32_t key_serial_t;
 #include "libcryptsetup.h"
 
 #define DEVICE_1_UUID "28632274-8c8a-493f-835b-da802e1c576b"
+#define DEVICE_2_UUID "a8632274-8c8a-493f-835b-da802e1c576b"
 #define DEVICE_EMPTY_name "crypt_zero"
 #define DEVICE_EMPTY DMDIR DEVICE_EMPTY_name
 #define DEVICE_ERROR_name "crypt_error"
@@ -143,7 +144,7 @@ static uint32_t default_luks2_iter_time = 0;
 static uint32_t default_luks2_memory_kb = 0;
 static uint32_t default_luks2_parallel_threads = 0;
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 static char keyring_in_user_str_id[32] = {0};
 #endif
 
@@ -415,7 +416,7 @@ static int set_fast_pbkdf(struct crypt_device *_cd)
 	return crypt_set_pbkdf_type(_cd, pbkdf);
 }
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 static key_serial_t add_key(const char *type, const char *description, const void *payload, size_t plen, key_serial_t keyring)
 {
 	return syscall(__NR_add_key, type, description, payload, plen, keyring);
@@ -424,6 +425,11 @@ static key_serial_t add_key(const char *type, const char *description, const voi
 static key_serial_t keyctl_unlink(key_serial_t key, key_serial_t keyring)
 {
 	return syscall(__NR_keyctl, KEYCTL_UNLINK, key, keyring);
+}
+
+static key_serial_t keyctl_revoke(key_serial_t key)
+{
+	return syscall(__NR_keyctl, KEYCTL_REVOKE, key);
 }
 
 static key_serial_t keyctl_link(key_serial_t key, key_serial_t keyring)
@@ -471,25 +477,27 @@ static key_serial_t add_key_set_perm(const char *type, const char *description, 
 	return l == 0 ? kid : -EINVAL;
 }
 
-static key_serial_t _kernel_key_by_segment_and_type(struct crypt_device *_cd, int segment,
-						    const char* type)
+static key_serial_t _kernel_key_by_segment_uuid_and_type(const char *uuid, int segment,
+							 const char *type)
+
 {
 	char key_description[1024];
 
-	if (snprintf(key_description, sizeof(key_description), "cryptsetup:%s-d%u", crypt_get_uuid(_cd), segment) < 1)
+	if (snprintf(key_description, sizeof(key_description), "cryptsetup:%s-d%u", uuid, segment) < 1)
 		return -1;
 
 	return request_key(type, key_description, NULL, 0);
 }
 
-static key_serial_t _kernel_key_by_segment(struct crypt_device *_cd, int segment)
+static key_serial_t _kernel_key_by_segment_and_type(struct crypt_device *_cd, int segment,
+						    const char* type)
 {
-	return _kernel_key_by_segment_and_type(_cd, segment, "logon");
+	return _kernel_key_by_segment_uuid_and_type(crypt_get_uuid(_cd), segment, type);
 }
 
 static int _volume_key_in_keyring(struct crypt_device *_cd, int segment)
 {
-	return _kernel_key_by_segment(_cd, segment) >= 0 ? 0 : -1;
+	return _kernel_key_by_segment_and_type(_cd, segment, "logon") >= 0 ? 0 : -1;
 }
 
 static int _drop_keyring_key_from_keyring_name(const char *key_description, key_serial_t keyring, const char* type)
@@ -503,20 +511,44 @@ static int _drop_keyring_key_from_keyring_name(const char *key_description, key_
 	return keyctl_unlink(kid, keyring);
 }
 
-static int _drop_keyring_key_from_keyring_type(struct crypt_device *_cd, int segment,
-					       key_serial_t keyring, const char* type)
+static int _revoke_keyring_key(struct crypt_device *_cd, int segment)
 {
-	key_serial_t kid = _kernel_key_by_segment_and_type(_cd, segment, type);
+	key_serial_t kid = _kernel_key_by_segment_and_type(_cd, segment, "logon");
 
 	if (kid < 0)
 		return -1;
 
-	return keyctl_unlink(kid, keyring);
+	return keyctl_revoke(kid);
 }
 
-static int _drop_keyring_key(struct crypt_device *_cd, int segment)
+static long keyctl_describe(key_serial_t id, char *buffer, size_t buflen)
 {
-	return _drop_keyring_key_from_keyring_type(_cd, segment, KEY_SPEC_THREAD_KEYRING, "logon");
+	return syscall(__NR_keyctl, KEYCTL_DESCRIBE, id, buffer, buflen);
+}
+
+static int _intermediary_keyring_in_thread_keyring(const char *uuid)
+{
+	key_serial_t keys[64];
+	char rdesc[256], prefix[20];
+	long r;
+	int i, count;
+
+	r = snprintf(prefix, sizeof(prefix), "cryptsetup-%.8s", uuid);
+	if (r < 0 || (size_t)r > sizeof(prefix) - 1)
+		return -1;
+
+	r = keyctl_read(KEY_SPEC_THREAD_KEYRING, (char *)keys, sizeof(keys));
+	if (r < 0)
+		return -1;
+
+	count = r / sizeof(key_serial_t);
+	for (i = 0; i < count; i++) {
+		r = keyctl_describe(keys[i], rdesc, sizeof(rdesc));
+		if (r > 0 && (size_t)r <= sizeof(rdesc) && strstr(rdesc, prefix))
+			return 0;
+	}
+
+	return -1;
 }
 #endif
 
@@ -594,7 +626,7 @@ static void _cleanup(void)
 	free(DEVICE_5);
 	free(DEVICE_6);
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	char *end;
 	key_serial_t krid;
 
@@ -689,11 +721,11 @@ static void UseLuks2Device(void)
 	// repeat previous tests and check kernel keyring is released when not needed
 	if (t_dm_crypt_keyring_support()) {
 		OK_(crypt_activate_by_passphrase(cd, NULL, CRYPT_ANY_SLOT, KEY1, strlen(KEY1), 0));
-		FAIL_(_drop_keyring_key(cd, 0), "");
+		FAIL_(_revoke_keyring_key(cd, 0), "");
 		OK_(crypt_activate_by_passphrase(cd, NULL, CRYPT_ANY_SLOT, KEY1, strlen(KEY1), CRYPT_ACTIVATE_KEYRING_KEY));
-		OK_(_drop_keyring_key(cd, 0));
+		OK_(_revoke_keyring_key(cd, 0));
 		OK_(crypt_activate_by_passphrase(cd, CDEVICE_1, CRYPT_ANY_SLOT, KEY1, strlen(KEY1), 0));
-		OK_(_drop_keyring_key(cd, 0));
+		OK_(_revoke_keyring_key(cd, 0));
 		FAIL_(crypt_activate_by_passphrase(cd, CDEVICE_1, CRYPT_ANY_SLOT, KEY1, strlen(KEY1), 0), "already open");
 		FAIL_(_volume_key_in_keyring(cd, 0), "");
 		OK_(crypt_activate_by_passphrase(cd, NULL, CRYPT_ANY_SLOT, KEY1, strlen(KEY1), 0));
@@ -703,11 +735,11 @@ static void UseLuks2Device(void)
 		if (!_fips_mode) {
 			/* keyslot 0 is PBKDF2, keyslot 1 is Argon2id */
 			EQ_(crypt_activate_by_passphrase(cd, NULL, 1, KEY2, strlen(KEY2), 0), 1);
-			FAIL_(_drop_keyring_key(cd, 0), "");
+			FAIL_(_revoke_keyring_key(cd, 0), "");
 			EQ_(crypt_activate_by_passphrase(cd, NULL, 1, KEY2, strlen(KEY2), CRYPT_ACTIVATE_KEYRING_KEY), 1);
-			OK_(_drop_keyring_key(cd, 0));
+			OK_(_revoke_keyring_key(cd, 0));
 			EQ_(crypt_activate_by_passphrase(cd, CDEVICE_1, 1, KEY2, strlen(KEY2), 0), 1);
-			OK_(_drop_keyring_key(cd, 0));
+			OK_(_revoke_keyring_key(cd, 0));
 			FAIL_(crypt_activate_by_passphrase(cd, CDEVICE_1, 1, KEY2, strlen(KEY2), 0), "already open");
 			FAIL_(_volume_key_in_keyring(cd, 0), "");
 			EQ_(crypt_activate_by_passphrase(cd, NULL, 1, KEY2, strlen(KEY2), 0), 1);
@@ -734,8 +766,26 @@ static void UseLuks2Device(void)
 	key[1] = ~key[1];
 	FAIL_(crypt_volume_key_verify(cd, key, key_size), "key mismatch");
 	FAIL_(crypt_activate_by_volume_key(cd, CDEVICE_1, key, key_size, 0), "key mismatch");
-
 	CRYPT_FREE(cd);
+
+#if KERNEL_KEYRING
+	OK_(crypt_init(&cd, DEVICE_1));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+	if (t_dm_crypt_keyring_support()) {
+		OK_(crypt_activate_by_passphrase(cd, CDEVICE_1, CRYPT_ANY_SLOT, KEY1, strlen(KEY1), 0));
+		OK_(_intermediary_keyring_in_thread_keyring(DEVICE_1_UUID));
+		OK_(_volume_key_in_keyring(cd, 0));
+	}
+	// All keys uploaded via current device context must be freed.
+	CRYPT_FREE(cd);
+	if (t_dm_crypt_keyring_support()) {
+		FAIL_(_intermediary_keyring_in_thread_keyring(DEVICE_1_UUID), "intermediary keyring not cleaned up");
+		FAIL_(_kernel_key_by_segment_uuid_and_type(DEVICE_1_UUID, 0, "logon"), "VK not cleaned up");
+	}
+	OK_(crypt_init_by_name(&cd, CDEVICE_1));
+	OK_(crypt_deactivate(cd, CDEVICE_1));
+	CRYPT_FREE(cd);
+#endif
 }
 
 static void SuspendDevice(void)
@@ -761,7 +811,7 @@ static void SuspendDevice(void)
 	OK_(suspend_status);
 	OK_(crypt_get_active_device(cd, CDEVICE_1, &cad));
 	EQ_(CRYPT_ACTIVATE_SUSPENDED, cad.flags & CRYPT_ACTIVATE_SUSPENDED);
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	FAIL_(_volume_key_in_keyring(cd, 0), "");
 #endif
 	FAIL_(crypt_suspend(cd, CDEVICE_1), "already suspended");
@@ -829,6 +879,37 @@ static void SuspendDevice(void)
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 	CRYPT_FREE(cd);
 
+	OK_(crypt_init(&cd, DEVICE_1));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+
+	/* Create identical device except the UUID and VK */
+	OK_(crypt_init(&cd2, DMDIR L_DEVICE_OK));
+	OK_(set_fast_pbkdf(cd2));
+	key[0] = ~key[0];
+	OK_(crypt_format(cd2, CRYPT_LUKS2, crypt_get_cipher(cd), crypt_get_cipher_mode(cd), DEVICE_2_UUID, key, key_size, NULL));
+	EQ_(0, crypt_keyslot_add_by_volume_key(cd2, 0, NULL, key_size, PASSPHRASE, strlen(PASSPHRASE)));
+
+	/* Activate and suspend both devices */
+	OK_(crypt_activate_by_passphrase(cd, CDEVICE_1, CRYPT_ANY_SLOT, KEY1, strlen(KEY1), 0));
+	OK_(crypt_suspend(cd, CDEVICE_1));
+	OK_(crypt_activate_by_volume_key(cd2, CDEVICE_2, NULL, key_size, 0));
+	OK_(crypt_suspend(cd2, CDEVICE_2));
+
+	/* Switch context for resume (mismatching UUIDs) */
+	FAIL_(crypt_resume_by_passphrase(cd, CDEVICE_2, 0, KEY1, strlen(KEY1)), "Mismatching UUID.");
+	OK_(crypt_get_active_device(cd2, CDEVICE_2, &cad));
+	EQ_(CRYPT_ACTIVATE_SUSPENDED, cad.flags & CRYPT_ACTIVATE_SUSPENDED);
+	FAIL_(crypt_resume_by_passphrase(cd2, CDEVICE_1, 0, PASSPHRASE, strlen(PASSPHRASE)), "Mismatching UUID.");
+	OK_(crypt_get_active_device(cd, CDEVICE_1, &cad));
+	EQ_(CRYPT_ACTIVATE_SUSPENDED, cad.flags & CRYPT_ACTIVATE_SUSPENDED);
+
+	OK_(crypt_resume_by_passphrase(cd, CDEVICE_1, 0, KEY1, strlen(KEY1)));
+	OK_(crypt_resume_by_passphrase(cd2, CDEVICE_2, 0, PASSPHRASE, strlen(PASSPHRASE)));
+	OK_(crypt_deactivate(cd, CDEVICE_1));
+	OK_(crypt_deactivate(cd2, CDEVICE_2));
+	CRYPT_FREE(cd);
+	CRYPT_FREE(cd2);
+
 	_remove_keyfiles();
 	_cleanup_dmdevices();
 }
@@ -865,8 +946,8 @@ static void AddDeviceLuks2(void)
 		pbkdf.max_memory_kb = 0;
 	}
 
-	crypt_decode_key(key, vk_hex, key_size);
-	crypt_decode_key(key3, vk_hex2, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key3, vk_hex2, key_size));
 
 	// init test devices
 	OK_(get_luks2_offsets(0, 0, 0, &r_header_size, &r_payload_offset));
@@ -1212,7 +1293,7 @@ static void Luks2MetadataSize(void)
 		pbkdf.iterations = 1000;
 	}
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	// init test devices
 	OK_(get_luks2_offsets(0, 0, 0, &r_header_size, NULL));
@@ -1404,7 +1485,7 @@ static void Luks2HeaderRestore(void)
 		pbkdf.max_memory_kb = 0;
 	}
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	OK_(get_luks2_offsets(0, params.data_alignment, 0, NULL, &r_payload_offset));
 	OK_(create_dmdevice_over_loop(L_DEVICE_OK, r_payload_offset + 5000));
@@ -1506,7 +1587,7 @@ static void Luks2HeaderLoad(void)
 		pbkdf.max_memory_kb = 0;
 	}
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	// hardcoded values for existing image IMAGE1
 	img_size = 8192;
@@ -1641,7 +1722,7 @@ static void Luks2HeaderBackup(void)
 		pbkdf.max_memory_kb = 0;
 	}
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	OK_(get_luks2_offsets(1, params.data_alignment, 0, NULL, &r_payload_offset));
 	OK_(create_dmdevice_over_loop(L_DEVICE_OK, r_payload_offset + 1));
@@ -1736,7 +1817,7 @@ static void ResizeDeviceLuks2(void)
 		pbkdf.max_memory_kb = 0;
 	}
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
 
 	// prepare env
 	OK_(get_luks2_offsets(0, params.data_alignment, 0, NULL, &r_payload_offset));
@@ -1788,7 +1869,7 @@ static void ResizeDeviceLuks2(void)
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 	CRYPT_FREE(cd);
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
 	OK_(crypt_load(cd, CRYPT_LUKS, NULL));
 	// enable loading VKs in kernel keyring (default mode)
@@ -1796,9 +1877,9 @@ static void ResizeDeviceLuks2(void)
 	OK_(crypt_activate_by_volume_key(cd, CDEVICE_1, key, key_size, 0));
 	// erase volume key from kernel keyring
 	if (t_dm_crypt_keyring_support())
-		OK_(_drop_keyring_key(cd, 0));
+		OK_(_revoke_keyring_key(cd, 0));
 	else
-		FAIL_(_drop_keyring_key(cd, 0), "key not found");
+		FAIL_(_revoke_keyring_key(cd, 0), "key not found");
 	// same size is ok
 	OK_(crypt_resize(cd, CDEVICE_1, 0));
 	// kernel fails to find the volume key in keyring
@@ -1885,7 +1966,7 @@ static void ResizeDeviceLuks2(void)
 
 static void TokenActivationByKeyring(void)
 {
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	key_serial_t kid, kid1;
 	struct crypt_active_device cad;
 
@@ -2149,8 +2230,12 @@ static void Tokens(void)
 	EQ_(crypt_token_json_get(cd, 2, &dummy), 2);
 
 	// exercise assign/unassign keyslots API
+	FAIL_(crypt_token_unassign_keyslot(cd, CRYPT_ANY_TOKEN, 1), "Token id must be specific.");
+	OK_(crypt_token_is_assigned(cd, 2, 1));
 	EQ_(crypt_token_unassign_keyslot(cd, 2, 1), 2);
 	FAIL_(crypt_activate_by_token(cd, CDEVICE_1, 2, passptr1, 0), "Token assigned to no keyslot");
+	FAIL_(crypt_token_assign_keyslot(cd, CRYPT_ANY_TOKEN, 0), "Token id must be specific.");
+	FAIL_(crypt_token_is_assigned(cd, 2, 0), "Token 2 must not be assigned to keyslot 0.");
 	EQ_(crypt_token_assign_keyslot(cd, 2, 0), 2);
 	FAIL_(crypt_activate_by_token(cd, CDEVICE_1, 2, passptr1, 0), "Wrong passphrase");
 	EQ_(crypt_activate_by_token(cd, CDEVICE_1, 2, passptr, 0), 0);
@@ -2182,7 +2267,7 @@ static void Tokens(void)
 	EQ_(crypt_activate_by_token(cd, CDEVICE_1, 2, passptr, 0), 0);
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	if (t_dm_crypt_keyring_support()) {
 		EQ_(crypt_activate_by_token(cd, NULL, 2, passptr, CRYPT_ACTIVATE_KEYRING_KEY), 0);
 		OK_(_volume_key_in_keyring(cd, 0));
@@ -2456,7 +2541,7 @@ static void LuksConvert(void)
 	OK_(strcmp(crypt_get_type(cd), CRYPT_LUKS1));
 	CRYPT_FREE(cd);
 
-	// exercice non-pbkdf2 LUKSv2 conversion
+	// exercise non-pbkdf2 LUKSv2 conversion
 	if (!_fips_mode) {
 		OK_(crypt_init(&cd, DEVICE_1));
 		OK_(crypt_set_data_offset(cd, offset));
@@ -2467,7 +2552,7 @@ static void LuksConvert(void)
 		CRYPT_FREE(cd);
 	}
 
-	// exercice non LUKS1 compatible keyslot
+	// exercise non LUKS1 compatible keyslot
 	OK_(crypt_init(&cd, DEVICE_1));
 	OK_(crypt_set_data_offset(cd, offset));
 	OK_(crypt_format(cd, CRYPT_LUKS2, cipher, cipher_mode, NULL, NULL, 32, &luks2));
@@ -2477,7 +2562,7 @@ static void LuksConvert(void)
 	FAIL_(crypt_convert(cd, CRYPT_LUKS1, NULL), "Unassigned keyslots are incompatible with LUKSv1 format");
 	CRYPT_FREE(cd);
 
-	// exercice LUKSv2 conversion with single pbkdf2 keyslot being active
+	// exercise LUKSv2 conversion with single pbkdf2 keyslot being active
 	OK_(crypt_init(&cd, DEVICE_1));
 	OK_(crypt_set_data_offset(cd, offset));
 	OK_(crypt_set_pbkdf_type(cd, &pbkdf2));
@@ -3040,6 +3125,8 @@ static void Pbkdf(void)
 	// try to pass illegal values
 	argon2.parallel_threads = 0;
 	FAIL_(crypt_set_pbkdf_type(cd, &argon2), "Parallel threads can't be 0");
+	argon2.parallel_threads = 99;
+	FAIL_(crypt_set_pbkdf_type(cd, &argon2), "Parallel threads can't be higher than maximum");
 	argon2.parallel_threads = 1;
 	argon2.max_memory_kb = 0;
 	FAIL_(crypt_set_pbkdf_type(cd, &argon2), "Memory can't be 0");
@@ -3126,7 +3213,7 @@ static void Pbkdf(void)
 	argon2.flags = CRYPT_PBKDF_NO_BENCHMARK;
 	argon2.max_memory_kb = 2 * 1024 * 1024;
 	argon2.iterations = 6;
-	argon2.parallel_threads = 8;
+	argon2.parallel_threads = 4;
 	OK_(crypt_set_pbkdf_type(cd, &argon2));
 	NOTNULL_(pbkdf = crypt_get_pbkdf_type(cd));
 	EQ_(pbkdf->iterations, 6);
@@ -3176,8 +3263,8 @@ static void Luks2KeyslotAdd(void)
 		.sector_size = TST_SECTOR_SIZE
 	};
 
-	crypt_decode_key(key, vk_hex, key_size);
-	crypt_decode_key(key2, vk_hex2, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key2, vk_hex2, key_size));
 
 	/* Cannot use Argon2 in FIPS */
 	if (_fips_mode) {
@@ -3197,6 +3284,10 @@ static void Luks2KeyslotAdd(void)
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, key, key_size, PASSPHRASE, strlen(PASSPHRASE)), 0);
 	EQ_(crypt_keyslot_status(cd, 0), CRYPT_SLOT_ACTIVE_LAST);
 	EQ_(crypt_keyslot_status(cd, 1), CRYPT_SLOT_UNBOUND);
+	/* drop the generated volume key from device context cache */
+	CRYPT_FREE(cd);
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
 	/* must not activate volume with keyslot unassigned to a segment */
 	FAIL_(crypt_activate_by_volume_key(cd, CDEVICE_1, key2, key_size, 0), "Key doesn't match volume key digest");
 	FAIL_(crypt_activate_by_passphrase(cd, CDEVICE_1, 1, PASSPHRASE1, strlen(PASSPHRASE1), 0), "Keyslot not assigned to volume");
@@ -3209,19 +3300,20 @@ static void Luks2KeyslotAdd(void)
 	/* in general crypt_keyslot_add_by_key must allow any reasonable key size
 	 * even though such keyslot will not be usable for segment encryption */
 	EQ_(crypt_keyslot_add_by_key(cd, 2, key2, key_size-1, PASSPHRASE1, strlen(PASSPHRASE1), CRYPT_VOLUME_KEY_NO_SEGMENT), 2);
-	EQ_(crypt_keyslot_add_by_key(cd, 3, key2, 13, PASSPHRASE1, strlen(PASSPHRASE1), CRYPT_VOLUME_KEY_NO_SEGMENT), 3);
+	/* As per SP800-132 112 bits (14 bytes) is minimal key length */
+	EQ_(crypt_keyslot_add_by_key(cd, 3, key2, 14, PASSPHRASE1, strlen(PASSPHRASE1), CRYPT_VOLUME_KEY_NO_SEGMENT), 3);
 
 	FAIL_(crypt_keyslot_get_key_size(cd, CRYPT_ANY_SLOT), "Bad keyslot specification.");
 	EQ_(crypt_get_volume_key_size(cd), key_size);
 	EQ_(crypt_keyslot_get_key_size(cd, 0), key_size);
 	EQ_(crypt_keyslot_get_key_size(cd, 1), key_size);
 	EQ_(crypt_keyslot_get_key_size(cd, 2), key_size-1);
-	EQ_(crypt_keyslot_get_key_size(cd, 3), 13);
+	EQ_(crypt_keyslot_get_key_size(cd, 3), 14);
 
 	key_ret_len = key_size - 1;
 	FAIL_(crypt_volume_key_get(cd, CRYPT_ANY_SLOT, key_ret, &key_ret_len, PASSPHRASE1, strlen(PASSPHRASE1)), "Wrong size");
 
-	key_ret_len = 13;
+	key_ret_len = 14;
 	FAIL_(crypt_volume_key_get(cd, 2, key_ret, &key_ret_len, PASSPHRASE1, strlen(PASSPHRASE1)), "wrong size");
 	EQ_(crypt_volume_key_get(cd, 3, key_ret, &key_ret_len, PASSPHRASE1, strlen(PASSPHRASE1)), 3);
 	FAIL_(crypt_activate_by_volume_key(cd, NULL, key_ret, key_ret_len, 0), "Not a volume key");
@@ -3260,6 +3352,8 @@ static void Luks2KeyslotAdd(void)
 	EQ_(crypt_keyslot_add_by_key(cd, 0, key, key_size, PASSPHRASE, strlen(PASSPHRASE), 0), 0);
 	 /* keyslot 1, unbound key, digest 1 */
 	EQ_(crypt_keyslot_add_by_key(cd, 1, key2, key_size, PASSPHRASE1, strlen(PASSPHRASE1), CRYPT_VOLUME_KEY_NO_SEGMENT), 1);
+	// the cached volume key must not suppress the wrong (unbound) keyslot being used
+	FAIL_(crypt_activate_by_passphrase(cd, CDEVICE_1, 1, PASSPHRASE1, strlen(PASSPHRASE1), 0), "Keyslot unusable for activation.");
 	 /* keyslot 2, unbound key, digest 1 */
 	EQ_(crypt_keyslot_add_by_key(cd, 2, key2, key_size, PASSPHRASE1, strlen(PASSPHRASE1), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), 2);
 	 /* keyslot 3, unbound key, digest 2 */
@@ -3306,8 +3400,8 @@ static void Luks2KeyslotParams(void)
 	size_t key_size_ret, key_size = strlen(vk_hex) / 2, keyslot_key_size = 16;
 	uint64_t r_payload_offset;
 
-	crypt_decode_key(key, vk_hex, key_size);
-	crypt_decode_key(key2, vk_hex2, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key2, vk_hex2, key_size));
 
 	OK_(prepare_keyfile(KEYFILE1, PASSPHRASE, strlen(PASSPHRASE)));
 	OK_(prepare_keyfile(KEYFILE2, PASSPHRASE1, strlen(PASSPHRASE1)));
@@ -3434,7 +3528,7 @@ static void Luks2KeyslotParams(void)
 
 static void Luks2ActivateByKeyring(void)
 {
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 
 	key_serial_t kid, kid1;
 	uint64_t r_payload_offset;
@@ -3508,7 +3602,7 @@ static void Luks2Requirements(void)
 	char key[128];
 	size_t key_size = 128;
 	const struct crypt_pbkdf_type *pbkdf;
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	key_serial_t kid;
 #endif
 	uint32_t flags;
@@ -3643,7 +3737,7 @@ static void Luks2Requirements(void)
 	OK_(crypt_activate_by_volume_key(cd, NULL, key, key_size, 0));
 	OK_(crypt_activate_by_volume_key(cd, NULL, key, key_size, t_dm_crypt_keyring_support() ? CRYPT_ACTIVATE_KEYRING_KEY : 0));
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	if (t_dm_crypt_keyring_support()) {
 		kid = add_key("user", KEY_DESC_TEST0, PASSPHRASE, strlen(PASSPHRASE), KEY_SPEC_THREAD_KEYRING);
 		NOTFAIL_(kid, "Test or kernel keyring are broken.");
@@ -3738,7 +3832,7 @@ static void Luks2Requirements(void)
 	EQ_(r, -ETXTBSY);
 
 	/* crypt_activate_by_token (restricted for activation only) */
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	if (t_dm_crypt_keyring_support()) {
 		kid = add_key("user", KEY_DESC_TEST0, PASSPHRASE, strlen(PASSPHRASE), KEY_SPEC_THREAD_KEYRING);
 		NOTFAIL_(kid, "Test or kernel keyring are broken.");
@@ -3826,7 +3920,7 @@ static void Luks2Requirements(void)
 
 	/* crypt_get_active_device (unrestricted) */
 	OK_(crypt_get_active_device(cd, CDEVICE_1, &cad));
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	if (t_dm_crypt_keyring_support())
 		EQ_(cad.flags & CRYPT_ACTIVATE_KEYRING_KEY, CRYPT_ACTIVATE_KEYRING_KEY);
 #endif
@@ -3907,8 +4001,8 @@ static void Luks2Refresh(void)
 	};
 	struct crypt_active_device cad = {};
 
-	crypt_decode_key(key, vk_hex, key_size);
-	crypt_decode_key(key1, vk_hex2, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key1, vk_hex2, key_size));
 
 	OK_(get_luks2_offsets(0, 0, 0, NULL, &r_payload_offset));
 	OK_(create_dmdevice_over_loop(L_DEVICE_OK, r_payload_offset + 1000));
@@ -3954,7 +4048,7 @@ static void Luks2Refresh(void)
 	FAIL_(check_flag(cad.flags, CRYPT_ACTIVATE_KEYRING_KEY), "Unexpected flag raised.");
 	cad.flags = 0;
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	if (t_dm_crypt_keyring_support()) {
 		OK_(crypt_volume_key_keyring(cd, 1));
 		OK_(crypt_activate_by_passphrase(cd, CDEVICE_1, 0, PASSPHRASE, strlen(PASSPHRASE), CRYPT_ACTIVATE_REFRESH));
@@ -4048,6 +4142,7 @@ static void Luks2Refresh(void)
 static void Luks2Flags(void)
 {
 	uint32_t flags = 42;
+	const char *longlabel = "0123456789abcedf0123456789abcedf0123456789abcedf";
 
 	OK_(crypt_init(&cd, DEVICE_1));
 	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
@@ -4077,6 +4172,9 @@ static void Luks2Flags(void)
 	OK_(crypt_set_label(cd, NULL, NULL));
 	OK_(strcmp("", crypt_get_label(cd)));
 	OK_(strcmp("", crypt_get_subsystem(cd)));
+
+	FAIL_(crypt_set_label(cd, longlabel, NULL), "long label");
+	FAIL_(crypt_set_label(cd, NULL, longlabel), "long subsystem");
 
 	CRYPT_FREE(cd);
 }
@@ -4119,12 +4217,19 @@ static void Luks2Reencryption(void)
 		.luks2 = &params2,
 	};
 	dev_t devno;
+	key_serial_t kid, kid1;
+	struct crypt_keyslot_context *kc_pass12 = NULL, *kc_pass21 = NULL, *kc_file12 = NULL, *kc_file21 = NULL,
+				     *kc_token12 = NULL, *kc_token21 = NULL, *kc_key = NULL, *kc_key2 = NULL;
 
-	const char *vk_hex = "bb21babe733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1a";
-	size_t key_size = strlen(vk_hex) / 2;
-	char key[128];
+	const char *vk_hex =  "bb21babe733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1a",
+		   *vk_hex2 = "bb21bebe733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1a" \
+			      "cc21cfcf733229347ce4f681891f213d94d685cf6b5b84818baf7b78b6df7b1b";
+	size_t key_size = strlen(vk_hex) / 2,
+	       key_size2 = strlen(vk_hex2) / 2;
+	char key[128], key2[64];
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key2, vk_hex2, key_size2));
 
 	/* reencryption currently depends on kernel keyring support in dm-crypt */
 	if (!t_dm_crypt_keyring_support())
@@ -4186,6 +4291,7 @@ static void Luks2Reencryption(void)
 	EQ_(getflags & CRYPT_REQUIREMENT_ONLINE_REENCRYPT, CRYPT_REQUIREMENT_ONLINE_REENCRYPT);
 
 	/* some parameters are expected to change immediately after reencryption initialization */
+	EQ_(crypt_get_old_volume_key_size(cd), 32);
 	EQ_(crypt_get_volume_key_size(cd), 64);
 	OK_(strcmp(crypt_get_cipher_mode(cd), "xts-plain64"));
 	EQ_(crypt_get_sector_size(cd), 4096);
@@ -4387,6 +4493,34 @@ static void Luks2Reencryption(void)
 	CRYPT_FREE(cd);
 	CRYPT_FREE(cd2);
 
+	/* same key size reencryption */
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "cbc-essiv:sha256", NULL, NULL, 32, &params2));
+	OK_(crypt_set_pbkdf_type(cd, &pbkdf));
+	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, NULL, 32, PASSPHRASE, strlen(PASSPHRASE)), 0);
+	EQ_(crypt_keyslot_add_by_key(cd, 10, NULL, 32, PASSPHRASE, strlen(PASSPHRASE), CRYPT_VOLUME_KEY_NO_SEGMENT), 10);
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_REENCRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "none",
+		.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY
+	};
+	rparams.luks2 = &(struct crypt_params_luks2){ .sector_size = 512 };
+	NOTFAIL_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), 0, 10, "aes", "xts-plain64", &rparams), "Failed to initialize reencryption");
+	EQ_(crypt_get_volume_key_size(cd), 32);
+	EQ_(crypt_get_old_volume_key_size(cd), 32);
+	CRYPT_FREE(cd);
+
+	/* same key reencryption */
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "cbc-essiv:sha256", NULL, NULL, 32, &params2));
+	OK_(crypt_set_pbkdf_type(cd, &pbkdf));
+	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, NULL, 32, PASSPHRASE, strlen(PASSPHRASE)), 0);
+	NOTFAIL_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), 0, 0, "aes", "xts-plain64", &rparams), "Failed to initialize reencryption");
+	EQ_(crypt_get_volume_key_size(cd), 32);
+	EQ_(crypt_get_old_volume_key_size(cd), 32);
+	CRYPT_FREE(cd);
+
 	/* data shift related tests */
 	params2.sector_size = 512;
 	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
@@ -4394,12 +4528,13 @@ static void Luks2Reencryption(void)
 	OK_(crypt_set_pbkdf_type(cd, &pbkdf));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, NULL, 32, PASSPHRASE, strlen(PASSPHRASE)), 0);
 	EQ_(crypt_keyslot_add_by_key(cd, 1, NULL, 64, PASSPHRASE, strlen(PASSPHRASE), CRYPT_VOLUME_KEY_NO_SEGMENT), 1);
-	memset(&rparams, 0, sizeof(rparams));
-	rparams.direction = CRYPT_REENCRYPT_BACKWARD;
-	rparams.resilience = "datashift";
-	rparams.data_shift = 8;
-	rparams.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY;
-	rparams.luks2 = &params2;
+	rparams = (struct crypt_params_reencrypt) {
+		.direction = CRYPT_REENCRYPT_BACKWARD,
+		.resilience = "datashift",
+		.data_shift = 8,
+		.luks2 = &params2,
+		.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY
+	};
 	EQ_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), 0, 1, "aes", "xts-plain64", &rparams), 2);
 	EQ_(crypt_reencrypt_status(cd, &retparams), CRYPT_REENCRYPT_CLEAN);
 	EQ_(retparams.data_shift, 8);
@@ -4482,15 +4617,16 @@ static void Luks2Reencryption(void)
 
 	OK_(crypt_init(&cd, DMDIR H_DEVICE));
 
-	memset(&rparams, 0, sizeof(rparams));
 	params2.sector_size = 512;
 	params2.data_device = DMDIR L_DEVICE_OK;
-	rparams.mode = CRYPT_REENCRYPT_ENCRYPT;
-	rparams.direction = CRYPT_REENCRYPT_BACKWARD;
-	rparams.resilience = "datashift";
-	rparams.data_shift = 8192;
-	rparams.luks2 = &params2;
-	rparams.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY | CRYPT_REENCRYPT_MOVE_FIRST_SEGMENT;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_ENCRYPT,
+		.direction = CRYPT_REENCRYPT_BACKWARD,
+		.resilience = "datashift",
+		.data_shift = 8192,
+		.luks2 = &params2,
+		.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY | CRYPT_REENCRYPT_MOVE_FIRST_SEGMENT
+	};
 	OK_(crypt_set_data_offset(cd, 8192));
 	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "xts-plain64", NULL, NULL, 64, &params2));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 30, NULL, 64, PASSPHRASE, strlen(PASSPHRASE)), 30);
@@ -4502,6 +4638,8 @@ static void Luks2Reencryption(void)
 	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
 	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
 	EQ_(crypt_reencrypt_status(cd, &retparams), CRYPT_REENCRYPT_CLEAN);
+	/* With encryption there's no old volume key */
+	EQ_(crypt_get_old_volume_key_size(cd), 0);
 	EQ_(retparams.mode, CRYPT_REENCRYPT_ENCRYPT);
 	OK_(strcmp(retparams.resilience, "datashift"));
 	EQ_(retparams.data_shift, 8192);
@@ -4539,15 +4677,16 @@ static void Luks2Reencryption(void)
 	OK_(crypt_init(&cd, DMDIR H_DEVICE));
 
 	/* encryption with datashift and moved segment (data shift + data offset <= device size) */
-	memset(&rparams, 0, sizeof(rparams));
 	params2.sector_size = 512;
 	params2.data_device = DMDIR L_DEVICE_OK;
-	rparams.mode = CRYPT_REENCRYPT_ENCRYPT;
-	rparams.direction = CRYPT_REENCRYPT_BACKWARD;
-	rparams.resilience = "datashift";
-	rparams.data_shift = 8200;
-	rparams.luks2 = &params2;
-	rparams.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY | CRYPT_REENCRYPT_MOVE_FIRST_SEGMENT;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_ENCRYPT,
+		.direction = CRYPT_REENCRYPT_BACKWARD,
+		.resilience = "datashift",
+		.data_shift = 8200,
+		.luks2 = &params2,
+		.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY | CRYPT_REENCRYPT_MOVE_FIRST_SEGMENT
+	};
 	OK_(crypt_set_data_offset(cd, 8200));
 	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "xts-plain64", NULL, NULL, 64, &params2));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 30, NULL, 64, PASSPHRASE, strlen(PASSPHRASE)), 30);
@@ -4560,14 +4699,15 @@ static void Luks2Reencryption(void)
 
 	/* offline in-place encryption with reserved space in the head of data device */
 	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
-	memset(&rparams, 0, sizeof(rparams));
 	params2.sector_size = 512;
-	rparams.mode = CRYPT_REENCRYPT_ENCRYPT;
-	rparams.direction = CRYPT_REENCRYPT_FORWARD;
-	rparams.resilience = "checksum";
-	rparams.hash = "sha256";
-	rparams.luks2 = &params2;
-	rparams.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_ENCRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "checksum",
+		.hash = "sha256",
+		.luks2 = &params2,
+		.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY
+	};
 	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "xts-plain64", NULL, NULL, 64, &params2));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 30, NULL, 64, PASSPHRASE, strlen(PASSPHRASE)), 30);
 	OK_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), CRYPT_ANY_SLOT, 30, "aes", "xts-plain64", &rparams));
@@ -4576,6 +4716,38 @@ static void Luks2Reencryption(void)
 	OK_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), CRYPT_ANY_SLOT, 30, "aes", "xts-plain64", &rparams));
 	OK_(crypt_reencrypt_run(cd, NULL, NULL));
 	EQ_(crypt_reencrypt_status(cd, NULL), CRYPT_REENCRYPT_NONE);
+	CRYPT_FREE(cd);
+
+	/* wipe existing header from previous run */
+	_system("dd if=/dev/zero of=" DMDIR L_DEVICE_OK " bs=4K count=5 2>/dev/null", 1);
+
+	/* offline in-place encryption with reserved space in the head of data device (using no keyslot, by volume key) */
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_ENCRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "checksum",
+		.hash = "sha256",
+		.luks2 = &(struct crypt_params_luks2){ .sector_size = 512 },
+		.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY | CRYPT_REENCRYPT_CREATE_NEW_DIGEST
+	};
+	/* key does not matter. the new one from encrypt will be used */
+	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "xts-plain64", NULL, NULL, 64, &params2));
+	CRYPT_FREE(cd);
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+	OK_(crypt_keyslot_context_init_by_volume_key(cd, key, key_size, &kc_key));
+	OK_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, NULL, kc_key, CRYPT_ANY_SLOT, CRYPT_ANY_SLOT, "aes", "xts-plain64", &rparams));
+	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key, CRYPT_ANY_SLOT, NULL, 0));
+	FAIL_(crypt_reencrypt_run(cd, NULL, NULL), "context not initialized");
+	rparams.flags = CRYPT_REENCRYPT_RESUME_ONLY | CRYPT_REENCRYPT_CREATE_NEW_DIGEST;
+	FAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, NULL, kc_key, CRYPT_ANY_SLOT, CRYPT_ANY_SLOT, "aes", "xts-plain64", &rparams), "Can not use direct key flag with resume only.");
+	rparams.flags = CRYPT_REENCRYPT_RESUME_ONLY;
+	OK_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, NULL, kc_key, CRYPT_ANY_SLOT, CRYPT_ANY_SLOT, NULL, NULL, &rparams));
+	OK_(crypt_reencrypt_run(cd, NULL, NULL));
+	EQ_(crypt_reencrypt_status(cd, NULL), CRYPT_REENCRYPT_NONE);
+	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key, CRYPT_ANY_SLOT, NULL, 0));
+	crypt_keyslot_context_free(kc_key);
 	CRYPT_FREE(cd);
 
 	/* wipe existing header from previous run */
@@ -4611,12 +4783,14 @@ static void Luks2Reencryption(void)
 	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "cbc-essiv:sha256", NULL, NULL, 32, &params2));
 	OK_(crypt_set_pbkdf_type(cd, &pbkdf));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 6, NULL, 32, PASSPHRASE, strlen(PASSPHRASE)), 6);
-	memset(&rparams, 0, sizeof(rparams));
-	rparams.mode = CRYPT_REENCRYPT_DECRYPT;
-	rparams.direction = CRYPT_REENCRYPT_BACKWARD;
-	rparams.resilience = "none";
-	rparams.max_hotzone_size = 2048;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_DECRYPT,
+		.direction = CRYPT_REENCRYPT_BACKWARD,
+		.resilience = "none",
+		.max_hotzone_size = 2048
+	};
 	OK_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), 6, CRYPT_ANY_SLOT, NULL, NULL, &rparams));
+	EQ_(crypt_get_old_volume_key_size(cd), 32);
 	OK_(crypt_reencrypt_run(cd, NULL, NULL));
 	CRYPT_FREE(cd);
 	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
@@ -4632,11 +4806,12 @@ static void Luks2Reencryption(void)
 	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "cbc-essiv:sha256", NULL, NULL, 32, &params2));
 	OK_(crypt_set_pbkdf_type(cd, &pbkdf));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 6, NULL, 32, PASSPHRASE, strlen(PASSPHRASE)), 6);
-	memset(&rparams, 0, sizeof(rparams));
-	rparams.mode = CRYPT_REENCRYPT_DECRYPT;
-	rparams.direction = CRYPT_REENCRYPT_FORWARD;
-	rparams.resilience = "none";
-	rparams.max_hotzone_size = 2048;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_DECRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "none",
+		.max_hotzone_size = 2048
+	};
 	OK_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), 6, CRYPT_ANY_SLOT, NULL, NULL, &rparams));
 	OK_(crypt_reencrypt_run(cd, NULL, NULL));
 	CRYPT_FREE(cd);
@@ -4648,11 +4823,12 @@ static void Luks2Reencryption(void)
 	OK_(crypt_set_pbkdf_type(cd, &pbkdf));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 6, NULL, 32, PASSPHRASE, strlen(PASSPHRASE)), 6);
 	EQ_(crypt_activate_by_passphrase(cd, CDEVICE_2, 6, PASSPHRASE, strlen(PASSPHRASE), 0), 6);
-	memset(&rparams, 0, sizeof(rparams));
-	rparams.mode = CRYPT_REENCRYPT_DECRYPT;
-	rparams.direction = CRYPT_REENCRYPT_FORWARD;
-	rparams.resilience = "none";
-	rparams.max_hotzone_size = 2048;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_DECRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "none",
+		.max_hotzone_size = 2048
+	};
 	OK_(crypt_reencrypt_init_by_passphrase(cd, CDEVICE_2, PASSPHRASE, strlen(PASSPHRASE), 6, CRYPT_ANY_SLOT, NULL, NULL, &rparams));
 	OK_(crypt_reencrypt_run(cd, NULL, NULL));
 	CRYPT_FREE(cd);
@@ -4671,11 +4847,12 @@ static void Luks2Reencryption(void)
 	OK_(crypt_init_data_device(&cd, BACKUP_FILE, DMDIR L_DEVICE_OK));
 	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
 	EQ_(crypt_get_data_offset(cd), r_header_size);
-	memset(&rparams, 0, sizeof(rparams));
-	rparams.mode = CRYPT_REENCRYPT_DECRYPT;
-	rparams.direction = CRYPT_REENCRYPT_FORWARD;
-	rparams.resilience = "datashift";
-	rparams.data_shift = r_header_size;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_DECRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "datashift",
+		.data_shift = r_header_size
+	};
 	OK_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), 6, CRYPT_ANY_SLOT, NULL, NULL, &rparams));
 	EQ_(crypt_get_data_offset(cd), 0);
 	OK_(crypt_reencrypt_run(cd, NULL, NULL));
@@ -4703,11 +4880,12 @@ static void Luks2Reencryption(void)
 	OK_(crypt_init_data_device(&cd, BACKUP_FILE, DMDIR L_DEVICE_OK));
 	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
 	EQ_(crypt_get_data_offset(cd), r_header_size);
-	memset(&rparams, 0, sizeof(rparams));
-	rparams.mode = CRYPT_REENCRYPT_DECRYPT;
-	rparams.direction = CRYPT_REENCRYPT_FORWARD;
-	rparams.resilience = "datashift";
-	rparams.data_shift = r_header_size;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_DECRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "datashift",
+		.data_shift = r_header_size
+	};
 	OK_(crypt_reencrypt_init_by_passphrase(cd, CDEVICE_2, PASSPHRASE, strlen(PASSPHRASE), 6, CRYPT_ANY_SLOT, NULL, NULL, &rparams));
 	EQ_(crypt_get_data_offset(cd), 0);
 	OK_(crypt_reencrypt_run(cd, NULL, NULL));
@@ -4736,11 +4914,11 @@ static void Luks2Reencryption(void)
 	EQ_(crypt_activate_by_passphrase(cd2, CDEVICE_2, 6, PASSPHRASE, strlen(PASSPHRASE), 0), 6);
 	CRYPT_FREE(cd2);
 	EQ_(crypt_keyslot_add_by_key(cd, 1, NULL, 32, PASSPHRASE, strlen(PASSPHRASE), CRYPT_VOLUME_KEY_NO_SEGMENT), 1);
-
-	memset(&rparams, 0, sizeof(rparams));
-	rparams.resilience = "none";
-	rparams.max_hotzone_size = 16*2048;
-	rparams.luks2 = &params2;
+	rparams = (struct crypt_params_reencrypt) {
+		.resilience = "none",
+		.max_hotzone_size = 16*2048,
+		.luks2 = &params2
+	};
 
 	OK_(crypt_reencrypt_init_by_passphrase(cd, CDEVICE_1, PASSPHRASE, strlen(PASSPHRASE), 6, 1, "aes", "cbc-essiv:sha256", &rparams));
 	OK_(crypt_reencrypt_run(cd, NULL, NULL));
@@ -4807,12 +4985,13 @@ static void Luks2Reencryption(void)
 	OK_(crypt_volume_key_keyring(cd, 0)); /* disable keyring */
 	EQ_(crypt_activate_by_passphrase(cd, CDEVICE_1, 6, PASSPHRASE, strlen(PASSPHRASE), CRYPT_ACTIVATE_ALLOW_DISCARDS), 6);
 	OK_(crypt_volume_key_keyring(cd, 1));
-	rparams.mode = CRYPT_REENCRYPT_REENCRYPT;
-	rparams.direction = CRYPT_REENCRYPT_FORWARD,
-	rparams.resilience = "none",
-	rparams.max_hotzone_size = 8;
-	rparams.luks2 = &params2;
-	rparams.flags = 0;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_REENCRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "none",
+		.max_hotzone_size = 8,
+		.luks2 = &params2
+	};
 	EQ_(crypt_keyslot_add_by_key(cd, 1, NULL, 64, PASSPHRASE, strlen(PASSPHRASE), CRYPT_VOLUME_KEY_NO_SEGMENT), 1);
 	OK_(crypt_reencrypt_init_by_passphrase(cd, CDEVICE_1, PASSPHRASE, strlen(PASSPHRASE), 6, 1, "aes", "xts-plain64", &rparams));
 	test_progress_steps = 2;
@@ -4835,15 +5014,12 @@ static void Luks2Reencryption(void)
 	_cleanup_dmdevices();
 	OK_(create_dmdevice_over_loop(L_DEVICE_OK, r_header_size + 16));
 
-	rparams.mode = CRYPT_REENCRYPT_REENCRYPT;
-	rparams.direction = CRYPT_REENCRYPT_FORWARD;
-	rparams.resilience = "none";
-	rparams.hash = NULL;
-	rparams.data_shift = 0;
-	rparams.max_hotzone_size = 0;
-	rparams.device_size = 0;
-	rparams.luks2 = &params2;
-	rparams.flags = 0;
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_REENCRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.resilience = "none",
+		.luks2 = &params2
+	};
 
 	/* Test support for specific key reencryption */
 	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
@@ -5010,6 +5186,182 @@ static void Luks2Reencryption(void)
 
 	CRYPT_FREE(cd);
 	_cleanup_dmdevices();
+	_remove_keyfiles();
+
+	OK_(prepare_keyfile(KEYFILE1, PASSPHRASE, strlen(PASSPHRASE)));
+	OK_(prepare_keyfile(KEYFILE2, PASSPHRASE1, strlen(PASSPHRASE1)));
+
+	OK_(create_dmdevice_over_loop(H_DEVICE, r_header_size));
+	OK_(create_dmdevice_over_loop(L_DEVICE_OK, r_header_size + 16));
+
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_REENCRYPT,
+		.direction = CRYPT_REENCRYPT_FORWARD,
+		.luks2 = &(struct crypt_params_luks2){ .sector_size = 512 },
+		.resilience = "none",
+	};
+
+	/* FIXME */
+	/* FIXME it breaks when params2.data_device == metadata device */
+	/* FIXME */
+
+	/* create device */
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "cbc-essiv:sha256", NULL, key, key_size, &(struct crypt_params_luks2){ .sector_size = 512 }));
+	OK_(crypt_set_pbkdf_type(cd, &pbkdf));
+	EQ_(crypt_keyslot_add_by_volume_key(cd, 21, key, key_size, PASSPHRASE, strlen(PASSPHRASE)), 21);
+	/* FIXME: We have to drop cached volume key from cd handle before/during any
+	 * crypt_reencrypt_init* function */
+	CRYPT_FREE(cd);
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+
+	/* add unbound key */
+	EQ_(crypt_keyslot_add_by_key(cd, 12, key2, key_size2, PASSPHRASE1, strlen(PASSPHRASE1), CRYPT_VOLUME_KEY_NO_SEGMENT), 12);
+	/* add unbound key that will not be used in reencryption */
+	EQ_(crypt_keyslot_add_by_key(cd, 13, NULL, key_size, PASSPHRASE1, strlen(PASSPHRASE1), CRYPT_VOLUME_KEY_NO_SEGMENT), 13);
+
+	kid = add_key("user", KEY_DESC_TEST0, PASSPHRASE, strlen(PASSPHRASE), KEY_SPEC_THREAD_KEYRING);
+	NOTFAIL_(kid, "Test or kernel keyring are broken.");
+	kid1 = add_key("user", KEY_DESC_TEST1, PASSPHRASE1, strlen(PASSPHRASE1), KEY_SPEC_THREAD_KEYRING);
+	NOTFAIL_(kid1, "Test or kernel keyring are broken.");
+
+	EQ_(crypt_token_luks2_keyring_set(cd, 21, &(const struct crypt_token_params_luks2_keyring){.key_description = KEY_DESC_TEST0}), 21);
+	EQ_(crypt_token_luks2_keyring_set(cd, 12, &(const struct crypt_token_params_luks2_keyring){.key_description = KEY_DESC_TEST1}), 12);
+
+	EQ_(crypt_token_assign_keyslot(cd, 21, 21), 21);
+	EQ_(crypt_token_assign_keyslot(cd, 12, 12), 12);
+
+	// key
+	OK_(crypt_keyslot_context_init_by_volume_key(cd, key, key_size, &kc_key));
+	// key2
+	OK_(crypt_keyslot_context_init_by_volume_key(cd, key2, key_size2, &kc_key2));
+	// token 21, keyslot 21
+	OK_(crypt_keyslot_context_init_by_token(cd, 21, NULL, NULL, 0, NULL, &kc_token21));
+	// token 12, keyslot 12
+	OK_(crypt_keyslot_context_init_by_token(cd, 12, NULL, NULL, 0, NULL, &kc_token12));
+	// keyfile21
+	OK_(crypt_keyslot_context_init_by_keyfile(cd, KEYFILE1, 0, 0, &kc_file21));
+	// keyfile12
+	OK_(crypt_keyslot_context_init_by_keyfile(cd, KEYFILE2, 0, 0, &kc_file12));
+	// passphrase21
+	OK_(crypt_keyslot_context_init_by_passphrase(cd, PASSPHRASE, strlen(PASSPHRASE), &kc_pass21));
+	// passphrase12
+	OK_(crypt_keyslot_context_init_by_passphrase(cd, PASSPHRASE1, strlen(PASSPHRASE1), &kc_pass12));
+
+	// reencrypt by token
+	NOTFAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, kc_token21, kc_token12, CRYPT_ANY_SLOT, 12, "aes", "xts-plain64", &rparams), "Reencrypt init failed");
+	OK_(crypt_reencrypt_run(cd, NULL, NULL));
+	EQ_(crypt_keyslot_status(cd, 13), CRYPT_SLOT_UNBOUND);
+
+	// add previous key as unbound key
+	EQ_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, kc_key, 21, kc_token21, CRYPT_VOLUME_KEY_NO_SEGMENT), 21);
+
+	EQ_(crypt_activate_by_keyslot_context(cd, NULL, 12, kc_pass12, CRYPT_ANY_SLOT, NULL, CRYPT_ACTIVATE_ALLOW_UNBOUND_KEY), 12);
+	EQ_(crypt_activate_by_keyslot_context(cd, NULL, 12, kc_file12, CRYPT_ANY_SLOT, NULL, CRYPT_ACTIVATE_ALLOW_UNBOUND_KEY), 12);
+	EQ_(crypt_activate_by_keyslot_context(cd, NULL, 21, kc_file21, CRYPT_ANY_SLOT, NULL, CRYPT_ACTIVATE_ALLOW_UNBOUND_KEY), 21);
+
+	// reencrypt by keyfile
+	NOTFAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, kc_file12, kc_file21, CRYPT_ANY_SLOT, 21, "aes", "xts-plain64", &rparams), "Reencrypt init failed");
+	OK_(crypt_reencrypt_run(cd, NULL, NULL));
+	EQ_(crypt_keyslot_status(cd, 13), CRYPT_SLOT_UNBOUND);
+
+	// reencrypt just by volume keys (new key is passed directly w/o being stored in any keyslot)
+	rparams.flags |= CRYPT_REENCRYPT_CREATE_NEW_DIGEST;
+	NOTFAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, kc_key, kc_key2, CRYPT_ANY_SLOT, CRYPT_ANY_SLOT, "aes", "xts-plain64", &rparams), "Reencrypt init failed");
+	OK_(crypt_reencrypt_run(cd, NULL, NULL));
+	EQ_(crypt_keyslot_status(cd, 13), CRYPT_SLOT_UNBOUND);
+	rparams.flags &= ~CRYPT_REENCRYPT_CREATE_NEW_DIGEST;
+	// store new key in a keyslot
+	EQ_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, kc_key2, 12, kc_token12, 0), 12);
+
+	// add previous key as unbound key.
+	EQ_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, kc_key, 21, kc_token21, CRYPT_VOLUME_KEY_NO_SEGMENT), 21);
+
+	NOTFAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, kc_pass12, kc_token21, CRYPT_ANY_SLOT, 21, "aes", "xts-plain64", &rparams), "Reencrypt init failed");
+	OK_(crypt_reencrypt_run(cd, NULL, NULL));
+	EQ_(crypt_keyslot_status(cd, 13), CRYPT_SLOT_UNBOUND);
+
+	// add previous key as unbound key.
+	EQ_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, kc_key2, 12, kc_token12, CRYPT_VOLUME_KEY_NO_SEGMENT), 12);
+
+	rparams.max_hotzone_size = 1;
+	NOTFAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, kc_key, kc_key2, CRYPT_ANY_SLOT, 12, "aes", "xts-plain64", &rparams), "Reencrypt init failed");
+	test_progress_steps = 2;
+	OK_(crypt_reencrypt_run(cd, &test_progress, NULL));
+	EQ_(crypt_reencrypt_status(cd, NULL), CRYPT_REENCRYPT_CLEAN);
+
+	// test device activation via additional keyslot
+	// keys
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc_key, CRYPT_ANY_SLOT, NULL, 0), -ESRCH);
+	NOTFAIL_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc_key, CRYPT_ANY_SLOT, kc_key2, 0), "Failed to activate device in reencryption");
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_ACTIVE);
+	OK_(crypt_deactivate(cd, CDEVICE_1));
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_INACTIVE);
+	// tokens
+	NOTFAIL_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc_token21, CRYPT_ANY_SLOT, kc_token12, 0), "Failed to activate device in reencryption");
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_ACTIVE);
+	OK_(crypt_deactivate(cd, CDEVICE_1));
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_INACTIVE);
+	// files
+	NOTFAIL_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc_file21, CRYPT_ANY_SLOT, kc_file12, 0), "Failed to activate device in reencryption");
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_ACTIVE);
+	OK_(crypt_deactivate(cd, CDEVICE_1));
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_INACTIVE);
+	// passphrases
+	NOTFAIL_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc_pass21, CRYPT_ANY_SLOT, kc_pass12, 0), "Failed to activate device in reencryption");
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_ACTIVE);
+	OK_(crypt_deactivate(cd, CDEVICE_1));
+	EQ_(crypt_status(cd, CDEVICE_1), CRYPT_INACTIVE);
+
+	EQ_(crypt_keyslot_status(cd, 13), CRYPT_SLOT_UNBOUND);
+
+	crypt_keyslot_context_free(kc_pass21);
+	crypt_keyslot_context_free(kc_file12);
+	crypt_keyslot_context_free(kc_file21);
+	crypt_keyslot_context_free(kc_token12);
+	crypt_keyslot_context_free(kc_token21);
+
+	CRYPT_FREE(cd);
+
+	/* specifically test reencryption of device with no active keyslots */
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "xts-plain64", NULL, key, key_size, &(struct crypt_params_luks2){ .sector_size = 512 }));
+	FAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, kc_key, kc_key2, CRYPT_ANY_SLOT, CRYPT_ANY_SLOT, "aes", "xts-plain64", &rparams), "Reencrypt init failed due to missing new key keyslot.");
+	rparams.flags |= CRYPT_REENCRYPT_CREATE_NEW_DIGEST;
+	NOTFAIL_(crypt_reencrypt_init_by_keyslot_context(cd, NULL, kc_key, kc_key2, CRYPT_ANY_SLOT, CRYPT_ANY_SLOT, "aes", "xts-plain64", &rparams), "Reencrypt init failed.");
+
+	FAIL_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key, CRYPT_ANY_SLOT, NULL, 0), "Missing key for device in reencryption.");
+	FAIL_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key2, CRYPT_ANY_SLOT, NULL, 0), "Missing key for device in reencryption.");
+
+	/* after reencryption gets initialized the order in which user provides keyslot contexts does not matter */
+	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key, CRYPT_ANY_SLOT, kc_key2, 0));
+	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key2, CRYPT_ANY_SLOT, kc_key, 0));
+
+	OK_(crypt_reencrypt_run(cd, NULL, NULL));
+	CRYPT_FREE(cd);
+
+	OK_(crypt_init(&cd, DMDIR L_DEVICE_OK));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+
+	/* check digest was properly stored in mda */
+	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key2, CRYPT_ANY_SLOT, NULL, 0));
+	FAIL_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc_key, CRYPT_ANY_SLOT, NULL, 0), "Not valid volume key");
+
+	/* add keyslot by new volume key */
+	EQ_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, kc_key2, 12, kc_pass12, 0), 12);
+	EQ_(crypt_activate_by_keyslot_context(cd, NULL, 12, kc_pass12, CRYPT_ANY_SLOT, NULL, 0), 12);
+
+	crypt_keyslot_context_free(kc_pass12);
+	crypt_keyslot_context_free(kc_key);
+	crypt_keyslot_context_free(kc_key2);
+
+	CRYPT_FREE(cd);
+
+	NOTFAIL_(keyctl_unlink(kid, KEY_SPEC_THREAD_KEYRING), "Test or kernel keyring are broken.");
+	NOTFAIL_(keyctl_unlink(kid1, KEY_SPEC_THREAD_KEYRING), "Test or kernel keyring are broken.");
+
+	_cleanup_dmdevices();
 }
 #endif
 
@@ -5019,7 +5371,7 @@ static void LuksKeyslotAdd(void)
 		.sector_size = 512
 	};
 	char key[128], key3[128];
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	int ks;
 	key_serial_t kid;
 #endif
@@ -5035,8 +5387,8 @@ static void LuksKeyslotAdd(void)
 	uint64_t r_payload_offset;
 	struct crypt_keyslot_context *um1, *um2;
 
-	crypt_decode_key(key, vk_hex, key_size);
-	crypt_decode_key(key3, vk_hex2, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key3, vk_hex2, key_size));
 
 	// init test devices
 	OK_(get_luks2_offsets(0, 0, 0, NULL, &r_payload_offset));
@@ -5118,7 +5470,7 @@ static void LuksKeyslotAdd(void)
 	OK_(crypt_keyslot_context_init_by_keyfile(cd, KEYFILE1, 0, 0, &um2));
 	// passphrase not in keyring
 	FAIL_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, um1, 13, um2, 0), "No token available.");
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	// wrong passphrase in keyring
 	kid = add_key("user", KEY_DESC_TEST0, PASSPHRASE1, strlen(PASSPHRASE1), KEY_SPEC_THREAD_KEYRING);
 	NOTFAIL_(kid, "Test or kernel keyring are broken.");
@@ -5161,8 +5513,8 @@ static void VolumeKeyGet(void)
 	struct crypt_params_luks2 params = {
 		.sector_size = 512
 	};
-	char key[256], key2[256];
-#ifdef KERNEL_KEYRING
+	char key[256], key2[256], key3[256];
+#if KERNEL_KEYRING
 	key_serial_t kid;
 	const struct crypt_token_params_luks2_keyring tparams = {
 		.key_description = KEY_DESC_TEST0
@@ -5170,18 +5522,21 @@ static void VolumeKeyGet(void)
 #endif
 
 	const char *vk_hex =  "bb21158c733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1a"
-			      "bb21158c733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1b";
+			      "bb21158c733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1b",
+		   *vk2_hex = "cb21158c733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1a"
+			      "cb21158c733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a1c";
 	size_t key_size = strlen(vk_hex) / 2;
 	const char *cipher = "aes";
 	const char *cipher_mode = "xts-plain64";
 	uint64_t r_payload_offset;
 	struct crypt_keyslot_context *um1, *um2;
 
-	crypt_decode_key(key, vk_hex, key_size);
+	OK_(crypt_decode_key(key, vk_hex, key_size));
+	OK_(crypt_decode_key(key3, vk2_hex, key_size));
 
 	OK_(prepare_keyfile(KEYFILE1, PASSPHRASE1, strlen(PASSPHRASE1)));
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	kid = add_key("user", KEY_DESC_TEST0, PASSPHRASE1, strlen(PASSPHRASE1), KEY_SPEC_THREAD_KEYRING);
 	NOTFAIL_(kid, "Test or kernel keyring are broken.");
 #endif
@@ -5228,11 +5583,16 @@ static void VolumeKeyGet(void)
 	OK_(crypt_keyslot_context_init_by_keyfile(cd, KEYFILE1, 0, 0, &um2));
 	EQ_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, um1, 1, um2, 0), 1);
 	crypt_keyslot_context_free(um2);
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	EQ_(crypt_token_luks2_keyring_set(cd, 0, &tparams), 0);
 	EQ_(crypt_token_assign_keyslot(cd, 0, 1), 0);
 #endif
 	crypt_keyslot_context_free(um1);
+	OK_(crypt_keyslot_context_init_by_volume_key(cd, key3, key_size, &um1));
+	OK_(crypt_keyslot_context_init_by_passphrase(cd, PASSPHRASE1, strlen(PASSPHRASE1), &um2));
+	EQ_(crypt_keyslot_add_by_keyslot_context(cd, CRYPT_ANY_SLOT, um1, 4, um2, CRYPT_VOLUME_KEY_NO_SEGMENT), 4);
+	crypt_keyslot_context_free(um1);
+	crypt_keyslot_context_free(um2);
 	CRYPT_FREE(cd);
 
 	OK_(crypt_init(&cd, DMDIR H_DEVICE));
@@ -5261,9 +5621,23 @@ static void VolumeKeyGet(void)
 	EQ_(crypt_volume_key_get_by_keyslot_context(cd, 1, key2, &key_size, um1), 1);
 	crypt_keyslot_context_free(um1);
 
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	// by token
 	OK_(crypt_keyslot_context_init_by_token(cd, CRYPT_ANY_TOKEN, NULL, NULL, 0, NULL, &um1));
+	memset(key2, 0, key_size);
+	EQ_(crypt_volume_key_get_by_keyslot_context(cd, CRYPT_ANY_SLOT, key2, &key_size, um1), 1);
+	OK_(memcmp(key, key2, key_size));
+	crypt_keyslot_context_free(um1);
+
+	// unbound keyslot by passphrase in keyring
+	OK_(crypt_keyslot_context_init_by_keyring(cd, KEY_DESC_TEST0, &um1));
+	memset(key2, 0, key_size);
+	EQ_(crypt_volume_key_get_by_keyslot_context(cd, 4, key2, &key_size, um1), 4);
+	OK_(memcmp(key3, key2, key_size));
+	crypt_keyslot_context_free(um1);
+
+	// by passphrase in keyring
+	OK_(crypt_keyslot_context_init_by_keyring(cd, KEY_DESC_TEST0, &um1));
 	memset(key2, 0, key_size);
 	EQ_(crypt_volume_key_get_by_keyslot_context(cd, CRYPT_ANY_SLOT, key2, &key_size, um1), 1);
 	OK_(memcmp(key, key2, key_size));
@@ -5277,7 +5651,7 @@ static void VolumeKeyGet(void)
 
 static void KeyslotContextAndKeyringLink(void)
 {
-#ifdef KERNEL_KEYRING
+#if KERNEL_KEYRING
 	const char *cipher = "aes";
 	const char *cipher_mode = "xts-plain64";
 	struct crypt_keyslot_context *kc, *kc2;
@@ -5627,7 +6001,7 @@ static void KeyslotContextAndKeyringLink(void)
 
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER, keyring_in_user_id, "user"));
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER2, keyring_in_user_id, "user"));
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), -EINVAL);
+	FAIL_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), "Failed to read key from kernel keyring");
 
 	EQ_(crypt_activate_by_passphrase(cd, CDEVICE_1, CRYPT_ANY_SLOT, PASSPHRASE, strlen(PASSPHRASE), 0), 0);
 	NOTFAIL_((linked_kid = request_key("user", TEST_KEY_VK_USER, NULL, 0)), "VK was not linked to custom keyring.");
@@ -5639,7 +6013,7 @@ static void KeyslotContextAndKeyringLink(void)
 	GE_((vk_len = keyctl_read(linked_kid, vk_buf, sizeof(vk_buf))), 0);
 	vk_buf[0] = ~vk_buf[0];
 	OK_(keyctl_update(linked_kid, vk_buf, vk_len));
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), -EINVAL);
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), -EPERM);
 
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER, keyring_in_user_id, "user"));
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER2, keyring_in_user_id, "user"));
@@ -5660,17 +6034,11 @@ static void KeyslotContextAndKeyringLink(void)
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 
 	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0));
-	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc, 0));
-	// lazy evaluation, if the first context supplies key and only one key is required, the second (invalid) context is not invoked
-	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0));
-	// first context takes precedence, if t fails, the second is not tried
-	EQ_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc2, CRYPT_ANY_SLOT, kc, 0), -EINVAL);
-
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), 0);
+	OK_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc, 0));
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER, keyring_in_user_id, "user"));
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), -EINVAL);
+	FAIL_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0), "Failed to read key from kernel keyring");
 
 	EQ_(crypt_activate_by_passphrase(cd, CDEVICE_1, CRYPT_ANY_SLOT, PASSPHRASE, strlen(PASSPHRASE), 0), 1);
 	NOTFAIL_((linked_kid = request_key("user", TEST_KEY_VK_USER, NULL, 0)), "VK was not linked to custom keyring.");
@@ -5682,7 +6050,8 @@ static void KeyslotContextAndKeyringLink(void)
 	GE_((vk_len = keyctl_read(linked_kid, vk_buf, sizeof(vk_buf))), 0);
 	vk_buf[0] = ~vk_buf[0];
 	OK_(keyctl_update(linked_kid, vk_buf, vk_len));
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), -EINVAL);
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc, 0), -EPERM);
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0), -EPERM);
 
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER, keyring_in_user_id, "user"));
 	CRYPT_FREE(cd);
@@ -5694,14 +6063,15 @@ static void KeyslotContextAndKeyringLink(void)
 
 	OK_(crypt_init(&cd, DMDIR H_DEVICE));
 
-	memset(&rparams, 0, sizeof(rparams));
 	params2.sector_size = 512;
 	params2.data_device = DMDIR L_DEVICE_OK;
-	rparams.mode = CRYPT_REENCRYPT_ENCRYPT;
-	rparams.luks2 = &params2;
-	rparams.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY;
-	rparams.resilience = "checksum";
-	rparams.hash = "sha256";
+	rparams = (struct crypt_params_reencrypt) {
+		.mode = CRYPT_REENCRYPT_ENCRYPT,
+		.resilience = "checksum",
+		.hash = "sha256",
+		.luks2 = &params2,
+		.flags = CRYPT_REENCRYPT_INITIALIZE_ONLY,
+	};
 	OK_(crypt_format(cd, CRYPT_LUKS2, "aes", "xts-plain64", NULL, NULL, 64, &params2));
 	EQ_(crypt_keyslot_add_by_volume_key(cd, 1, NULL, 64, PASSPHRASE, strlen(PASSPHRASE)), 1);
 	EQ_(crypt_reencrypt_init_by_passphrase(cd, NULL, PASSPHRASE, strlen(PASSPHRASE), CRYPT_ANY_SLOT, 1, "aes", "xts-plain64", &rparams), 0);
@@ -5714,28 +6084,25 @@ static void KeyslotContextAndKeyringLink(void)
 
 	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0));
 	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc, 0));
-	// lazy evaluation, if the first context supplies key and only one key is required, the second (invalid) context is not invoked
-	OK_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0));
-	// first context takes precedence, if t fails, the second is not tried
-	EQ_(crypt_activate_by_keyslot_context(cd, NULL, CRYPT_ANY_SLOT, kc2, CRYPT_ANY_SLOT, kc, 0), -EINVAL);
 
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), 0);
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0), 0);
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER, keyring_in_user_id, "user"));
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), -EINVAL);
+	FAIL_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0), "Failed to read key from kernel keyring");
 
 	EQ_(crypt_activate_by_passphrase(cd, CDEVICE_1, CRYPT_ANY_SLOT, PASSPHRASE, strlen(PASSPHRASE), 0), 1);
 	NOTFAIL_((linked_kid = request_key("user", TEST_KEY_VK_USER, NULL, 0)), "VK was not linked to custom keyring.");
 	FAIL_((linked_kid2 = request_key("user", TEST_KEY_VK_USER2, NULL, 0)), "VK was not linked to custom keyring.");
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), 0);
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0), 0);
 	OK_(crypt_deactivate(cd, CDEVICE_1));
 	GE_((vk_len = keyctl_read(linked_kid, vk_buf, sizeof(vk_buf))), 0);
 	vk_buf[0] = ~vk_buf[0];
 	OK_(keyctl_update(linked_kid, vk_buf, vk_len));
-	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc2, 0), -EINVAL);
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, kc, 0), -EPERM);
+	EQ_(crypt_activate_by_keyslot_context(cd, CDEVICE_1, CRYPT_ANY_SLOT, kc, CRYPT_ANY_SLOT, NULL, 0), -EPERM);
 
 	OK_(_drop_keyring_key_from_keyring_name(TEST_KEY_VK_USER, keyring_in_user_id, "user"));
 	CRYPT_FREE(cd);
@@ -5749,9 +6116,152 @@ static void KeyslotContextAndKeyringLink(void)
 #endif
 }
 
+static void TruncatedKeys(void)
+{
+	char key[64], key2[64], key3[64], key4[64];
+	const char *passphrase = PASSPHRASE;
+
+	/* test key with trailing zero bytes susceptible to padding conflict in pbkdf2(hmac) */
+	const char *vk_hex  = "bb21158c733229347bd4e681891e213d94c685be6a5b84818afe7a78a6de7a00";
+	const char *vk_hex2 = "bb21158c733229347bd4e681891e213d00000000000000000000000000000000";
+
+	const char *vk_hex3 = "8ca7689d9d422cd87f86b18cbb6aa834a632e8d74a43ccfd86415bb9c65979c3" \
+			      "2636b79b74458807fffbda615f6fe5d5deeefef5c890879d66fc6b5ce1105d00";
+	const char *vk_hex4 = "8ca7689d9d422cd87f86b18cbb6aa834a632e8d74a43ccfd86415bb9c65979c3" \
+			      "0000000000000000000000000000000000000000000000000000000000000000";
+	size_t key_size = strlen(vk_hex) / 2, key_size2 = strlen(vk_hex3) / 2;
+	const char *cipher = "aes";
+	const char *cbc_mode = "cbc-essiv:sha256", *xts_mode = "xts-plain64";
+	uint64_t r_payload_offset;
+
+	OK_(crypt_decode_key(key,  vk_hex,  key_size));
+	OK_(crypt_decode_key(key2, vk_hex2, key_size));
+	OK_(crypt_decode_key(key3, vk_hex3, key_size2));
+	OK_(crypt_decode_key(key4, vk_hex4, key_size2));
+
+	// init test devices
+	OK_(get_luks2_offsets(0, 0, 0, NULL, &r_payload_offset));
+	OK_(create_dmdevice_over_loop(H_DEVICE, r_payload_offset + 1));
+
+	// cbc mode
+	// format with trailing zero byte key
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(set_fast_pbkdf(cd));
+	OK_(crypt_format(cd, CRYPT_LUKS2, cipher, cbc_mode, NULL, key, key_size, NULL));
+	// the truncated key (cut off zero byte) must not pass verification
+	FAIL_(crypt_volume_key_verify(cd, key, key_size - 1), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key, key_size - 1, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	// add keyslot so LUKS2 can verify key size properly later
+	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, key, key_size, passphrase, strlen(passphrase)), 0);
+	// no need to test activation since AES will not accept short keys
+	CRYPT_FREE(cd);
+
+	// test again with cached volume key dropped
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+	FAIL_(crypt_volume_key_verify(cd, key, key_size - 1), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key, key_size - 1, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	CRYPT_FREE(cd);
+
+	// format device with zeroed second half of the key
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(set_fast_pbkdf(cd));
+	OK_(crypt_format(cd, CRYPT_LUKS2, cipher, cbc_mode, NULL, key2, key_size, NULL));
+	FAIL_(crypt_volume_key_verify(cd, key2, key_size / 2), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key2, key_size / 2, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	// activation must fail, we test with 128 bits AES key (the original key was 256 bits)
+	FAIL_(crypt_activate_by_volume_key(cd, CDEVICE_1, key2, key_size / 2, 0), "Key does not match the volume.");
+	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, key2, key_size, passphrase, strlen(passphrase)), 0);
+	CRYPT_FREE(cd);
+
+	// test again with cached volume key dropped
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+	FAIL_(crypt_volume_key_verify(cd, key2, key_size / 2), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key2, key_size / 2, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	// activation must fail, we test with 128 bits AES key (the original key was 256 bits)
+	FAIL_(crypt_activate_by_volume_key(cd, CDEVICE_1, key2, key_size / 2, 0), "Key does not match the volume.");
+	CRYPT_FREE(cd);
+
+	// xts mode
+	// format with trailing zero byte key
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(set_fast_pbkdf(cd));
+	OK_(crypt_format(cd, CRYPT_LUKS2, cipher, xts_mode, NULL, key3, key_size2, NULL));
+	// the truncated key (cut off zero byte) must not pass verification
+	FAIL_(crypt_volume_key_verify(cd, key3, key_size2 - 1), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key3, key_size2 - 1, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	// add keyslot so LUKS2 can verify key size properly later
+	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, key3, key_size2, passphrase, strlen(passphrase)), 0);
+	// no need to test activation since AES will not accept short keys
+	CRYPT_FREE(cd);
+
+	// test again with cached volume key dropped
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+	FAIL_(crypt_volume_key_verify(cd, key3, key_size2 - 1), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key3, key_size2 - 1, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	CRYPT_FREE(cd);
+
+	// format device with zeroed second half of the key
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(set_fast_pbkdf(cd));
+	OK_(crypt_format(cd, CRYPT_LUKS2, cipher, xts_mode, NULL, key4, key_size2, NULL));
+	FAIL_(crypt_volume_key_verify(cd, key4, key_size2 / 2), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key4, key_size2 / 2, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	// activation must fail, we test with (doubled for xts) 128 bits AES key (the original key was 256 bits)
+	FAIL_(crypt_activate_by_volume_key(cd, CDEVICE_1, key4, key_size2 / 2, 0), "Key does not match the volume.");
+	EQ_(crypt_keyslot_add_by_volume_key(cd, 0, key4, key_size2, passphrase, strlen(passphrase)), 0);
+	CRYPT_FREE(cd);
+
+	// test again with cached volume key dropped
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+	FAIL_(crypt_volume_key_verify(cd, key4, key_size2 / 2), "Key does not match the volume.");
+	FAIL_(crypt_keyslot_add_by_volume_key(cd, CRYPT_ANY_SLOT, key4, key_size2 / 2, passphrase, strlen(passphrase)), "Key does not match the volume.");
+	// activation must fail, we test with (doubled for xts) 128 bits AES key (the original key was 256 bits)
+	FAIL_(crypt_activate_by_volume_key(cd, CDEVICE_1, key4, key_size2 / 2, 0), "Key does not match the volume.");
+	CRYPT_FREE(cd);
+
+	// check unbound key verification
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(set_fast_pbkdf(cd));
+	OK_(crypt_format(cd, CRYPT_LUKS2, cipher, xts_mode, NULL, key3, key_size2, NULL));
+	// keyslot must always be unbound if created with CRYPT_VOLUME_KEY_NO_SEGMENT
+	EQ_(crypt_keyslot_add_by_key(cd, 1, key3, key_size2 - 1, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT), 1);
+	EQ_(crypt_keyslot_status(cd, 1), CRYPT_SLOT_UNBOUND);
+	FAIL_(crypt_activate_by_passphrase(cd, CDEVICE_1, 1, passphrase, strlen(passphrase), 0), "Keyslot unusable for device activation.");
+	CRYPT_FREE(cd);
+
+	// check unbound key verification with CRYPT_VOLUME_KEY_DIGEST_REUSE
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(set_fast_pbkdf(cd));
+	OK_(crypt_format(cd, CRYPT_LUKS2, cipher, xts_mode, NULL, key4, key_size2, NULL));
+	// drop cached volume key
+	CRYPT_FREE(cd);
+	OK_(crypt_init(&cd, DMDIR H_DEVICE));
+	OK_(crypt_load(cd, CRYPT_LUKS2, NULL));
+	EQ_(crypt_keyslot_add_by_key(cd, 0, key4, key_size2 - 1, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT), 0);
+	EQ_(crypt_keyslot_add_by_key(cd, 1, key4, key_size2 - 2, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), 1);
+	/* it must not reuse default segment digest */
+	EQ_(crypt_keyslot_status(cd, 1), CRYPT_SLOT_UNBOUND);
+	FAIL_(crypt_activate_by_passphrase(cd, CDEVICE_1, 1, passphrase, strlen(passphrase), 0), "Keyslot unusable for device activation.");
+	EQ_(crypt_keyslot_add_by_key(cd, 2, key4, key_size2 - 3, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), 2);
+	EQ_(crypt_keyslot_add_by_key(cd, 3, key4, key_size2 - 4, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), 3);
+	EQ_(crypt_keyslot_add_by_key(cd, 4, key4, key_size2 - 5, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), 4);
+	EQ_(crypt_keyslot_add_by_key(cd, 5, key4, key_size2 - 6, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), 5);
+	EQ_(crypt_keyslot_add_by_key(cd, 6, key4, key_size2 - 7, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), 6);
+	// It must run out of free digests by now
+	FAIL_(crypt_keyslot_add_by_key(cd, 7, key4, key_size2 - 8, passphrase, strlen(passphrase), CRYPT_VOLUME_KEY_NO_SEGMENT | CRYPT_VOLUME_KEY_DIGEST_REUSE), "No free digest slot.");
+	CRYPT_FREE(cd);
+
+	_remove_keyfiles();
+	_cleanup_dmdevices();
+}
+
 static int _crypt_load_check(struct crypt_device *_cd)
 {
-#ifdef HAVE_BLKID
+#if HAVE_BLKID
 	return crypt_load(_cd, CRYPT_LUKS, NULL);
 #else
 	return -ENOTSUP;
@@ -5877,6 +6387,7 @@ int main(int argc, char *argv[])
 	RUN_(LuksKeyslotAdd, "Adding keyslot via new API");
 	RUN_(VolumeKeyGet, "Getting volume key via keyslot context API");
 	RUN_(KeyslotContextAndKeyringLink, "Activate via keyslot context API and linking VK to a keyring");
+	RUN_(TruncatedKeys, "Test truncated candidate keys.");
 	RUN_(Luks2Repair, "LUKS2 repair"); // test disables metadata locking. Run always last!
 
 	_cleanup();

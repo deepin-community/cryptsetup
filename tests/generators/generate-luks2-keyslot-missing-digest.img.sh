@@ -14,12 +14,12 @@
 # $1 full target dir
 # $2 full source luks2 image
 
-function generate()
+generate()
 {
 	read -r json_str_orig < $TMPDIR/json0
-	arr_len=$(jq -c -M '.digests."0".keyslots | length' $TMPDIR/json0)
+	arr_len=$(_jq -M '.digests."0".keyslots | length' $TMPDIR/json0)
 	# remove first element from digests."0".keyslots array
-	json_str=$(jq -r -c -M 'del(.digests."0".keyslots[0])' $TMPDIR/json0)
+	json_str=$(_jq -r -M 'del(.digests."0".keyslots[0])' $TMPDIR/json0)
 	test ${#json_str} -lt $((LUKS2_JSON_SIZE*512)) || exit 2
 
 	write_luks2_json "$json_str" $TMPDIR/json0
@@ -27,13 +27,13 @@ function generate()
 	lib_mangle_json_hdr0_kill_hdr1
 }
 
-function check()
+check()
 {
 	lib_hdr1_killed || exit 2
 	lib_hdr0_checksum || exit 2
 
 	read_luks2_json0 $TGT_IMG $TMPDIR/json_res0
-	new_arr_len=$(jq -c -M '.digests."0".keyslots | length' $TMPDIR/json_res0)
+	new_arr_len=$(_jq -M '.digests."0".keyslots | length' $TMPDIR/json_res0)
 	test $((arr_len-1)) -eq $new_arr_len || exit 2
 }
 

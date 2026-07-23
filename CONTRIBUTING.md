@@ -11,7 +11,7 @@ We welcome contributions from everyone.
 Cryptsetup is an independent project with much volunteer effort, and our resources are limited.
 Following the guidelines specified in this file makes it easier for us to process your issue.
 
-Project maintainers can remove or reject abusive or otherwise unacceptable comments or code.
+Project maintainers can remove or reject abusive contributions, code apparently submitted by artificial intelligence (AI) without human interaction, or otherwise unacceptable comments or code.
 
 Git repository
 --------------
@@ -42,6 +42,10 @@ Changes from developers and external contributors should go through the GitLab r
 Alternatively (for trivial changes), you can send a patch to [cryptsetup mailing list](mailto:cryptsetup@lists.linux.dev).
 
 Please do not write personal emails with questions or patches to maintainers and developers.
+
+Please refrain from submissions that you haven't thoroughly understood, reviewed, and tested.
+Please disclose if your contribution was AI-generated.
+Descriptions and comments should be made by you.
 
 ### Project structure
 Cryptsetup projects include a libcryptsetup library, tools, token plugins, documentation, and a test suite.
@@ -119,7 +123,7 @@ libtool --mode=execute gdb --args ./cryptsetup --debug $@
 This will ensure that a properly compiled libcryptsetup file is used.
 
 ### Coding style
-Cryptsetup uses [Linux kernel coding style](https://www.kernel.org/doc/html/latest/process/coding-style.html) for libcryptsetup and tools (where applicable) with some additional notes:
+Cryptsetup uses [Linux kernel coding style](https://cdn.kernel.org/doc/html/latest/process/coding-style.html) for libcryptsetup and tools (where applicable) with some additional notes:
 - Use tabulators for indentation; the line should not exceed 100 characters with an 8-character tabulator. Otherwise, use a tab of any length. :-).
 - The minimal C standard required is C99.
 - The ``goto`` use is allowed only for error path (``goto out`` for common code path, ``goto err`` for specific error code path).
@@ -127,7 +131,8 @@ Cryptsetup uses [Linux kernel coding style](https://www.kernel.org/doc/html/late
 - Use an elaborative description in the patch header.
 - No need to use sign-off-by lines.
 - Use name prefixes (``crypt_``, ``LUKS2_`` and similar).
-- Avoid extensive preprocessor use (specifically ``#ifdef`` sections).
+- Avoid extensive preprocessor use (specifically conditional ``#if`` or ``#ifdef`` sections).
+- To check detected configuration options stored in config.h, always use ``#if SOMETHING`` (do NOT use ``#ifdef``).
 - Use output only through ``log_err, log_std, log_verbose, log_dbg`` macros.
   The ``log_dbg`` is always in English; the others should be wrapped in the ``_()`` macro for translation.
 - Use ``assert()`` but only for simple invariants and variables (avoid calling functions).

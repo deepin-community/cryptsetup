@@ -10,7 +10,7 @@ The following example assumes that you store the encrypted keyfile in
 First, you'll have to create the encrypted keyfile:
 
     dd if=/dev/random bs=1 count=256 | gpg --no-options --no-random-seed-file \
-            --no-default-keyring --keyring /dev/null --secret-keyring /dev/null \
+            --no-default-keyring --keyring /dev/null \
             --trustdb-name /dev/null --symmetric --output /etc/keys/cryptkey.gpg
 
 Next the LUKS device needs to be formated with the key. For that, the

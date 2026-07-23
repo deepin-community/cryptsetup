@@ -1,0 +1,51 @@
+# This file is distributed under the same license as the cryptsetup package.
+# Yangfl <mmyangfl@gmail.com>, 2025.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: cryptsetup\n"
+"Report-Msgid-Bugs-To: cryptsetup@packages.debian.org\n"
+"POT-Creation-Date: 2018-06-18 01:42+0200\n"
+"PO-Revision-Date: 2026-01-01 04:33+0800\n"
+"Last-Translator: Yangfl <mmyangfl@gmail.com>\n"
+"Language-Team: 汉语 <debian-l10n-chinese@lists.debian.org>\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.8\n"
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid "Continue with cryptsetup removal?"
+msgstr "继续卸载 cryptsetup 吗？"
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid "This system has unlocked dm-crypt devices: ${cryptmap}"
+msgstr "此系统有以下已解锁的 dm-crypt 设备：${cryptmap}"
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid ""
+"If these devices are managed with cryptsetup, you might be unable to lock "
+"the devices after the package removal, though other tools can be used for "
+"managing dm-crypt devices. Any system shutdown or reboot will lock the "
+"devices."
+msgstr ""
+"如果这些设备由 cryptsetup 管理，则在卸载软件包后可能无法锁定这些设备，虽然"
+"可能其他工具也能管理 dm-crypt 设备。任何系统关机或重启操作都会锁定这些设"
+"备。"
+
+#. Type: boolean
+#. Description
+#: ../cryptsetup.templates:1001
+msgid ""
+"Do not choose this option if you want to lock the dm-crypt devices before "
+"package removal."
+msgstr "如果您希望在卸载软件包之前锁定 dm-crypt 设备，请勿选择此选项。"

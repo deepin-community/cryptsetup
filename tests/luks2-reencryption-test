@@ -26,21 +26,37 @@ HEADER_LUKS2_PV=blkid-luks2-pv.img
 IMG_FS=xfs_512_block_size.img
 KEY1=key1
 VKEY1=vkey1
+VKEY2=vkey2
+BACKUP_FILE=reenc_header_baseline.img
 PWD1="93R4P4pIqAH8"
 PWD2="1cND4319812f"
 PWD3="1-9Qu5Ejfnqv"
+PWD4="d54uVMKW-'7M"
+PWD5="oDe{yCiZ_';_"
+PWD6="T'E'Y_}<'9=q"
+PWD7="UR%]T;x*w{3V"
+
 DEV_LINK="reenc-test-link"
 KEYRING="luks2_reencryption_test_kr"
 KEY_TYPE="user"
 KEY_NAME1="luks2-reencryption-test1"
 KEY_NAME2="luks2-reencryption-test2"
+KEY_NAME3="luks2-reencryption-test3"
+KEY_NAME4="luks2-reencryption-test4"
+KEY_NAME5="luks2-reencryption-test5"
+KEY_NAME6="luks2-reencryption-test6"
+KEY_NAME7="luks2-reencryption-key-desc1"
+KEY_NAME_VK1="luks2-reencryption-test-vk1"
+KEY_NAME_VK2="luks2-reencryption-test-vk2"
 KEY_SPEC1="${KEYRING}::%${KEY_TYPE}:${KEY_NAME1}"
 KEY_SPEC2="${KEYRING}::%${KEY_TYPE}:${KEY_NAME2}"
 HAVE_KEYRING=0
+JSON_MSIZE=16384
+IMG_JSON=luks2-digest-1.json
 
 FIPS_MODE=$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)
 
-function dm_crypt_features()
+dm_crypt_features()
 {
 	VER_STR=$(dmsetup targets | grep crypt | cut -f2 -dv)
 	[ -z "$VER_STR" ] && fail "Failed to parse dm-crypt version."
@@ -63,7 +79,7 @@ function dm_crypt_features()
 	fi
 }
 
-function dm_delay_features()
+dm_delay_features()
 {
 	local _ver_str=$(dmsetup targets | grep delay | cut -f2 -dv)
 	[ -z "$_ver_str" ] && return 1
@@ -85,7 +101,7 @@ scsi_debug_teardown() {
 	test ! -b "$1" || rmmod scsi_debug >/dev/null 2>&1
 }
 
-function remove_mapping()
+remove_mapping()
 {
 	[ -b /dev/mapper/$DEV_NAME ] && {
 		dmsetup resume $DEV_NAME
@@ -111,19 +127,19 @@ function remove_mapping()
 	[ -b /dev/mapper/$OVRDEV-err ] && dmsetup remove --retry $OVRDEV-err 2>/dev/null
 	[ -n "$LOOPDEV" ] && losetup -d $LOOPDEV
 	unset LOOPDEV
-	rm -f $IMG $IMG_HDR $KEY1 $VKEY1 $DEVBIG $DEV_LINK $HEADER_LUKS2_PV $IMG_FS >/dev/null 2>&1
+	rm -f $IMG $IMG_JSON $IMG_HDR $KEY1 $VKEY1 $VKEY2 $BACKUP_FILE $DEVBIG $DEV_LINK $HEADER_LUKS2_PV $IMG_FS >/dev/null 2>&1
 	rmmod scsi_debug >/dev/null 2>&1
 	scsi_debug_teardown $DEV
 }
 
-function cleanup_keyring()
+cleanup_keyring()
 {
 	if [ $HAVE_KEYRING -eq 1 ]; then
 		keyctl unlink %:$KEYRING "@s" >/dev/null 2>&1 || echo "Failed to unlink test keyring."
 	fi
 }
 
-function fail()
+fail()
 {
 	local frame=0
 	[ -n "$1" ] && echo "$1"
@@ -134,7 +150,10 @@ function fail()
 	exit 2
 }
 
-function skip()
+_sigchld() { local c=$?; [ $c -eq 139 ] && fail "Segfault"; [ $c -eq 134 ] && fail "Aborted"; }
+trap _sigchld CHLD
+
+skip()
 {
 	[ -n "$1" ] && echo "$1"
 	remove_mapping
@@ -142,12 +161,12 @@ function skip()
 	exit 77
 }
 
-function fips_mode()
+fips_mode()
 {
 	[ -n "$FIPS_MODE" ] && [ "$FIPS_MODE" -gt 0 ]
 }
 
-function add_scsi_device() {
+add_scsi_device() {
 	scsi_debug_teardown $DEV
 	if [ -d /sys/module/scsi_debug ] ; then
 		echo "Cannot use scsi_debug module (in use or compiled-in), test skipped."
@@ -164,7 +183,7 @@ function add_scsi_device() {
 	[ -b $DEV ] || fail "Cannot find $DEV."
 }
 
-function open_crypt() # $1 pwd, $2 hdr
+open_crypt() # $1 pwd, $2 hdr
 {
 	if [ -n "$2" ] ; then
 		echo "$1" | $CRYPTSETUP luksOpen $DEV $DEV_NAME --header $2 || fail
@@ -175,12 +194,12 @@ function open_crypt() # $1 pwd, $2 hdr
 	fi
 }
 
-function wipe_dev_head() # $1 dev, $2 length (in MiBs)
+wipe_dev_head() # $1 dev, $2 length (in MiBs)
 {
 	dd if=/dev/zero of=$1 bs=1M count=$2 conv=notrunc >/dev/null 2>&1
 }
 
-function wipe_dev() # $1 dev
+wipe_dev() # $1 dev
 {
 	if [ -b $1 ] ; then
 		blkdiscard --zeroout $1 2>/dev/null || dd if=/dev/zero of=$1 bs=1M conv=notrunc >/dev/null 2>&1
@@ -189,20 +208,20 @@ function wipe_dev() # $1 dev
 		fi
 	else
 		local size=$(stat --printf="%s" $1)
-		truncate -s 0 $1
+		truncate -s 0 $1 || fail
 		if [ $# -gt 2 ]; then
 			local diff=$((size-$2*1024*1024))
 			echo "size: $size, diff: $diff"
-			truncate -s $diff $1
+			truncate -s $diff $1 || fail
 			# wipe_dev_head $1 $((diff/(1024*1024)))
 			dd if=/dev/urandom of=$1 bs=1M seek=$2 size=$((diff/(1024*1024))) conv=notrunc >/dev/null 2>&1
 		else
-			truncate -s $size $1
+			truncate -s $size $1 || fail
 		fi
 	fi
 }
 
-function wipe() # $1 pass, $2 hdr
+wipe() # $1 pass, $2 hdr
 {
 	open_crypt $1 $2
 	wipe_dev /dev/mapper/$DEV_NAME
@@ -210,7 +229,7 @@ function wipe() # $1 pass, $2 hdr
 	$CRYPTSETUP luksClose $DEV_NAME || fail
 }
 
-function prepare() # $1 dev1_siz
+prepare() # $1 dev1_siz
 {
 	remove_mapping
 
@@ -223,10 +242,15 @@ function prepare() # $1 dev1_siz
 		echo -n $'\x9c\x03\xba\xbe\x4d\x0f\x9a\x75\xb3\x90\x70\x32\x0a\xf8\xae\xc4'>>$VKEY1
 	fi
 
+#	if [ ! -e $VKEY2 ]; then
+#		echo -n $'\x41\xc6\x74\x4f\x41\x4e\x50\xc0\x79\xc2\x2d\x5b\x5f\x68\x84\x17' >$VKEY2
+#		echo -n $'\x9c\x03\xba\xbe\x4d\x0f\x9a\x75\xb3\x90\x70\x32\x0a\xf8\xae\xc5'>>$VKEY2
+#	fi
+
 	add_scsi_device $@
 }
 
-function preparebig() # $1 dev1_siz
+preparebig() # $1 dev1_siz
 {
 	remove_mapping
 
@@ -234,46 +258,68 @@ function preparebig() # $1 dev1_siz
 		dd if=/dev/urandom of=$KEY1 count=1 bs=32 >/dev/null 2>&1
 	fi
 
-	truncate -s "$1"M $DEVBIG
+	truncate -s "$1"M $DEVBIG || fail
 	LOOPDEV=$(losetup -f)
 	losetup -f $DEVBIG || fail
 	DEV=$LOOPDEV
 }
 
-function check_hash_dev() # $1 dev, $2 hash
+check_hash_dev() # $1 dev, $2 hash
 {
 	HASH=$(sha1sum $1 | cut -d' ' -f 1)
 	[ $HASH != "$2" ] && fail "HASH differs (expected: $2) (result $HASH)"
 }
 
-function check_hash() # $1 pwd, $2 hash, $3 hdr
+check_hash() # $1 pwd, $2 hash, $3 hdr
 {
 	open_crypt $1 $3
 	check_hash_dev /dev/mapper/$DEV_NAME $2
 	$CRYPTSETUP remove $DEV_NAME || fail
 }
 
-function check_hash_dev_head() # $1 dev, $2 len, $3 hash
+check_hash_dev_head() # $1 dev, $2 len, $3 hash
 {
 	local hash=$(dd if=$1 bs=512 count=$2 2>/dev/null | sha1sum | cut -d' ' -f1)
 	[ $hash != "$3" ] && fail "HASH differs (expected: $3) (result $hash)"
 }
 
-function check_hash_head() # $1 pwd, $2 len, $3 hash, $4 hdr
+check_hash_head() # $1 pwd, $2 len, $3 hash, $4 hdr
 {
 	open_crypt $1 $4
 	check_hash_dev_head /dev/mapper/$DEV_NAME $2 $3
 	$CRYPTSETUP remove $DEV_NAME || fail
 }
 
-function resize_file() # $1 dev, $2 shrink bytes
+resize_file() # $1 dev, $2 shrink bytes
 {
 	local size=$(stat --printf="%s" $1)
-	truncate -s $(($size + $2)) $1
+	truncate -s $(($size + $2)) $1 || fail
 	losetup -c $LOOPDEV
 }
 
-function error_writes() { # $1 dmdev, $2 data dev, $3 offset, $4 size
+error_io() { # $1 dmdev, $2 data dev, $3 offset, $4 size
+	local _dev_size=$(blockdev --getsz /dev/mapper/$1)
+	local _offset=$(($3+$4))
+	local _size=$((_dev_size-_offset))
+	local _table=
+	dmsetup create $1-err --table "0 $_dev_size error" || fail
+
+	if [ $3 -ne 0 ]; then
+		_table="0 $3 linear $2 0\n"
+	fi
+
+	_table=$_table"$3 $4 error"
+
+	if [ $_size -ne 0 ]; then
+		_table="$_table\n$_offset $_size linear $2 $_offset"
+	fi
+
+	echo -e "$_table" | dmsetup load $1 || fail
+	dmsetup resume $1 || fail
+	blockdev --setra 0 /dev/mapper/$1
+}
+
+error_writes() { # $1 dmdev, $2 data dev, $3 offset, $4 size
 	local _dev_size=$(blockdev --getsz /dev/mapper/$1)
 	local _offset=$(($3+$4))
 	local _size=$((_dev_size-_offset))
@@ -297,14 +343,14 @@ function error_writes() { # $1 dmdev, $2 data dev, $3 offset, $4 size
 	blockdev --setra 0 /dev/mapper/$_err
 }
 
-function fix_writes() { # $1 dmdev, $2 data dev
+fix_writes() { # $1 dmdev, $2 data dev
 	local _dev_size=$(blockdev --getsz /dev/mapper/$1)
 	dmsetup load $1 --table "0 $_dev_size linear $2 0" || fail
 	dmsetup resume $1 || fail
 	dmsetup remove --retry $1-err 2>/dev/null || fail
 }
 
-function prepare_linear_dev() {
+prepare_linear_dev() {
 	local _sizemb=$1
 	shift
 
@@ -320,7 +366,7 @@ function prepare_linear_dev() {
 	DEV=/dev/mapper/$OVRDEV
 }
 
-function get_error_offsets() # $1 devsize, $2 minimal offset, $3 sector_size [512 if omitted], $4 max offset
+get_error_offsets() # $1 devsize, $2 minimal offset, $3 sector_size [512 if omitted], $4 max offset
 {
 	local _devsize=$(($1*1024*2))
 	local _sector_size=${3:-512}
@@ -335,7 +381,7 @@ function get_error_offsets() # $1 devsize, $2 minimal offset, $3 sector_size [51
 	ERROFFSET=$(($ERROFFSET-($ERROFFSET%$_sector_size)))
 }
 
-function reencrypt_recover() { # $1 sector size, $2 resilience, $3 digest, [$4 header]
+reencrypt_recover() { # $1 sector size, $2 resilience, $3 digest, [$4 header]
 	echo -n "resilience mode: $2 ..."
 	local _hdr=""
 	test -z "$4" || _hdr="--header $4"
@@ -354,7 +400,7 @@ function reencrypt_recover() { # $1 sector size, $2 resilience, $3 digest, [$4 h
 	echo "[OK]"
 }
 
-function reencrypt_recover_online() { # $1 sector size, $2 resilience, $3 digest, [$4 header]
+reencrypt_recover_online() { # $1 sector size, $2 resilience, $3 digest, [$4 header]
 	echo -n "resilience mode: $2 ..."
 	local _hdr=""
 	test -z "$4" || _hdr="--header $4"
@@ -382,7 +428,7 @@ function reencrypt_recover_online() { # $1 sector size, $2 resilience, $3 digest
 	echo "[OK]"
 }
 
-function reencrypt_recover_online_vk() { # $1 sector size, $2 resilience, $3 digest, [$4 header]
+reencrypt_recover_online_vk() { # $1 sector size, $2 resilience, $3 digest, [$4 header]
 	echo -n "resilience mode: $2 ..."
 	local _hdr=""
 	test -z "$4" || _hdr="--header $4"
@@ -414,7 +460,7 @@ function reencrypt_recover_online_vk() { # $1 sector size, $2 resilience, $3 dig
 	echo "[OK]"
 }
 
-function encrypt_recover() { # $1 sector size, $2 reduce size, $3 digest, $4 device size in sectors, $5 origin digest
+encrypt_recover() { # $1 sector size, $2 reduce size, $3 digest, $4 device size in sectors, $5 origin digest
 	wipe_dev $DEV
 	check_hash_dev $DEV $5
 
@@ -439,7 +485,7 @@ function encrypt_recover() { # $1 sector size, $2 reduce size, $3 digest, $4 dev
 	echo "[OK]"
 }
 
-function encrypt_recover_online() { # $1 sector size, $2 reduce size, $3 digest, $4 device size in sectors, $5 origin digest
+encrypt_recover_online() { # $1 sector size, $2 reduce size, $3 digest, $4 device size in sectors, $5 origin digest
 	wipe_dev $DEV
 	check_hash_dev $DEV $5
 
@@ -470,7 +516,7 @@ function encrypt_recover_online() { # $1 sector size, $2 reduce size, $3 digest,
 	echo "[OK]"
 }
 
-function encrypt_recover_detached() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
+encrypt_recover_detached() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
 	wipe_dev $DEV
 	check_hash_dev $DEV $3
 
@@ -492,7 +538,7 @@ function encrypt_recover_detached() { # $1 sector size, $2 resilience, $3 digest
 	echo "[OK]"
 }
 
-function encrypt_recover_detached_online() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
+encrypt_recover_detached_online() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
 	wipe_dev $DEV
 	check_hash_dev $DEV $3
 
@@ -524,7 +570,7 @@ function encrypt_recover_detached_online() { # $1 sector size, $2 resilience, $3
 	echo "[OK]"
 }
 
-function decrypt_recover_detached() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
+decrypt_recover_detached() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
 	echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 --sector-size $1 --header $4 $FAST_PBKDF_ARGON $DEV || fail
 	wipe $PWD1 $4
 	check_hash $PWD1 $3 $4
@@ -550,7 +596,7 @@ function decrypt_recover_detached() { # $1 sector size, $2 resilience, $3 digest
 	echo "[OK]"
 }
 
-function decrypt_recover_detached_online() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
+decrypt_recover_detached_online() { # $1 sector size, $2 resilience, $3 digest, $4 hdr
 	echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 --sector-size $1 --header $4 $FAST_PBKDF_ARGON $DEV || fail
 	echo $PWD1 | $CRYPTSETUP open $DEV --header $4 $DEV_NAME || fail
 	wipe_dev /dev/mapper/$DEV_NAME
@@ -582,7 +628,7 @@ function decrypt_recover_detached_online() { # $1 sector size, $2 resilience, $3
 	echo "[OK]"
 }
 
-function decrypt_recover() { # $1 hash, $2 hdr, $3 dev size, $4 resilience, $5 hotzone size
+decrypt_recover() { # $1 hash, $2 hdr, $3 dev size, $4 resilience, $5 hotzone size
 	local _res=""
 	local _maxhz=""
 	test -z "$4" || _res="--resilience $4"
@@ -610,7 +656,7 @@ function decrypt_recover() { # $1 hash, $2 hdr, $3 dev size, $4 resilience, $5 h
 	echo -n "[OK]"
 }
 
-function decrypt_recover_online() { # $1 hash, $2 hdr, $3 dev size
+decrypt_recover_online() { # $1 hash, $2 hdr, $3 dev size
 	local _res=""
 	local _maxhz=""
 	test -z "$4" || _res="--resilience $4"
@@ -639,7 +685,7 @@ function decrypt_recover_online() { # $1 hash, $2 hdr, $3 dev size
 	echo -n "[OK]"
 }
 
-function decrypt_recover_online_moved() { # $1 hash, $2 hdr, $3 dev size
+decrypt_recover_online_moved() { # $1 hash, $2 hdr, $3 dev size
 	local _res=""
 	local _maxhz=""
 	test -z "$4" || _res="--resilience $4"
@@ -672,7 +718,7 @@ function decrypt_recover_online_moved() { # $1 hash, $2 hdr, $3 dev size
 # orig size
 # orig size digest
 # hdr (optional)
-function reencrypt_offline_fixed_size() {
+reencrypt_offline_fixed_size() {
 	local _esz=$(($1>>9))
 	local _hdr=""
 	# round-up fixed size to megabytes
@@ -715,7 +761,7 @@ function reencrypt_offline_fixed_size() {
 # orig size
 # orig size digest
 # hdr
-function encrypt_offline_fixed_size() {
+encrypt_offline_fixed_size() {
 	local _esz=$(($1>>9))
 
 	# reencrypt with fixed device size
@@ -750,7 +796,7 @@ function encrypt_offline_fixed_size() {
 # orig size
 # orig size digest
 # hdr
-function decrypt_offline_fixed_size() {
+decrypt_offline_fixed_size() {
 	local _esz=$(($1>>9))
 
 	# decrypt with fixed device size
@@ -787,7 +833,7 @@ function decrypt_offline_fixed_size() {
 # orig size
 # orig size digest
 # hdr (optional)
-function reencrypt_online_fixed_size() {
+reencrypt_online_fixed_size() {
 	local _esz=$(($1>>9))
 	local _hdr=""
 	test -z "$7" || _hdr="--header $7"
@@ -803,7 +849,7 @@ function reencrypt_online_fixed_size() {
 	echo $PWD1 | $CRYPTSETUP open $DEV $_hdr $DEV_NAME || fail
 	echo $PWD1 | $CRYPTSETUP resize $DEV_NAME $_hdr --size $2 || fail
 	echo $PWD1 | $CRYPTSETUP reencrypt -q $FAST_PBKDF_ARGON $DEV $_hdr --sector-size $1 --resilience $4 || fail
-	$CRYPTSETUP -q status  $DEV_NAME | grep "size:" | grep -q "$2 sectors" || fail
+	$CRYPTSETUP -q status  $DEV_NAME | grep "size:" | grep -q "$2 \[512-byte units\]" || fail
 	$CRYPTSETUP close $DEV_NAME || fail
 	check_hash_head $PWD1 $2 $3 $7
 	wipe $PWD1 $7
@@ -814,7 +860,7 @@ function reencrypt_online_fixed_size() {
 	echo $PWD1 | $CRYPTSETUP reencrypt -q $FAST_PBKDF_ARGON $DEV $_hdr --sector-size $1 --init-only || fail
 	echo $PWD1 | $CRYPTSETUP reencrypt -q $FAST_PBKDF_ARGON $DEV $_hdr --device-size $(($2-_esz))s --resilience $4 2>/dev/null && fail
 	echo $PWD1 | $CRYPTSETUP reencrypt -q $FAST_PBKDF_ARGON $DEV $_hdr --device-size $2s --resilience $4 || fail
-	$CRYPTSETUP -q status  $DEV_NAME | grep "size:" | grep -q "$2 sectors" || fail
+	$CRYPTSETUP -q status  $DEV_NAME | grep "size:" | grep -q "$2 \[512-byte units\]" || fail
 	$CRYPTSETUP close $DEV_NAME || fail
 	check_hash_head $PWD1 $2 $3 $7
 
@@ -839,7 +885,28 @@ function reencrypt_online_fixed_size() {
 	[ -n "$7" -a -f "$7" ] && rm -f $7
 }
 
-function prepare_vk_keyring()
+reformat_reencrypt_device() {
+	if [ ! -e $BACKUP_FILE ]; then
+		echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 -S0 $FAST_PBKDF_ARGON $DEV || fail
+		echo -e "$PWD1\n$PWD2" | $CRYPTSETUP -q luksAddKey -S2 $FAST_PBKDF_ARGON $DEV || fail
+		echo -e "$PWD1\n$PWD3" | $CRYPTSETUP -q luksAddKey -S4 $FAST_PBKDF_ARGON $DEV || fail
+		echo -e "$PWD1\n$PWD4" | $CRYPTSETUP -q luksAddKey -S6 $FAST_PBKDF_ARGON $DEV || fail
+		echo -e "$PWD1\n$PWD5" | $CRYPTSETUP -q luksAddKey -S8 $FAST_PBKDF_ARGON $DEV || fail
+		echo -e "$PWD1\n$PWD6" | $CRYPTSETUP -q luksAddKey -S10 $FAST_PBKDF_ARGON $DEV || fail
+		echo -e "$PWD1\n$PWD7" | $CRYPTSETUP -q luksAddKey -S12 $FAST_PBKDF_ARGON $DEV || fail
+
+		$CRYPTSETUP token add $DEV --token-id 1 --key-description $KEY_NAME3 -S6
+		$CRYPTSETUP token add $DEV --token-id 2 --key-description $KEY_NAME4 -S8
+		$CRYPTSETUP token add $DEV --token-id 3 --key-description $KEY_NAME5 -S10
+		echo -e "{\"type\":\"luks2-keyring\",\"keyslots\":[\"4\", \"12\"],\"key_description\":\"$KEY_NAME6\"}" | $CRYPTSETUP token import $DEV --token-id 4 --json-file -
+
+		$CRYPTSETUP -q luksHeaderBackup --header-backup-file $BACKUP_FILE $DEV || fail
+	else
+		$CRYPTSETUP -q luksHeaderRestore --header-backup-file $BACKUP_FILE $DEV || fail
+	fi
+}
+
+prepare_vk_keyring()
 {
 	local s_desc=$(keyctl rdescribe @s | cut -d';' -f5)
 	local us_desc=$(keyctl rdescribe @us | cut -d';' -f5)
@@ -851,9 +918,14 @@ function prepare_vk_keyring()
 
 	keyctl newring $KEYRING "@s" >/dev/null || fail "Failed to setup test keyring environment"
 	keyctl search "@s" keyring $KEYRING >/dev/null 2>&1 || fail "Could not find test keyring in a session keyring."
+
+	echo -n $PWD4 | keyctl padd user $KEY_NAME3 %:$KEYRING > /dev/null || fail
+	echo -n "wRonG_passFrejz" | keyctl padd user $KEY_NAME5 %:$KEYRING > /dev/null || fail
+	echo -n $PWD7 | keyctl padd user $KEY_NAME6 %:$KEYRING > /dev/null || fail
+	echo -n $PWD2 | keyctl padd user $KEY_NAME7 %:$KEYRING > /dev/null || fail
 }
 
-function setup_luks2_env() {
+setup_luks2_env() {
 	echo $PWD1 | $CRYPTSETUP luksFormat --type luks2 -c aes-xts-plain64 $FAST_PBKDF_ARGON $DEV || fail
 	echo $PWD1 | $CRYPTSETUP open $DEV $DEV_NAME || fail
 	local check_keyring=$($CRYPTSETUP status $DEV_NAME | grep "key location: keyring")
@@ -867,7 +939,7 @@ function setup_luks2_env() {
 	$CRYPTSETUP close $DEV_NAME || fail
 }
 
-function check_blkid() {
+check_blkid() {
 	bin_check blkid
 	xz -dkf $HEADER_LUKS2_PV.xz
 	if ! $($CRYPTSETUP --version | grep -q "BLKID"); then
@@ -881,7 +953,7 @@ function check_blkid() {
 	fi
 }
 
-function valgrind_setup()
+valgrind_setup()
 {
 	command -v valgrind >/dev/null || fail "Cannot find valgrind."
 	[ ! -f $CRYPTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
@@ -891,14 +963,65 @@ function valgrind_setup()
 	fi
 }
 
-function valgrind_run()
+valgrind_run()
 {
 	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${CRYPTSETUP_VALGRIND} "$@"
 }
 
-function bin_check()
+bin_check()
 {
 	command -v $1 >/dev/null || skip "WARNING: test require $1 binary, test skipped."
+}
+
+_dd()
+{
+	dd $@ status=none conv=notrunc bs=1
+}
+
+img_json_save()
+{
+	local _hdr=$IMG
+	[ -z "$1" ] || _hdr="$1"
+	# FIXME: why --json-file cannot be used?
+	$CRYPTSETUP luksDump --dump-json-metadata $_hdr | jq -c -M . | tr -d '\n' >$IMG_JSON
+}
+
+# header mangle functions
+img_update_json()
+{
+	local _hdr="$IMG"
+	local LUKS2_BIN1_OFFSET=448
+	local LUKS2_BIN2_OFFSET=$((LUKS2_BIN1_OFFSET + $JSON_MSIZE))
+	local LUKS2_JSON_SIZE=$(($JSON_MSIZE - 4096))
+
+	# if present jq script, mangle JSON
+	if [ -n "$1" ]; then
+		local JSON=$(cat $IMG_JSON)
+		echo $JSON | jq -M -c "$1" >$IMG_JSON || fail
+		local JSON=$(cat $IMG_JSON)
+		echo $JSON | tr -d '\n' >$IMG_JSON || fail
+	fi
+
+	[ -z "$2" ] || _hdr="$2"
+
+	# wipe JSON areas
+	_dd if=/dev/zero of=$_hdr count=$LUKS2_JSON_SIZE seek=4096
+	_dd if=/dev/zero of=$_hdr count=$LUKS2_JSON_SIZE seek=$(($JSON_MSIZE + 4096))
+
+	# write JSON data
+	_dd if=$IMG_JSON of=$_hdr count=$LUKS2_JSON_SIZE seek=4096
+	_dd if=$IMG_JSON of=$_hdr count=$LUKS2_JSON_SIZE seek=$(($JSON_MSIZE + 4096))
+
+	# erase sha256 checksums
+	_dd if=/dev/zero of=$_hdr count=64 seek=$LUKS2_BIN1_OFFSET
+	_dd if=/dev/zero of=$_hdr count=64 seek=$LUKS2_BIN2_OFFSET
+
+	# calculate sha256 and write chexksums
+	local SUM1_HEX=$(_dd if=$_hdr count=$JSON_MSIZE | sha256sum | cut -d ' ' -f 1)
+	echo $SUM1_HEX | xxd -r -p | _dd of=$_hdr seek=$LUKS2_BIN1_OFFSET count=64 || fail
+
+	local SUM2_HEX=$(_dd if=$_hdr skip=$JSON_MSIZE count=$JSON_MSIZE | sha256sum | cut -d ' ' -f 1)
+	echo $SUM2_HEX | xxd -r -p | _dd of=$_hdr seek=$LUKS2_BIN2_OFFSET count=64 || fail
 }
 
 [ $(id -u) != 0 ] && skip "WARNING: You must be root to run this test, test skipped."
@@ -908,6 +1031,9 @@ modprobe --dry-run scsi_debug >/dev/null 2>&1 || skip "This kernel seems to not 
 modprobe dm-crypt >/dev/null 2>&1 || fail "dm-crypt failed to load"
 modprobe dm-delay > /dev/null 2>&1
 dm_crypt_features
+bin_check jq
+bin_check sha256sum
+bin_check xxd
 
 if [ -n "$DM_SECTOR_SIZE" ]; then
 	TEST_SECTORS="512 4096"
@@ -948,9 +1074,9 @@ prepare dev_size_mb=32
 setup_luks2_env
 
 # Check that we can use other ciphers than AES in userspace backend.
-echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 -c twofish-xts-plain64 $FAST_PBKDF_ARGON $DEV || fail
+echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 -c twofish-xts-plain64 $FAST_PBKDF_ARGON $DEV || skip "Cannot use Twofish cipher, test skipped"
 echo $PWD1 | $CRYPTSETUP reencrypt $DEV -q $FAST_PBKDF_ARGON 2>/dev/null || skip "Cannot use Twofish cipher, test skipped"
-echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 -c serpent-xts-plain64 $FAST_PBKDF_ARGON $DEV || fail
+echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 -c serpent-xts-plain64 $FAST_PBKDF_ARGON $DEV || skip "Cannot use Serpent cipher, test skipped"
 echo $PWD1 | $CRYPTSETUP reencrypt $DEV -q $FAST_PBKDF_ARGON 2>/dev/null || skip "Cannot use Serpent cipher, test skipped."
 wipe_dev $DEV
 
@@ -1102,6 +1228,50 @@ echo $PWD1 | $CRYPTSETUP reencrypt $DEV --encrypt --reduce-device-size 64M --ini
 check_hash_dev_head /dev/mapper/$DEV_NAME 2048 $HASH2
 echo $PWD1 | $CRYPTSETUP reencrypt $DEV -q || fail
 check_hash_dev_head /dev/mapper/$DEV_NAME 2048 $HASH2
+$CRYPTSETUP close $DEV_NAME || fail
+
+# encryption with both data shift and reduced data size
+prepare_linear_dev 65
+
+# --reduce-device-size + --device-size (1MiB+512B) is larger than real device size
+echo $PWD1 | $CRYPTSETUP reencrypt $DEV --encrypt --init-only --device-size 2049s --reduce-device-size 64M -q $FAST_PBKDF_ARGON >/dev/null 2>&1 && fail
+$CRYPTSETUP isLuks --type luks2 $DEV && fail
+# no changes in data device
+check_hash_dev_head $DEV 2048 $HASH2
+
+# --reduce-device-size (1MiB+8KiB) + --device-size (64MiB - (8KiB-512B)) is larger than real device size
+echo $PWD1 | $CRYPTSETUP reencrypt $DEV --encrypt --init-only --device-size 131057s --reduce-device-size 2064s -q $FAST_PBKDF_ARGON >/dev/null 2>&1 && fail
+$CRYPTSETUP isLuks --type luks2 $DEV && fail
+# no changes in data device
+check_hash_dev_head $DEV 2048 $HASH2
+
+echo $PWD1 | $CRYPTSETUP reencrypt $DEV --encrypt --device-size 1M --reduce-device-size 32M -q $FAST_PBKDF_ARGON || fail
+check_hash_head $PWD1 2048 $HASH2
+
+# test limit values (--device-size + --reduce-device-size = real device size)
+wipe_dev_head $DEV 43
+echo $PWD1 | $CRYPTSETUP reencrypt $DEV --encrypt --device-size 43M --reduce-device-size 22M -q $FAST_PBKDF_ARGON || fail
+check_hash_head $PWD1 88064 $HASH6
+
+wipe_dev_head $DEV 1
+# check reencryption code does not touch data in-between --device-size and --reduce-device-size
+# data device: [ reduce-device-size / 2 ] [ device-size ] [ error minefield ] [ reduce-device-size / 2]
+ERROFFSET=34816
+ERRLENGTH=65536
+error_io $OVRDEV $OLD_DEV $ERROFFSET $ERRLENGTH
+echo $PWD1 | $CRYPTSETUP reencrypt $DEV --encrypt --device-size 1M --reduce-device-size 32M -q $FAST_PBKDF_ARGON  || fail
+fix_writes $OVRDEV $OLD_DEV
+check_hash_head $PWD1 2048 $HASH2
+
+wipe_dev_head $DEV 43
+
+ERROFFSET=104448
+ERRLENGTH=12288
+# data device: [ reduce-device-size / 2 ] [ device-size ] [ error minefield ] [ reduce-device-size / 2]
+error_io $OVRDEV $OLD_DEV $ERROFFSET $ERRLENGTH
+echo $PWD1 | $CRYPTSETUP reencrypt $DEV --encrypt --device-size 43M --reduce-device-size 16M -q $FAST_PBKDF_ARGON || fail
+fix_writes $OVRDEV $OLD_DEV
+check_hash_head $PWD1 88064 $HASH6
 
 echo "[3] Encryption with detached header"
 preparebig 256
@@ -1726,7 +1896,7 @@ prepare dev_size_mb=32
 echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 -s 256 -c aes-cbc-essiv:sha256 --offset 8192 $FAST_PBKDF_ARGON $DEV || fail
 echo -e "$PWD1\n$PWD3" | $CRYPTSETUP -q luksAddKey $FAST_PBKDF_ARGON $DEV || fail
 wipe $PWD1
-echo $PWD1 | $CRYPTSETUP reencrypt $DEV -q -S0 $FAST_PBKDF_ARGON --volume-key-file $VKEY1 -s 128 || fail
+echo $PWD1 | $CRYPTSETUP reencrypt $DEV -q -S0 $FAST_PBKDF_ARGON --new-volume-key-file $VKEY1 --new-key-size 128 || fail
 check_hash $PWD1 $HASH1
 $CRYPTSETUP luksErase -q $DEV || fail
 echo $PWD1 | $CRYPTSETUP luksAddKey -q $FAST_PBKDF_ARGON --volume-key-file $VKEY1 -s 128 $DEV || fail
@@ -1751,14 +1921,16 @@ if [ $HAVE_KEYRING -gt 0 ]; then
 fi
 $CRYPTSETUP close $DEV_NAME
 
-# simulate LUKS2 device with cipher_null in both keyslot and segment (it can be created only by up conversion from LUKS1)
-echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks1 -s 128 -c cipher_null-ecb --offset 8192 $FAST_PBKDF2 $DEV || fail
-$CRYPTSETUP convert -q --type luks2 $DEV || fail
-wipe $PWD1
-echo $PWD1 | $CRYPTSETUP reencrypt $DEV -q $FAST_PBKDF_ARGON >/dev/null || fail
-check_hash $PWD1 $HASH1
-# both keyslot and segment cipher must not be null after reencryption with default params
-$CRYPTSETUP luksDump $DEV | grep -q "cipher_null" && fail
+# FIXME: Add test luks2 image with both keyslot and data using cipher_null and verify LUKS2 reencryption fixes this.
+
+## simulate LUKS2 device with cipher_null in both keyslot and segment (it can be created only by up conversion from LUKS1)
+#echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks1 -s 128 -c cipher_null-ecb --offset 8192 $FAST_PBKDF2 $DEV || fail
+#$CRYPTSETUP convert -q --type luks2 $DEV || fail
+#wipe $PWD1
+#echo $PWD1 | $CRYPTSETUP reencrypt $DEV -q $FAST_PBKDF_ARGON >/dev/null || fail
+#check_hash $PWD1 $HASH1
+## both keyslot and segment cipher must not be null after reencryption with default params
+#$CRYPTSETUP luksDump $DEV | grep -q "cipher_null" && fail
 
 # multistep reencryption with initial cipher_null
 preparebig 64
@@ -2160,6 +2332,17 @@ echo $PWD1 | $CRYPTSETUP reencrypt -q --decrypt --header $IMG_HDR --active-name 
 check_hash_dev_head $DEV 2048 $HASH2
 rm -f $IMG_HDR
 
+# Regression test for decryption with detached header and digest id != 0
+echo $PWD1 | $CRYPTSETUP -q luksFormat --type luks2 $FAST_PBKDF_ARGON $DEV --offset 8192 || fail
+img_json_save $DEV
+# replace digest id 0 with 1
+img_update_json '.digests."1" = .digests."0" | del(.digests."0")' $DEV
+wipe $PWD1
+check_hash $PWD1 $HASH2
+echo $PWD1 | $CRYPTSETUP reencrypt -q --decrypt --header $IMG_HDR $DEV || fail
+check_hash_dev_head $DEV 2048 $HASH2
+rm -f $IMG_HDR
+
 echo "[33] Decryption with datashift recovery (error in shift area)."
 prepare_linear_dev 32
 echo "sector size 512"
@@ -2315,6 +2498,217 @@ echo $PWD1 | $CRYPTSETUP open $DEV $DEV_NAME
 wipe_dev /dev/mapper/$DEV_NAME
 echo $PWD1 | $CRYPTSETUP reencrypt --decrypt --header $IMG_HDR $DEV -q || fail
 check_hash_dev_head $DEV 2048 $HASH2
+
+echo "[38] Reencrypt by keyslot context (new initialization and resume methods)"
+prepare dev_size_mb=32
+
+# keyslot0  - pass1
+# keyslot2  - pass2
+# keyslot4  - pass3, token4 (wrong pass)
+# keyslot6  - pass4, token1
+# keyslot8  - pass5, token2 (missing)
+# keyslot10 - pass6, token3 (wrong pass)
+# keyslot12 - pass7, token4
+reformat_reencrypt_device
+
+# tokens
+$CRYPTSETUP reencrypt -q --token-id 1 $DEV <&- || fail
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --token-only $DEV <&- || fail
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --token-type luks2-keyring $DEV <&- || fail
+
+reformat_reencrypt_device
+# keyslots 6 and 12 are unlocked by tokens 1 and 4
+echo -e "$PWD1\n$PWD2\n$PWD3\n$PWD5\n$PWD6" | $CRYPTSETUP reencrypt -q $DEV || fail
+
+# keyfile
+echo -n $PWD2 > $KEY1
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --key-file $KEY1 $DEV 2>/dev/null <&- && fail
+$CRYPTSETUP reencrypt -q --key-file $KEY1 -S4 $DEV 2>/dev/null <&- && fail
+$CRYPTSETUP reencrypt -q --key-file $KEY1 -S2 $DEV <&- || fail
+
+# passphrase in keyring
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --key-description $KEY_NAME7 $DEV 2>/dev/null <&- && fail
+$CRYPTSETUP reencrypt -q --key-description $KEY_NAME7 -S4 $DEV 2>/dev/null <&- && fail
+$CRYPTSETUP reencrypt -q --key-description $KEY_NAME7 -S2 $DEV <&- || fail
+
+# tokens
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --token-id 1 $DEV --init-only <&- || fail
+$CRYPTSETUP open --token-id 1 $DEV $DEV_NAME <&- || fail
+$CRYPTSETUP reencrypt -q --token-id 1 $DEV --resume-only <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --token-only --init-only $DEV <&- || fail
+$CRYPTSETUP open --token-only $DEV $DEV_NAME <&- || fail
+$CRYPTSETUP reencrypt -q --token-only --resume-only $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --token-type luks2-keyring --init-only $DEV <&- || fail
+$CRYPTSETUP open --token-type luks2-keyring $DEV $DEV_NAME <&- || fail
+$CRYPTSETUP reencrypt -q --token-type luks2-keyring --resume-only $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+reformat_reencrypt_device
+echo -e "$PWD1\n$PWD2\n$PWD3\n$PWD5\n$PWD6" | $CRYPTSETUP reencrypt --init-only -q $DEV || fail
+echo $PWD1 | $CRYPTSETUP open $DEV $DEV_NAME || fail
+echo -e $PWD1 | $CRYPTSETUP reencrypt --resume-only -q $DEV || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+# keyfile
+echo -n $PWD2 > $KEY1
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --init-only --key-file $KEY1 $DEV 2>/dev/null <&- && fail
+$CRYPTSETUP reencrypt -q --init-only --key-file $KEY1 -S4 $DEV 2>/dev/null <&- && fail
+
+$CRYPTSETUP reencrypt -q --init-only --key-file $KEY1 -S2 $DEV <&- || fail
+$CRYPTSETUP open --key-file $KEY1 $DEV $DEV_NAME <&- || fail
+$CRYPTSETUP reencrypt -q --resume-only --key-file $KEY1 $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+# passphrase in keyring
+reformat_reencrypt_device
+$CRYPTSETUP reencrypt -q --init-only --key-description $KEY_NAME7 $DEV 2>/dev/null <&- && fail
+$CRYPTSETUP reencrypt -q --init-only --key-description $KEY_NAME7 -S4 $DEV 2>/dev/null <&- && fail
+$CRYPTSETUP reencrypt -q --init-only --key-description $KEY_NAME7 -S2 $DEV <&- || fail
+$CRYPTSETUP open -q --key-description $KEY_NAME7 $DEV $DEV_NAME <&- || fail
+$CRYPTSETUP reencrypt -q --resume-only --key-description $KEY_NAME7 $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+# volume key
+reformat_reencrypt_device
+echo $PWD1 | $CRYPTSETUP luksDump --dump-volume-key --volume-key-file $VKEY2 $DEV >/dev/null || fail
+
+$CRYPTSETUP -q reencrypt --force-no-keyslots --volume-key-file $VKEY2 --new-volume-key-file $VKEY1 --new-key-size 256 $DEV <&- || fail
+
+# missing key size information (no active keyslot)
+$CRYPTSETUP open --test-passphrase --volume-key-file $VKEY1 $DEV <&- 2>/dev/null && fail
+$CRYPTSETUP open --test-passphrase --volume-key-file $VKEY1 --key-size 256 $DEV <&- || fail
+$CRYPTSETUP open --test-passphrase --volume-key-file $VKEY2 --key-size 512 $DEV 2>/dev/null <&- && fail
+
+echo $PWD1 | $CRYPTSETUP luksAddKey --volume-key-file $VKEY1 --key-size 256 $FAST_PBKDF_ARGON $DEV || fail
+echo $PWD1 | $CRYPTSETUP open --test-passphrase $DEV || fail
+
+reformat_reencrypt_device
+$CRYPTSETUP -q reencrypt --init-only --force-no-keyslots --volume-key-file $VKEY2 --new-volume-key-file $VKEY1 --new-key-size 256 $DEV <&- || fail
+
+# For unlock operation we do not require specific --volume-key-file ordering (unlike in reencryption initialization)
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY1 --key-size 256 --volume-key-file $VKEY2 --key-size 512 $DEV <&- || fail
+
+# with 2 --volume-key-files options --key-size must be also supplied twice
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY1 --volume-key-file $VKEY2 --key-size 512 $DEV 2>/dev/null <&- && fail
+# Missing old volume key
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY2 --key-size 512 $DEV <&- 2>/dev/null && fail
+
+$CRYPTSETUP -q open --volume-key-file $VKEY2 --key-size 512 --volume-key-file $VKEY1 --key-size 256 $DEV $DEV_NAME <&- || fail
+
+$CRYPTSETUP -q reencrypt --resume-only --volume-key-file $VKEY2 --new-volume-key-file $VKEY1 --key-size 512 --new-key-size 256 $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+# wrong key size
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY1 --key-size 512 $DEV <&- 2>/dev/null && fail
+# wrong key
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY2 --key-size 256 $DEV <&- 2>/dev/null && fail
+
+# missing key size
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY1 $DEV <&- 2>/dev/null && fail
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY1 --key-size 256 $DEV <&- || fail
+
+# no remaining keyslots test (--force-no-keyslots is not needed)
+reformat_reencrypt_device
+$CRYPTSETUP -q luksErase $DEV || fail
+
+$CRYPTSETUP -q reencrypt --volume-key-file $VKEY2 -s 512 --new-volume-key-file $VKEY1 --new-key-size 256 $DEV <&- || fail
+$CRYPTSETUP open --test-passphrase --volume-key-file $VKEY1 --key-size 256 $DEV <&- || fail
+
+reformat_reencrypt_device
+$CRYPTSETUP -q luksErase $DEV || fail
+$CRYPTSETUP -q reencrypt --init-only --volume-key-file $VKEY2 -s 512 --new-volume-key-file $VKEY1 --new-key-size 256 $DEV <&- || fail
+
+# For unlock operation we do not require specific --volume-key-file ordering (unlike in reencryption initialization)
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY1 --key-size 256 --volume-key-file $VKEY2 --key-size 512 $DEV <&- || fail
+
+# with 2 --volume-key-files options --key-size must be also supplied twice
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY1 --volume-key-file $VKEY2 --key-size 512 $DEV 2>/dev/null <&- && fail
+# Missing old volume key
+$CRYPTSETUP -q open --test-passphrase --volume-key-file $VKEY2 --key-size 512 $DEV <&- 2>/dev/null && fail
+
+$CRYPTSETUP -q open --volume-key-file $VKEY2 --key-size 512 --volume-key-file $VKEY1 --key-size 256 $DEV $DEV_NAME <&- || fail
+
+$CRYPTSETUP -q reencrypt --resume-only --volume-key-file $VKEY2 --new-volume-key-file $VKEY1 --key-size 512 --new-key-size 256 $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+# reencryption by volume key in kernel keyring
+reformat_reencrypt_device
+head -c 64 $VKEY2 | keyctl padd user $KEY_NAME_VK2 %:$KEYRING > /dev/null || fail
+head -c 32 $VKEY1 | keyctl padd user $KEY_NAME_VK1 %:$KEYRING > /dev/null || fail
+
+$CRYPTSETUP -q reencrypt --force-no-keyslots --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- || fail
+
+# test unlock with key after reencryption
+$CRYPTSETUP open --test-passphrase --volume-key-keyring $KEY_NAME_VK1 $DEV <&- || fail
+$CRYPTSETUP open --test-passphrase --volume-key-keyring $KEY_NAME_VK2 $DEV <&- 2>/dev/null && fail
+
+reformat_reencrypt_device
+$CRYPTSETUP -q reencrypt --init-only --force-no-keyslots --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- || fail
+
+# For unlock operation we do not require specific --volume-key-file ordering (unlike in reencryption initialization)
+$CRYPTSETUP -q open --test-passphrase --volume-key-keyring $KEY_NAME_VK1 --volume-key-keyring $KEY_NAME_VK2 $DEV <&- || fail
+
+# Missing old volume key
+$CRYPTSETUP -q open --test-passphrase --volume-key-keyring $KEY_NAME_VK1 $DEV <&- 2>/dev/null && fail
+
+$CRYPTSETUP -q open --volume-key-keyring $KEY_NAME_VK1 --volume-key-keyring $KEY_NAME_VK2 $DEV $DEV_NAME <&- || fail
+
+$CRYPTSETUP -q reencrypt --resume-only --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+# no remaining keyslots test (--force-no-keyslots is not needed)
+reformat_reencrypt_device
+$CRYPTSETUP -q luksErase $DEV || fail
+
+$CRYPTSETUP -q reencrypt --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- || fail
+
+reformat_reencrypt_device
+$CRYPTSETUP -q luksErase $DEV || fail
+$CRYPTSETUP -q reencrypt --init-only --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- || fail
+
+# For unlock operation we do not require specific --volume-key-file ordering (unlike in reencryption initialization)
+$CRYPTSETUP -q open --test-passphrase --volume-key-keyring $KEY_NAME_VK1 --volume-key-keyring $KEY_NAME_VK2 $DEV <&- || fail
+
+# Missing old volume key
+$CRYPTSETUP -q open --test-passphrase --volume-key-keyring $KEY_NAME_VK2 $DEV <&- 2>/dev/null && fail
+
+$CRYPTSETUP -q open --volume-key-keyring $KEY_NAME_VK1 --volume-key-keyring $KEY_NAME_VK2 $DEV $DEV_NAME <&- || fail
+
+$CRYPTSETUP -q reencrypt --resume-only --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- || fail
+$CRYPTSETUP close $DEV_NAME || fail
+
+# test b0rked kernel keys
+reformat_reencrypt_device
+# erase all but one keyslot so that we verify original volume key size
+$CRYPTSETUP luksKillSlot -q $DEV 4 || fail
+$CRYPTSETUP luksKillSlot -q $DEV 6 || fail
+$CRYPTSETUP luksKillSlot -q $DEV 8 || fail
+$CRYPTSETUP luksKillSlot -q $DEV 10 || fail
+$CRYPTSETUP luksKillSlot -q $DEV 12 || fail
+
+head -c 63 $VKEY2 | keyctl padd user $KEY_NAME_VK2 %:$KEYRING > /dev/null || fail
+$CRYPTSETUP -q reencrypt --init-only --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- 2>/dev/null && fail
+$CRYPTSETUP luksDump $DEV | grep -q "online-reencrypt" && fail "Failed initialization with reencryption flag"
+
+head -c 64 $VKEY2 | keyctl padd user $KEY_NAME_VK2 %:$KEYRING > /dev/null || fail
+$CRYPTSETUP open --test-passphrase --volume-key-keyring $KEY_NAME_VK2 $DEV || fail
+
+# new key size incompatible with cipher
+head -c 31 $VKEY1 | keyctl padd user $KEY_NAME_VK1 %:$KEYRING > /dev/null || fail
+$CRYPTSETUP -q reencrypt --init-only --volume-key-keyring $KEY_NAME_VK2 --new-volume-key-keyring $KEY_NAME_VK1 $DEV <&- 2>/dev/null && fail
+$CRYPTSETUP luksDump $DEV | grep -q "online-reencrypt" && fail "Failed initialization with reencryption flag"
 
 remove_mapping
 cleanup_keyring

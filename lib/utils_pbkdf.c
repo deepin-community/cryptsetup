@@ -2,8 +2,8 @@
 /*
  * utils_pbkdf - PBKDF settings for libcryptsetup
  *
- * Copyright (C) 2009-2024 Red Hat, Inc. All rights reserved.
- * Copyright (C) 2009-2024 Milan Broz
+ * Copyright (C) 2009-2026 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2009-2026 Milan Broz
  */
 
 #include <stdlib.h>
@@ -63,9 +63,11 @@ uint32_t pbkdf_adjusted_phys_memory_kb(void)
 	memory_kb /= 2;
 
 	/*
-	 * Never use more that half of available free memory on system without swap.
+	 * On systems with < 4GB RAM without swap
+	 * never use more that half of available free memory.
+	 * This is a temporary hack to avoid OOM on small systems.
 	 */
-	if (!crypt_swapavailable()) {
+	if (memory_kb < (2 * 1024 * 1024) && !crypt_swapavailable()) {
 		free_kb = crypt_getphysmemoryfree_kb();
 
 		/*
@@ -159,8 +161,17 @@ int verify_pbkdf_params(struct crypt_device *cd,
 			pbkdf_limits.max_memory);
 		r = -EINVAL;
 	}
+	if (1024ULL * pbkdf->max_memory_kb > SIZE_MAX) {
+		log_err(cd, _("Requested maximum PBKDF memory cost is too high (limited by the integer maximal size)."));
+		r = -EINVAL;
+	}
 	if (!pbkdf->max_memory_kb) {
 		log_err(cd, _("Requested maximum PBKDF memory cannot be zero."));
+		r = -EINVAL;
+	}
+	if (pbkdf->parallel_threads > pbkdf_limits.max_parallel) {
+		log_err(cd, _("Requested maximum PBKDF parallel cost is too high (maximum is %d)."),
+			pbkdf_limits.max_parallel);
 		r = -EINVAL;
 	}
 	if (!pbkdf->parallel_threads) {
@@ -234,12 +245,6 @@ int init_pbkdf_type(struct crypt_device *cd,
 
 	cd_pbkdf->max_memory_kb = pbkdf->max_memory_kb;
 	cd_pbkdf->parallel_threads = pbkdf->parallel_threads;
-
-	if (cd_pbkdf->parallel_threads > pbkdf_limits.max_parallel) {
-		log_dbg(cd, "Maximum PBKDF threads is %d (requested %d).",
-			pbkdf_limits.max_parallel, cd_pbkdf->parallel_threads);
-		cd_pbkdf->parallel_threads = pbkdf_limits.max_parallel;
-	}
 
 	/* Do not limit threads by online CPUs if user forced values (no benchmark). */
 	if (cd_pbkdf->parallel_threads && !(cd_pbkdf->flags & CRYPT_PBKDF_NO_BENCHMARK)) {

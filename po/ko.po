@@ -1,0 +1,4346 @@
+# Korean translation of cryptsetup
+# Copyright (C) 2026 Free Software Foundation, Inc.
+# This file is distributed under the same license as the cryptsetup package.
+# Seong-ho Cho <darkcircle.0426@gmail.com>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: cryptsetup 2.8.7-rc2\n"
+"Report-Msgid-Bugs-To: cryptsetup@lists.linux.dev\n"
+"POT-Creation-Date: 2026-07-09 10:46+0200\n"
+"PO-Revision-Date: 2026-07-13 11:02+0900\n"
+"Last-Translator: Seong-ho Cho <darkcircle.0426@gmail.com>\n"
+"Language-Team: Korean <translation-team-ko@googlegroups.com>\n"
+"Language: ko_KR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Bugs: Report translation errors to the Language-Team address.\n"
+"X-Generator: Poedit 3.6\n"
+
+#: lib/libdevmapper.c:419
+msgid "Cannot initialize device-mapper, running as non-root user."
+msgstr "device-mapper를 초기화할 수 없어, 일반 사용자로 실행합니다."
+
+#: lib/libdevmapper.c:422
+msgid "Cannot initialize device-mapper. Is dm_mod kernel module loaded?"
+msgstr "device-mapper를 초기화할 수 없습니다. dm_mod 커널 모듈을 불러왔습니까?"
+
+#: lib/libdevmapper.c:1125
+msgid "Requested deferred flag is not supported."
+msgstr "요청한 유예 플래그는 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1194
+#, c-format
+msgid "DM-UUID for device %s was truncated."
+msgstr "%s 장치의 DM-UUID가 잘렸습니다."
+
+#: lib/libdevmapper.c:1598
+msgid "Unknown dm target type."
+msgstr "알 수 없는 dm 대상 형식입니다."
+
+#: lib/libdevmapper.c:1725 lib/libdevmapper.c:1731 lib/libdevmapper.c:1850
+#: lib/libdevmapper.c:1853
+msgid "Requested dm-crypt performance options are not supported."
+msgstr "요청한 dm-crypt 성능 옵션을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1740 lib/libdevmapper.c:1746 lib/libdevmapper.c:1758
+msgid "Requested dm-verity data corruption handling options are not supported."
+msgstr "요청한 dm-verity 데이터 손상 처리 옵션을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1752
+msgid "Requested dm-verity tasklets option is not supported."
+msgstr "요청한 dm-verity 작업 처리 옵션을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1764
+msgid "Requested dm-verity FEC options are not supported."
+msgstr "요청한 dm-verity FEC 옵션을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1770
+msgid "Requested data integrity options are not supported."
+msgstr "요청한 데이터 무결성 옵션을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1774
+msgid "Requested sector_size option is not supported."
+msgstr "요청한 sector_size 옵션을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1779
+msgid "The device size is not multiple of the requested sector size."
+msgstr "장치 용량은 요청한 섹터 용량의 배수가 아닙니다."
+
+#: lib/libdevmapper.c:1783
+msgid "Requested integrity_key_size option is not supported."
+msgstr "요청한 integrity_key_size 옵션을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1790 lib/libdevmapper.c:1796
+msgid "Requested automatic recalculation of integrity tags is not supported."
+msgstr "요청한 무결성 태그 자동 재계산을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1802 lib/libdevmapper.c:1856 lib/libdevmapper.c:1859
+#: lib/luks2/luks2_json_metadata.c:2799
+msgid "Discard/TRIM is not supported."
+msgstr "버림/TRIM을 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1808
+msgid "Requested dm-integrity bitmap mode is not supported."
+msgstr "요청한 dm-integrity 비트맵 모드를 지원하지 않습니다."
+
+#: lib/libdevmapper.c:1814
+msgid "Requested dm-integrity inline mode is not supported."
+msgstr "요청한 dm-integrity 인라인 모드를 지원하지 않습니다."
+
+#: lib/libdevmapper.c:2870
+#, c-format
+msgid "Failed to query dm-%s segment."
+msgstr "dm-%s 세그먼트 요청 실패."
+
+#: lib/random.c:60
+msgid ""
+"System is out of entropy while generating volume key.\n"
+"Please move mouse or type some text in another window to gather some random events.\n"
+msgstr ""
+"볼륨키 생성 중 시스템 엔트로피가 바닥났습니다.\n"
+"마우스를 움직이거나 다른 창에서 텍스트를 입력하여 랜덤 이벤트를 가져올 수 있게 하십시오.\n"
+
+#: lib/random.c:64
+#, c-format
+msgid "Generating key (%d%% done).\n"
+msgstr "키 생성 중 (%d%% 완료).\n"
+
+#: lib/random.c:150
+msgid "Running in FIPS mode."
+msgstr "FIPS 모드로 실행 중입니다."
+
+#: lib/random.c:156
+msgid "Fatal error during RNG initialisation."
+msgstr "RNG 초기화 중 치명적 오류가 있습니다."
+
+#: lib/random.c:194
+msgid "Unknown RNG quality requested."
+msgstr "알 수 없는 RNG 수준을 요청했습니다."
+
+#: lib/random.c:199
+msgid "Error reading from RNG."
+msgstr "RNG 읽는 중 오류."
+
+#: lib/setup.c:251
+msgid "OPAL support is disabled in libcryptsetup."
+msgstr "libcryptsetup에서 OPAL 지원 기능이 꺼졌습니다."
+
+#: lib/setup.c:253
+#, c-format
+msgid "Device %s or kernel does not support OPAL encryption."
+msgstr "%s 장치 또는 커널에서 OPAL 암호화를 지원하지 않습니다."
+
+#: lib/setup.c:269
+msgid "Cannot initialize crypto RNG backend."
+msgstr "암호화 RNG 백엔드를 초기화할 수 없습니다."
+
+#: lib/setup.c:275
+msgid "Cannot initialize crypto backend."
+msgstr "암호화 백엔드를 초기화할 수 없습니다."
+
+#: lib/setup.c:308 lib/setup.c:2769 lib/verity/verity.c:109
+#, c-format
+msgid "Hash algorithm %s not supported."
+msgstr "%s 해싱 알고리즘을 지원하지 않습니다."
+
+#: lib/setup.c:311 lib/loopaes/loopaes.c:78
+#, c-format
+msgid "Key processing error (using hash %s)."
+msgstr "키 처리 오류 (%s 해시 사용)."
+
+#: lib/setup.c:392 lib/setup.c:429
+msgid "Cannot determine device type. Incompatible activation of device?"
+msgstr "장치 형식을 확인할 수 없습니다. 장치 활성 방식에 호환성이 없습니까?"
+
+#: lib/setup.c:398 lib/setup.c:4177
+msgid "This operation is supported only for LUKS device."
+msgstr "이 동작은 LUKS 장치에서만 지원합니다."
+
+#: lib/setup.c:435
+msgid "This operation is supported only for LUKS2 device."
+msgstr "이 동작은 LUKS2 장치에서만 지원합니다."
+
+#: lib/setup.c:492 lib/luks2/luks2_reencrypt.c:3102
+msgid "All key slots full."
+msgstr "모든 키 슬롯이 가득찼습니다."
+
+#: lib/setup.c:503
+#, c-format
+msgid "Key slot %d is invalid, please select between 0 and %d."
+msgstr "키 슬롯 번호 %d번이 적절하지 않습니다. 0과 %d 사이의 숫자를 선택하십시오."
+
+#: lib/setup.c:509
+#, c-format
+msgid "Key slot %d is full, please select another one."
+msgstr "키 슬롯 %d번이 가득 찼습니다. 다른 번호를 선택하십시오."
+
+#: lib/setup.c:534 lib/setup.c:3878
+msgid "Device size is not aligned to device logical block size."
+msgstr "장치 용량이 장치 논리 블록 용량에 맞지 않습니다."
+
+#: lib/setup.c:631
+#, c-format
+msgid "Header detected but device %s is too small."
+msgstr "헤더를 확인했지만 %s 장치 용량이 너무 작습니다."
+
+#: lib/setup.c:672 lib/setup.c:3763 lib/setup.c:5272
+#: lib/luks2/luks2_reencrypt.c:3949 lib/luks2/luks2_reencrypt.c:4438
+msgid "This operation is not supported for this device type."
+msgstr "이 동작은 이 장치 형식에서 지원하지 않습니다."
+
+#: lib/setup.c:677
+msgid "Illegal operation with reencryption in-progress."
+msgstr "재 암호화 처리 과정에서 부적절한 동작을 확인했습니다."
+
+#: lib/setup.c:809
+msgid "Failed to rollback LUKS2 metadata in memory."
+msgstr "메모리에서 LUKS2 메타데이터 되돌리기 실패."
+
+#: lib/setup.c:896 lib/luks1/keymanage.c:236 lib/luks1/keymanage.c:514
+#: lib/luks2/luks2_json_metadata.c:1365 src/cryptsetup.c:1780
+#: src/cryptsetup.c:1964 src/cryptsetup.c:2019 src/cryptsetup.c:2217
+#: src/cryptsetup.c:2362 src/cryptsetup.c:2640 src/cryptsetup.c:2954
+#: src/cryptsetup.c:3022 src/utils_reencrypt.c:2284
+#: src/utils_reencrypt_luks1.c:1137 tokens/ssh/cryptsetup-ssh.c:72
+#, c-format
+msgid "Device %s is not a valid LUKS device."
+msgstr "%s 장치는 올바른 LUKS 장치가 아닙니다."
+
+#: lib/setup.c:899 lib/luks1/keymanage.c:517
+#, c-format
+msgid "Unsupported LUKS version %d."
+msgstr "지원하지 않는 %d 버전의 LUKS입니다."
+
+#: lib/setup.c:1273
+#, c-format
+msgid "No known cipher specification pattern detected for active device %s."
+msgstr "%s 활성 장치에서 알려진 암호화 명세 패턴이 없습니다."
+
+#: lib/setup.c:1518 lib/setup.c:3510 lib/setup.c:3602 lib/setup.c:3614
+#: lib/setup.c:3786 lib/setup.c:5850
+#, c-format
+msgid "Device %s is not active."
+msgstr "%s 장치는 동작 중이 아닙니다."
+
+#: lib/setup.c:1535
+#, c-format
+msgid "Underlying device for crypt device %s disappeared."
+msgstr "%s 암호화 장치의 기반 장치가 사라졌습니다."
+
+#: lib/setup.c:1617
+msgid "Invalid plain crypt parameters."
+msgstr "부적절한 평문 암호화 매개변수입니다."
+
+#: lib/setup.c:1622 lib/setup.c:2672
+msgid "Invalid key size."
+msgstr "부적절한 키 크기입니다."
+
+#: lib/setup.c:1627 lib/setup.c:2677 lib/setup.c:2882
+msgid "UUID is not supported for this crypt type."
+msgstr "이 암호화 형식에서 UUID를 지원하지 않습니다."
+
+#: lib/setup.c:1632 lib/setup.c:2682
+msgid "Detached metadata device is not supported for this crypt type."
+msgstr "이 암호화 형식에서 분리한 메타데이터 장치를 지원하지 않습니다."
+
+#: lib/setup.c:1642 lib/setup.c:1890 lib/luks2/luks2_reencrypt.c:3035
+#: src/cryptsetup.c:1492 src/cryptsetup.c:3761
+msgid "Unsupported encryption sector size."
+msgstr "지원하지 않는 암호화 섹터 크기입니다."
+
+#: lib/setup.c:1650 lib/setup.c:1919 lib/setup.c:3872
+msgid "Device size is not aligned to requested sector size."
+msgstr "장치 용량이 요청한 섹터 용량과 맞지 않습니다."
+
+#: lib/setup.c:1702 lib/setup.c:1954 lib/setup.c:2331
+msgid "Can't format LUKS without device."
+msgstr "장치가 없는 상황에서 LUKS를 포매팅할 수 없습니다."
+
+#: lib/setup.c:1707 lib/setup.c:1959
+#, c-format
+msgid "Zoned device %s cannot be used for LUKS header."
+msgstr "%s 구역 지정 장치를 LUKS 헤더에 사용할 수 없습니다."
+
+#: lib/setup.c:1714 lib/setup.c:1966 lib/setup.c:2337
+msgid "Requested data alignment is not compatible with data offset."
+msgstr "요청한 데이터 정렬 동작은 데이터 오프셋과 호환성이 없습니다."
+
+#: lib/setup.c:1754 lib/setup.c:1984
+msgid "WARNING: DAX device can corrupt data as it does not guarantee atomic sector updates.\n"
+msgstr "경고: DAX 장치는 최소 단위 섹터 갱신을 보증할 수 없으므로 데이터를 파괴할 수 있습니다.\n"
+
+#: lib/setup.c:1792 lib/setup.c:2091 lib/setup.c:2112 lib/setup.c:2520
+#: lib/setup.c:2567 lib/setup.c:2899
+#, c-format
+msgid "Cannot wipe header on device %s."
+msgstr "%s 장치의 헤더를 소거할 수 없습니다."
+
+#: lib/setup.c:1805 lib/setup.c:2164
+#, c-format
+msgid "Device %s is too small for activation, there is no remaining space for data.\n"
+msgstr "%s 장치를 활성화하기에 너무 작습니다. 데이터를 둘 만한 여분 공간이 없습니다.\n"
+
+#: lib/setup.c:1846
+msgid "Volume key is too small for encryption with integrity extensions."
+msgstr "볼륨 키 크기가 무결성 확장을 동반한 암호화를 처리하기에 너무 작습니다."
+
+#: lib/setup.c:1850
+msgid "Integrity key size is too small."
+msgstr "무결성 키 크기가 너무 작습니다."
+
+#: lib/setup.c:1859
+#, c-format
+msgid "Cipher %s-%s (key size %zd bits) is not available."
+msgstr "암호화 알고리즘 %s-%s(%zd비트 키 크기)을(를) 사용할 수 없습니다."
+
+#: lib/setup.c:1900
+msgid "WARNING: The device activation will fail, dm-crypt is missing support for requested encryption sector size.\n"
+msgstr "경고: 장치 활성에 실패합니다. dm-crypt에 요청한 암호화 섹터 크기 지원이 빠졌습니다.\n"
+
+#: lib/setup.c:2094 lib/setup.c:2461 lib/setup.c:2523 lib/utils_device.c:906
+#: lib/luks1/keyencryption.c:245 lib/luks2/luks2_reencrypt.c:3074
+#: lib/luks2/luks2_reencrypt.c:4498
+#, c-format
+msgid "Device %s is too small."
+msgstr "%s 장치 용량이 너무 작습니다."
+
+#: lib/setup.c:2105 lib/setup.c:2144 lib/setup.c:2560 lib/setup.c:2618
+#, c-format
+msgid "Cannot format device %s in use."
+msgstr "사용 중인 %s 장치를 포매팅할 수 없습니다."
+
+#: lib/setup.c:2108 lib/setup.c:2147 lib/setup.c:2563 lib/setup.c:2621
+#, c-format
+msgid "Cannot format device %s, permission denied."
+msgstr "%s 장치를 포매팅할 수 없습니다. 권한 거부함."
+
+#: lib/setup.c:2132 lib/setup.c:2590 lib/setup.c:2972
+#, c-format
+msgid "Cannot format integrity for device %s."
+msgstr "%s 장치의 무결성을 포매팅할 수 없습니다."
+
+#: lib/setup.c:2151 lib/setup.c:2629
+#, c-format
+msgid "Cannot format device %s."
+msgstr "%s 장치를 포매팅할 수 없습니다."
+
+#: lib/setup.c:2194
+msgid "Cannot get OPAL alignment parameters."
+msgstr "OPAL 정렬 매개변수를 가져올 수 없습니다."
+
+#: lib/setup.c:2206
+msgid "Bogus OPAL logical block size."
+msgstr "위조한 OPAL 논리 블록 크기입니다."
+
+#: lib/setup.c:2211 lib/luks2/hw_opal/hw_opal.c:305
+msgid "Bogus OPAL logical block size differs from device block size."
+msgstr "위조한 OPAL 논리 블록 크기가 장치 블록 크기와 다릅니다."
+
+#: lib/setup.c:2217
+msgid "Requested data offset is not compatible with OPAL block size."
+msgstr "요청한 데이터 오프셋의 호환성이 OPAL 블록 크기와 맞지 않습니다."
+
+#: lib/setup.c:2224
+msgid "Requested data alignment is not compatible with OPAL alignment."
+msgstr "요청한 데이터 정렬 호환성이 OPAL 정렬과 맞지 않습니다."
+
+#: lib/setup.c:2244
+msgid "Data offset does not satisfy OPAL alignment requirements."
+msgstr "데이터 오프셋이 OPAL 정렬 요구 사항을 만족하지 않습니다."
+
+#: lib/setup.c:2257
+msgid "Requested data alignment does not satisfy locking range alignment requirements."
+msgstr "요청한 데이터 정렬이 잠금 범위 정렬 요구 사항을 만족하지 않습니다."
+
+#: lib/setup.c:2471
+#, c-format
+msgid "Compensating device size by %<PRIu64> sectors to align it with OPAL alignment granularity."
+msgstr "OPAL 정렬 분할성에 맞추기 위해 장치 용량을 %<PRIu64> 섹터 보정합니다."
+
+#: lib/setup.c:2531 lib/setup.c:4260 lib/setup.c:4466 lib/utils_wipe.c:356
+#: lib/luks2/luks2_json_metadata.c:2742 lib/luks2/luks2_json_metadata.c:3017
+#, c-format
+msgid "Failed to acquire OPAL lock on device %s."
+msgstr "%s 장치에서 OPAL 잠금 획득 실패."
+
+#: lib/setup.c:2541
+msgid "Incorrect OPAL Admin key."
+msgstr "올바르지 않은 OPAL 관리자 키입니다."
+
+#: lib/setup.c:2543
+msgid "Cannot setup OPAL segment."
+msgstr "OPAL 세그먼트를 설정할 수 없습니다."
+
+#: lib/setup.c:2625
+#, c-format
+msgid "Cannot format device %s, OPAL device seems to be fully write-protected now."
+msgstr "%s 장치를 포매팅할 수 없습니다. OPAL 장치가 완전히 쓰기 방지 상태인 것 같습니다."
+
+#: lib/setup.c:2627
+msgid "This is perhaps a bug in firmware. Run OPAL PSID reset and reconnect for recovery."
+msgstr "펌웨어 버그인 것 같습니다. 복원하려면 OPAL PSID를 초기화하고 다시 연결하십시오."
+
+#: lib/setup.c:2647
+#, c-format
+msgid "Locking range %d reset on device %s failed."
+msgstr "%2$s 장치 초기화 중 %1$d 범위 잠금 실패."
+
+#: lib/setup.c:2667
+msgid "Can't format LOOPAES without device."
+msgstr "장치 없이 LOOPAES를 포매팅할 수 없습니다."
+
+#: lib/setup.c:2712
+msgid "Can't format VERITY without device."
+msgstr "장치 없이 VERITY를 포매팅할 수 없습니다."
+
+#: lib/setup.c:2723 lib/verity/verity.c:88
+#, c-format
+msgid "Unsupported VERITY hash type %d."
+msgstr "지원하지 않는 %d번 VERITY 해시 형식입니다."
+
+#: lib/setup.c:2729 lib/verity/verity.c:96
+msgid "Unsupported VERITY block size."
+msgstr "지원하지 않는 VERITY 블록 크기입니다."
+
+#: lib/setup.c:2734 lib/verity/verity.c:61
+msgid "Unsupported VERITY hash offset."
+msgstr "지원하지 않는 VERITY 해시 오프셋입니다."
+
+#: lib/setup.c:2739
+msgid "Unsupported VERITY FEC offset."
+msgstr "지원하지 않는 VERITY FEC 오프셋입니다."
+
+#: lib/setup.c:2763
+msgid "Data area overlaps with hash area."
+msgstr "데이터 영역이 해시 영역과 겹칩니다."
+
+#: lib/setup.c:2788
+msgid "Hash area overlaps with FEC area."
+msgstr "해시 영역이 FEC 영역과 겹칩니다."
+
+#: lib/setup.c:2795
+msgid "Data area overlaps with FEC area."
+msgstr "데이터 영역이 FEC 영역과 겹칩니다."
+
+#: lib/setup.c:2887
+msgid "Integrity key size mismatch."
+msgstr "무결성 키 크기가 일치하지 않습니다."
+
+#: lib/setup.c:2938
+#, c-format
+msgid "WARNING: Requested tag size %d bytes differs from %s size output (%d bytes).\n"
+msgstr "경고: 요청한 태그 크기 %d바이트가 %s의 크기 출력 (%d바이트)과 다릅니다.\n"
+
+#: lib/setup.c:3051 lib/setup.c:3153
+#, c-format
+msgid "Unknown or unsupported device type %s requested."
+msgstr "알 수 없는 또는 지원하지 않는 %s 장치 형식을 요청했습니다."
+
+#: lib/setup.c:3067
+#, c-format
+msgid "Device %s does not provide inline integrity data fields."
+msgstr "%s 장치에서 인라인 무결성 데이터 필드를 제공하지 않습니다."
+
+#: lib/setup.c:3073
+#, c-format
+msgid "Inline tag size %<PRIu32> [bytes] is larger than %<PRIu32> provided by device %s."
+msgstr "%1$<PRIu32> [바이트] 인라인 태그 크기가 %3$s 장치에서 지정한 %2$<PRIu32> 값보다 큽니다."
+
+#: lib/setup.c:3088
+#, c-format
+msgid "Sector must be the same as device hardware sector (%zu bytes)."
+msgstr "섹터 값은 장치 하드웨어 섹터 값(%zu 바이트)과 같아야 합니다."
+
+#: lib/setup.c:3518 lib/setup.c:3607 lib/setup.c:3620
+#, c-format
+msgid "Unsupported parameters on device %s."
+msgstr "%s 장치에서 지원하지 않는 매개변수입니다."
+
+#: lib/setup.c:3524 lib/setup.c:3627 lib/luks2/luks2_reencrypt.c:2929
+#: lib/luks2/luks2_reencrypt.c:3198 lib/luks2/luks2_reencrypt.c:3595
+#, c-format
+msgid "Mismatching parameters on device %s."
+msgstr "%s 장치에서 일치하지 않는 매개변수입니다."
+
+#: lib/setup.c:3650
+msgid "Crypt devices mismatch."
+msgstr "암호화 장치가 일치하지 않습니다."
+
+#: lib/setup.c:3682 lib/setup.c:3687 lib/luks2/luks2_reencrypt.c:2413
+#: lib/luks2/luks2_reencrypt.c:2945 lib/luks2/luks2_reencrypt.c:4237
+#, c-format
+msgid "Failed to reload device %s."
+msgstr "%s 장치 다시 불러오기 실패."
+
+#: lib/setup.c:3693 lib/setup.c:3699 lib/luks2/luks2_reencrypt.c:2383
+#: lib/luks2/luks2_reencrypt.c:2390 lib/luks2/luks2_reencrypt.c:2959
+#, c-format
+msgid "Failed to suspend device %s."
+msgstr "%s 장치 대기 상태 전환 실패."
+
+#: lib/setup.c:3705 lib/luks2/luks2_reencrypt.c:2397
+#: lib/luks2/luks2_reencrypt.c:2980 lib/luks2/luks2_reencrypt.c:4150
+#: lib/luks2/luks2_reencrypt.c:4241
+#, c-format
+msgid "Failed to resume device %s."
+msgstr "%s 장치 상태 복귀 실패."
+
+#: lib/setup.c:3720
+#, c-format
+msgid "Fatal error while reloading device %s (on top of device %s)."
+msgstr "%s 장치(%s 장치 위)를 다시 불러오는 동안 치명적 오류가 있습니다."
+
+#: lib/setup.c:3723 lib/setup.c:3725
+#, c-format
+msgid "Failed to switch device %s to dm-error."
+msgstr "%s 장치의 dm-error 전환 실패."
+
+#: lib/setup.c:3768
+msgid "Can not resize LUKS2 device with static size."
+msgstr "LUKS2 장치 크기를 정적 크기로 바꿀 수 없습니다."
+
+#: lib/setup.c:3773
+msgid "Resize of LUKS2 device with integrity protection is not supported."
+msgstr "무결성 보호 기능이 있는 LUKS2 장치의 크기 변경을 지원하지 않습니다."
+
+#: lib/setup.c:3819
+msgid "Cannot resize loop device."
+msgstr "루프 장치의 크기를 바꿀 수 없습니다."
+
+#: lib/setup.c:3863
+msgid "WARNING: Maximum size already set or kernel doesn't support resize.\n"
+msgstr "경고: 최대 크기를 이미 설정했거나 커널에서 크기 변경을 지원하지 않습니다.\n"
+
+#: lib/setup.c:3929
+msgid "Resize failed, the kernel doesn't support it."
+msgstr "크기 변경 실패. 커널에서 지원하지 않습니다."
+
+#: lib/setup.c:3961
+msgid "Do you really want to change UUID of device?"
+msgstr "정말로 장치 UUID를 바꾸시겠습니까?"
+
+#: lib/setup.c:4053
+msgid "Header backup file does not contain compatible LUKS header."
+msgstr "헤더 백업 파일에 호환 LUKS 헤더가 없습니다."
+
+#: lib/setup.c:4160
+#, c-format
+msgid "Volume %s is not active."
+msgstr "%s 볼륨이 동작 중이 아닙니다."
+
+#: lib/setup.c:4215
+#, c-format
+msgid "Volume %s is already suspended."
+msgstr "%s 볼륨이 이미 대기 상태에 있습니다."
+
+#: lib/setup.c:4241
+#, c-format
+msgid "Suspend is not supported for device %s."
+msgstr "%s 장치에서 대기 상태 전환을 지원하지 않습니다."
+
+#: lib/setup.c:4243 lib/setup.c:4251
+#, c-format
+msgid "Error during suspending device %s."
+msgstr "%s 장치 대기 상태 전환 중 오류가 있습니다."
+
+#: lib/setup.c:4266
+#, c-format
+msgid "Device %s was suspended but hardware OPAL device cannot be locked."
+msgstr "%s 장치를 대기 상태로 전환했으나 하드웨어 OPAL 장치를 잠글 수 없습니다."
+
+#: lib/setup.c:4297 lib/setup.c:4491
+#, c-format
+msgid "Resume is not supported for device %s."
+msgstr "%s 장치에서 상태 복귀를 지원하지 않습니다."
+
+#: lib/setup.c:4299 lib/setup.c:4481 lib/setup.c:4493
+#, c-format
+msgid "Error during resuming device %s."
+msgstr "%s 장치 상태 복귀 중 오류가 있습니다."
+
+#: lib/setup.c:4335
+msgid "Failed to unlink volume key from user specified keyring."
+msgstr "사용자 지정 키 모음으로의 볼륨 키 연결 해제 실패."
+
+#: lib/setup.c:4457 lib/setup.c:5637
+msgid "Failed to link volume key in user defined keyring."
+msgstr "사용자 지정 키 모음으로의 볼륨 키 연결 실패."
+
+#: lib/setup.c:4556 src/cryptsetup.c:2722
+#, c-format
+msgid "Volume %s is not suspended."
+msgstr "%s 볼륨은 대기 상태가 아닙니다."
+
+#: lib/setup.c:4667 lib/setup.c:7310 lib/setup.c:7332 src/cryptsetup.c:1856
+#: src/cryptsetup.c:2260 src/cryptsetup.c:2278 src/utils_reencrypt.c:306
+#: src/utils_reencrypt.c:1969
+msgid "Volume key does not match the volume."
+msgstr "볼륨 키가 볼륨과 맞지 않습니다."
+
+#: lib/setup.c:4821
+msgid "Failed to swap new key slot."
+msgstr "새 키 슬롯 교환 실패."
+
+#: lib/setup.c:4919
+#, c-format
+msgid "Key slot %d is invalid."
+msgstr "%d번 키 슬롯이 적절하지 않습니다."
+
+#: lib/setup.c:4925 src/cryptsetup.c:1977 src/cryptsetup.c:2437
+#: src/cryptsetup.c:3122 src/cryptsetup.c:3182
+#, c-format
+msgid "Keyslot %d is not active."
+msgstr "%d번 키 슬롯은 동작 중이 아닙니다."
+
+#: lib/setup.c:4944
+msgid "Device header overlaps with data area."
+msgstr "장치 헤더가 데이터 영역과 겹칩니다."
+
+#: lib/setup.c:5165
+msgid "Reencryption in-progress. Cannot activate device."
+msgstr "재암호화를 진행 중입니다. 장치를 동작하게 할 수 없습니다."
+
+#: lib/setup.c:5167 lib/luks2/luks2_json_metadata.c:2913
+#: lib/luks2/luks2_reencrypt.c:3726
+msgid "Failed to get reencryption lock."
+msgstr "재 암호화 잠금 가져오기 실패."
+
+#: lib/setup.c:5189
+msgid "LUKS2 reencryption recovery using volume key(s) failed."
+msgstr "볼륨 키를 활용한 LUKS2 재 암호화 복원 실패."
+
+#: lib/setup.c:5325
+#, c-format
+msgid "Device %s already exists."
+msgstr "%s 장치가 이미 있습니다."
+
+#: lib/setup.c:5332
+#, c-format
+msgid "Cannot use device %s, name is invalid or still in use."
+msgstr "%s 장치를 사용할 수 없습니다. 명칭이 부적절하거나 여전히 사용중입니다."
+
+#: lib/setup.c:5344
+msgid "Reencryption volume keys do not match the volume."
+msgstr "재암호화 볼륨 키가 볼륨과 일치하지 않습니다."
+
+#: lib/setup.c:5361
+msgid "Incorrect volume key specified for plain device."
+msgstr "원시 장치에 올바르지 않은 볼륨 키를 지정했습니다."
+
+#: lib/setup.c:5387 lib/setup.c:5448
+msgid "Device type is not properly initialized."
+msgstr "장치 형식을 제대로 초기화하지 않았습니다."
+
+#: lib/setup.c:5486
+msgid "Kernel keyring is not supported by the kernel."
+msgstr "커널 키 모음은 커널에서 지원하지 않습니다."
+
+#: lib/setup.c:5490
+msgid "Kernel keyring missing: required for passing signature to kernel."
+msgstr "커널 키 모음 빠짐: 커널에 시그니처 전달에 필요합니다."
+
+#: lib/setup.c:5545
+#, c-format
+msgid "Cannot use keyring key %s."
+msgstr "%s 키 모음 키를 사용할 수 없습니다."
+
+#: lib/setup.c:5758
+msgid "Incorrect root hash specified for verity device."
+msgstr "검증 장치에 올바르지 않은 루트 해시를 지정했습니다."
+
+#: lib/setup.c:5799 lib/setup.c:5824
+msgid "OPAL does not support deferred deactivation."
+msgstr "OPAL은 지연된 동작 상태 해제를 지원하지 않습니다."
+
+#: lib/setup.c:5814 lib/setup.c:5845 lib/luks2/luks2_json_metadata.c:2978
+#: src/utils_reencrypt.c:89
+#, c-format
+msgid "Device %s is still in use."
+msgstr "%s 장치를 여전히 사용중입니다."
+
+#: lib/setup.c:5832
+#, c-format
+msgid "Could not cancel deferred remove from device %s."
+msgstr "%s 장치에서 지연된 제거 동작을 취소할 수 없습니다."
+
+#: lib/setup.c:5854
+#, c-format
+msgid "Invalid device %s."
+msgstr "부적절한 %s 장치입니다."
+
+#: lib/setup.c:6001
+msgid "Volume key buffer too small."
+msgstr "볼륨 키 버퍼가 너무 작습니다."
+
+#: lib/setup.c:6012
+msgid "Cannot retrieve volume key for LUKS2 device."
+msgstr "LUKS2 장치에 볼륨 키를 넣을 수 없습니다."
+
+#: lib/setup.c:6021
+msgid "Cannot retrieve volume key for LUKS1 device."
+msgstr "LUKS1 장치에 볼륨 키를 넣을 수 없습니다."
+
+#: lib/setup.c:6035
+msgid "Cannot retrieve volume key for plain device."
+msgstr "원시 장치에 볼륨 키를 넣을 수 없습니다."
+
+#: lib/setup.c:6043
+msgid "Cannot retrieve root hash for verity device."
+msgstr "검증 장치에 루트 해시를 넣을 수 없습니다."
+
+#: lib/setup.c:6052
+msgid "Cannot retrieve volume key for BITLK device."
+msgstr "BITLK 장치에 볼륨 키를 넣을 수 없습니다."
+
+#: lib/setup.c:6057
+msgid "Cannot retrieve volume key for FVAULT2 device."
+msgstr "FVAULT2 장치에 볼륨 키를 넣을 수 없습니다."
+
+#: lib/setup.c:6059
+#, c-format
+msgid "This operation is not supported for %s crypt device."
+msgstr "이 동작은 %s 암호화 장치에서 지원하지 않습니다."
+
+#: lib/setup.c:6244 lib/setup.c:6255
+msgid "Dump operation is not supported for this device type."
+msgstr "덤프 동작은 이 장치 형식에서 지원하지 않습니다."
+
+#: lib/setup.c:6635
+#, c-format
+msgid "Data offset is not multiple of %u bytes."
+msgstr "데이터 오프셋은 %u바이트의 배수가 아닙니다."
+
+#: lib/setup.c:6943
+#, c-format
+msgid "Cannot convert device %s which is still in use."
+msgstr "여전히 사용중인 %s 장치를 변환할 수 없습니다."
+
+#: lib/setup.c:7251 lib/setup.c:7406
+#, c-format
+msgid "Failed to assign keyslot %u as the new volume key."
+msgstr "새 볼륨 키 %u번 키 슬롯 할당 실패."
+
+#: lib/setup.c:7275
+msgid "Failed to initialize default LUKS2 keyslot parameters."
+msgstr "기본 LUKS2 키 슬롯 매개변수 초기화 실패."
+
+#: lib/setup.c:7281
+#, c-format
+msgid "Failed to assign keyslot %d to digest."
+msgstr "키 슬롯 %d번 다이제스트 할당 실패."
+
+#: lib/setup.c:7523
+msgid "Cannot add key slot, all slots disabled and no volume key provided."
+msgstr "키 슬롯을 추가할 수 없습니다. 모든 슬롯을 사용할 수 없으며, 볼륨 키를 지정하지 않았습니다."
+
+#: lib/setup.c:7611 lib/setup.c:7626 lib/verity/verity.c:333
+msgid "Failed to load key in kernel keyring."
+msgstr "커널 키 모음에서 키 불러오기 실패."
+
+#: lib/setup.c:7807
+#, c-format
+msgid "Could not find keyring described by \"%s\"."
+msgstr "\"%s\"에서 설명하는 키 모음을 찾을 수 없습니다."
+
+#: lib/setup.c:7872
+msgid "Failed to acquire global memory-hard access serialization lock."
+msgstr "전역 메모리-하드 액세스 직렬화 잠금 취득 실패."
+
+#: lib/utils.c:205 lib/tcrypt/tcrypt.c:488
+msgid "Failed to open key file."
+msgstr "키 파일 열기 실패."
+
+#: lib/utils.c:213
+msgid "Cannot read keyfile from a terminal."
+msgstr "터미널에서 키 파일을 읽을 수 없습니다."
+
+#: lib/utils.c:229
+msgid "Failed to stat key file."
+msgstr "키 파일 상태 확인 실패."
+
+#: lib/utils.c:237 lib/utils.c:258
+msgid "Cannot seek to requested keyfile offset."
+msgstr "요청한 키 파일 오프셋을 탐색할 수 없습니다."
+
+#: lib/utils.c:252 lib/utils.c:267 src/utils_password.c:219
+#: src/utils_password.c:231
+msgid "Out of memory while reading passphrase."
+msgstr "암호를 읽는 동안 메모리 부족 발생."
+
+#: lib/utils.c:287
+msgid "Error reading passphrase."
+msgstr "암호를 읽는 중 오류가 있습니다."
+
+#: lib/utils.c:304
+msgid "Nothing to read on input."
+msgstr "입력에서 읽을 내용이 없습니다."
+
+#: lib/utils.c:311
+msgid "Maximum keyfile size exceeded."
+msgstr "최대 키 파일 크기를 초과했습니다."
+
+#: lib/utils.c:316
+msgid "Cannot read requested amount of data."
+msgstr "요청한 양의 데이터를 읽을 수 없습니다."
+
+#: lib/utils_device.c:207 lib/utils_storage_wrappers.c:99
+#: lib/luks1/keyencryption.c:79 src/utils_reencrypt.c:2257
+#, c-format
+msgid "Device %s does not exist or access denied."
+msgstr "%s 장치가 없거나 접근이 막혔습니다."
+
+#: lib/utils_device.c:217
+#, c-format
+msgid "Device %s is not compatible."
+msgstr "%s 장치의 호환성이 없습니다."
+
+#: lib/utils_device.c:546
+#, c-format
+msgid "Ignoring bogus optimal-io size for data device (%u bytes)."
+msgstr "데이터 장치에 대한 최적 입출력 크기 위조값(%u 바이트)을 무시합니다."
+
+#: lib/utils_device.c:711
+#, c-format
+msgid "Cannot grow %s to %<PRIu64> bytes (%s)."
+msgstr "%s의 용량을 %<PRIu64> 바이트로 늘릴 수 없습니다 (%s)."
+
+#: lib/utils_device.c:717
+#, c-format
+msgid "Device %s is too small. Need at least %<PRIu64> bytes."
+msgstr "%s 장치의 크기가 너무 작습니다. 최소한 %<PRIu64> 바이트가 필요합니다."
+
+#: lib/utils_device.c:798
+#, c-format
+msgid "Cannot use device %s which is in use (already mapped or mounted)."
+msgstr "사용중인 %s 장치를 사용할 수 없습니다 (이미 매핑했거나 마운트함)."
+
+#: lib/utils_device.c:802
+#, c-format
+msgid "Cannot use device %s, permission denied."
+msgstr "%s 장치를 사용할 수 없습니다. 권한 거절."
+
+#: lib/utils_device.c:805
+#, c-format
+msgid "Cannot get info about device %s."
+msgstr "%s 장치의 정보를 가져올 수 없습니다."
+
+#: lib/utils_device.c:828
+msgid "Cannot use a loopback device, running as non-root user."
+msgstr "루프백 장치를 사용할 수 없어, 일반 사용자로 실행합니다."
+
+#: lib/utils_device.c:839
+msgid "Attaching loopback device failed (loop device with autoclear flag is required)."
+msgstr "루프백 장치 연결 실패 (자동 정리 플래그를 루프 장치와 함께 사용해야 합니다)."
+
+#: lib/utils_device.c:887
+#, c-format
+msgid "Requested offset is beyond real size of device %s."
+msgstr "필요한 오프셋이 %s 장치의 실제 크기 앞부분에 있습니다."
+
+#: lib/utils_device.c:895
+#, c-format
+msgid "Device %s has zero size."
+msgstr "%s 장치의 크기가 0입니다."
+
+#: lib/utils_pbkdf.c:105
+msgid "Requested PBKDF target time cannot be zero."
+msgstr "요청한 PBKDF 대상 시간은 0일 수 없습니다."
+
+#: lib/utils_pbkdf.c:111
+#, c-format
+msgid "Unknown PBKDF type %s."
+msgstr "알 수 없는 %s PBKDF 형식."
+
+#: lib/utils_pbkdf.c:116
+#, c-format
+msgid "Requested hash %s is not supported."
+msgstr "요청한 %s 해시는 지원하지 않습니다."
+
+#: lib/utils_pbkdf.c:127
+msgid "Requested PBKDF type is not supported for LUKS1."
+msgstr "요청한 PBKDF 형식은 LUKS1에서 지원하지 않습니다."
+
+#: lib/utils_pbkdf.c:133
+msgid "PBKDF max memory or parallel threads must not be set with pbkdf2."
+msgstr "PBKDF 최대 메모리 용량 또는 병렬 처리 스레드는 pbkdf2와 함께 설정하면 안됩니다."
+
+#: lib/utils_pbkdf.c:138 lib/utils_pbkdf.c:148
+#, c-format
+msgid "Forced iteration count is too low for %s (minimum is %u)."
+msgstr "강제 반복 계수 값이 %s에 대해 너무 낮습니다 (최소값 %u)."
+
+#: lib/utils_pbkdf.c:153
+#, c-format
+msgid "Forced memory cost is too low for %s (minimum is %u kilobytes)."
+msgstr "강제 메모리 할당 용량이 %s에 대해 너무 낮습니다 (최소 용량 %u kB)."
+
+#: lib/utils_pbkdf.c:160
+#, c-format
+msgid "Requested maximum PBKDF memory cost is too high (maximum is %d kilobytes)."
+msgstr "요청한 최대 PBKDF 메모리 용량이 너무 큽니다 (최대 %d kB)."
+
+#: lib/utils_pbkdf.c:165
+msgid "Requested maximum PBKDF memory cost is too high (limited by the integer maximal size)."
+msgstr "요청한 최대 PBKDF 메모리 용량이 너무 높습니다 (정수 최대값 범위로 제한)."
+
+#: lib/utils_pbkdf.c:169
+msgid "Requested maximum PBKDF memory cannot be zero."
+msgstr "요청한 최대 PBKDF 메모리 용량은 0일 수 없습니다."
+
+#: lib/utils_pbkdf.c:173
+#, c-format
+msgid "Requested maximum PBKDF parallel cost is too high (maximum is %d)."
+msgstr "요청한 최대 PBKDF 병렬 처리 갯수가 너무 큽니다 (최대 %d)."
+
+#: lib/utils_pbkdf.c:178
+msgid "Requested PBKDF parallel threads cannot be zero."
+msgstr "요청한 PBKDF 병렬 처리 스레드 값은 0일 수 없습니다."
+
+#: lib/utils_pbkdf.c:198
+msgid "Only PBKDF2 is supported in FIPS mode."
+msgstr "FIPS 모드에서는 PBKDF2만 지원합니다."
+
+#: lib/utils_benchmark.c:171
+msgid "PBKDF benchmark disabled but iterations not set."
+msgstr "PBKDF 벤치마킹은 동작하지 않지만 반복 횟수는 설정하지 않았습니다."
+
+#: lib/utils_benchmark.c:190
+#, c-format
+msgid "Not compatible PBKDF2 options (using hash algorithm %s)."
+msgstr "PBKDF2 옵션의 호환성이 없습니다 (%s 해시 알고리즘 활용)."
+
+#: lib/utils_benchmark.c:210
+msgid "Not compatible PBKDF options."
+msgstr "PBKDF 옵션 호환성이 없습니다."
+
+#: lib/utils_device_locking.c:88
+#, c-format
+msgid "Locking aborted. The locking path %s/%s is unusable (not a directory or missing)."
+msgstr "잠금 동작을 멈추었습니다 %s/%s 잠금 경로를 사용할 수 없습니다 (디렉터리가 아니거나 경로 빠짐)."
+
+#: lib/utils_device_locking.c:105
+#, c-format
+msgid "Locking aborted. The locking path %s/%s is unusable (%s is not a directory)."
+msgstr "잠금 동작을 멈추었습니다. %s/%s 잠금 경로를 사용할 수 없습니다 (%s은(는) 디렉터리가 아님)."
+
+#: lib/utils_wipe.c:143 lib/utils_wipe.c:218 src/utils_reencrypt_luks1.c:700
+#: src/utils_reencrypt_luks1.c:793
+msgid "Cannot seek to device offset."
+msgstr "장치 오프셋을 탐색할 수 없습니다."
+
+#: lib/utils_wipe.c:240
+#, c-format
+msgid "Device wipe error, offset %<PRIu64>."
+msgstr "장치 소거 오류, 오프셋 %<PRIu64>."
+
+#: lib/utils_wipe.c:332
+msgid "Incorrect OPAL PSID."
+msgstr "올바르지 않은 OPAL PSID."
+
+#: lib/utils_wipe.c:334
+msgid "Cannot erase OPAL device."
+msgstr "OPAL 장치를 지울 수 없습니다."
+
+#: lib/luks1/keyencryption.c:27
+#, c-format
+msgid ""
+"Failed to setup dm-crypt key mapping for device %s.\n"
+"Check that kernel supports %s cipher (check syslog for more info)."
+msgstr ""
+"%s 장치에 대한 dm-crypt 키 매핑 설정에 실패했습니다.\n"
+"커널에서 %s 암호화 방식을 지원하는지 확인하십시오 (자세한 정보는 syslog 확인)."
+
+#: lib/luks1/keyencryption.c:32
+msgid "Key size in XTS mode must be 256 or 512 bits."
+msgstr "XTS모드의 키 크기는 256비트 또는 512비트여야 합니다."
+
+#: lib/luks1/keyencryption.c:34
+msgid "Cipher specification should be in [cipher]-[mode]-[iv] format."
+msgstr "암호화 방식 명세는 [cipher]-[mode]-[iv] 형식이어야 합니다."
+
+#: lib/luks1/keyencryption.c:85 lib/luks1/keymanage.c:353
+#: lib/luks1/keymanage.c:664 lib/luks1/keymanage.c:1132
+#: lib/luks2/luks2_json_metadata.c:1518 lib/luks2/luks2_keyslot.c:711
+#, c-format
+msgid "Cannot write to device %s, permission denied."
+msgstr "%s 장치에 기록할 수 없습니다. 권한 거부."
+
+#: lib/luks1/keyencryption.c:108
+msgid "Failed to open temporary keystore device."
+msgstr "임시 키 스토어 장치 열기 실패."
+
+#: lib/luks1/keyencryption.c:115
+msgid "Failed to access temporary keystore device."
+msgstr "임시 키 스토어 장치 접근 실패."
+
+#: lib/luks1/keyencryption.c:189 lib/luks2/luks2_keyslot_luks2.c:47
+#: lib/luks2/luks2_keyslot_reenc.c:184
+msgid "IO error while encrypting keyslot."
+msgstr "키 슬롯 암호화 중 입출력 오류."
+
+#: lib/luks1/keyencryption.c:236 lib/luks1/keymanage.c:356
+#: lib/luks1/keymanage.c:617 lib/luks1/keymanage.c:667 lib/tcrypt/tcrypt.c:659
+#: lib/fvault2/fvault2.c:872 lib/verity/verity.c:67 lib/verity/verity.c:183
+#: lib/verity/verity_hash.c:312 lib/verity/verity_hash.c:321
+#: lib/verity/verity_hash.c:350 lib/verity/verity_fec.c:247
+#: lib/verity/verity_fec.c:259 lib/verity/verity_fec.c:264
+#: lib/luks2/luks2_json_metadata.c:1521 src/utils_reencrypt_luks1.c:108
+#: src/utils_reencrypt_luks1.c:120
+#, c-format
+msgid "Cannot open device %s."
+msgstr "%s 장치를 열 수 없습니다."
+
+#: lib/luks1/keyencryption.c:247 lib/luks2/luks2_keyslot_luks2.c:85
+msgid "IO error while decrypting keyslot."
+msgstr "키 슬롯을 해독하는 중 입출력 오류."
+
+#: lib/luks1/keymanage.c:117
+#, c-format
+msgid "Device %s is too small. (LUKS1 requires at least %<PRIu64> bytes.)"
+msgstr "%s 장치 크기가 너무 작습니다 (LUKS1 은 최소 %<PRIu64> 바이트가 필요)."
+
+#: lib/luks1/keymanage.c:138 lib/luks1/keymanage.c:146
+#: lib/luks1/keymanage.c:158 lib/luks1/keymanage.c:169
+#: lib/luks1/keymanage.c:181
+#, c-format
+msgid "LUKS keyslot %u is invalid."
+msgstr "LUKS 키 슬롯 %u번이 적절하지 않습니다."
+
+#: lib/luks1/keymanage.c:254 lib/luks2/luks2_json_metadata.c:1382
+#, c-format
+msgid "Requested header backup file %s already exists."
+msgstr "요청한 %s 헤더 백업 파일이 이미 있습니다."
+
+#: lib/luks1/keymanage.c:256 lib/luks2/luks2_json_metadata.c:1384
+#, c-format
+msgid "Cannot create header backup file %s."
+msgstr "%s 헤더 백업 파일을 만들 수 없습니다."
+
+#: lib/luks1/keymanage.c:263 lib/luks2/luks2_json_metadata.c:1391
+#, c-format
+msgid "Cannot write header backup file %s."
+msgstr "%s 헤더 백업 파일을 기록할 수 없습니다."
+
+#: lib/luks1/keymanage.c:295 lib/luks2/luks2_json_metadata.c:1428
+msgid "Backup file does not contain valid LUKS header."
+msgstr "백업 파일에 적절한 LUKS 헤더가 없습니다."
+
+#: lib/luks1/keymanage.c:308 lib/luks1/keymanage.c:580
+#: lib/luks2/luks2_json_metadata.c:1450
+#, c-format
+msgid "Cannot open header backup file %s."
+msgstr "%s 헤더 백업 파일을 열 수 없습니다."
+
+#: lib/luks1/keymanage.c:316 lib/luks2/luks2_json_metadata.c:1458
+#, c-format
+msgid "Cannot read header backup file %s."
+msgstr "%s 헤더 백업 파일을 읽을 수 없습니다."
+
+#: lib/luks1/keymanage.c:326
+msgid "Data offset or key size differs on device and backup, restore failed."
+msgstr "장치와 백업의 데이터 오프셋 또는 키 크기가 다릅니다. 복구 실패."
+
+#: lib/luks1/keymanage.c:334
+#, c-format
+msgid "Device %s %s%s"
+msgstr "%s 장치 %s%s"
+
+#: lib/luks1/keymanage.c:335
+msgid "does not contain LUKS header. Replacing header can destroy data on that device."
+msgstr "LUKS 헤더가 없습니다. 헤더를 교체하면 장치 데이터가 깨질 수 있습니다."
+
+#: lib/luks1/keymanage.c:336
+msgid "already contains LUKS header. Replacing header will destroy existing keyslots."
+msgstr "LUKS 헤더가 이미 있습니다. 헤더를 교체하면 기존 키 슬롯이 깨질 수 있습니다."
+
+#: lib/luks1/keymanage.c:337 lib/luks2/luks2_json_metadata.c:1490
+msgid ""
+"\n"
+"WARNING: real device header has different UUID than backup!"
+msgstr ""
+"\n"
+"경고: 실제 장치 헤더에 백업 때와 다른 UUID가 있습니다!"
+
+#: lib/luks1/keymanage.c:385
+msgid "Non standard key size, manual repair required."
+msgstr "비 표준 키 길이, 직접 복구가 필요합니다."
+
+#: lib/luks1/keymanage.c:395
+msgid "Non standard keyslots alignment, manual repair required."
+msgstr "비 표준 키 슬롯 정렬, 직접 복구가 필요합니다."
+
+#: lib/luks1/keymanage.c:404
+#, c-format
+msgid "Cipher mode repaired (%s -> %s)."
+msgstr "암호화 방식 모드를 복구했습니다 (%s -> %s)."
+
+#: lib/luks1/keymanage.c:415
+#, c-format
+msgid "Cipher hash repaired to lowercase (%s)."
+msgstr "암호화 방식 해시를 소문자로 복구했습니다 (%s)."
+
+#: lib/luks1/keymanage.c:417 lib/luks1/keymanage.c:523
+#: lib/luks1/keymanage.c:756
+#, c-format
+msgid "Requested LUKS hash %s is not supported."
+msgstr "요청한 %s LUKS 해시는 지원하지 않습니다."
+
+#: lib/luks1/keymanage.c:431
+msgid "Repairing keyslots."
+msgstr "키 슬롯을 복원합니다."
+
+#: lib/luks1/keymanage.c:450
+#, c-format
+msgid "Keyslot %i: offset repaired (%u -> %u)."
+msgstr "키 슬롯 %i: 오프셋을 복원했습니다 (%u -> %u)."
+
+#: lib/luks1/keymanage.c:458
+#, c-format
+msgid "Keyslot %i: stripes repaired (%u -> %u)."
+msgstr "키 슬롯 %i: 스트라이프를 복원했습니다 (%u -> %u)."
+
+#: lib/luks1/keymanage.c:467
+#, c-format
+msgid "Keyslot %i: bogus partition signature."
+msgstr "키 슬롯 %i: 위조한 분할 영역 시그니처입니다."
+
+#: lib/luks1/keymanage.c:472
+#, c-format
+msgid "Keyslot %i: salt wiped."
+msgstr "키 슬롯 %i: 솔트 값을 소거했습니다."
+
+#: lib/luks1/keymanage.c:489
+msgid "Writing LUKS header to disk."
+msgstr "LUKS 헤더를 디스크에 기록합니다."
+
+#: lib/luks1/keymanage.c:494
+msgid "Repair failed."
+msgstr "복구 실패."
+
+#: lib/luks1/keymanage.c:549
+#, c-format
+msgid "LUKS cipher mode %s is invalid."
+msgstr "LUKS 암호화 방식 모드 %s이(가) 적절하지 않습니다."
+
+#: lib/luks1/keymanage.c:554
+#, c-format
+msgid "LUKS hash %s is invalid."
+msgstr "%s LUKS 해시가 적절하지 않습니다."
+
+#: lib/luks1/keymanage.c:561 src/cryptsetup.c:1367
+msgid "No known problems detected for LUKS header."
+msgstr "LUKS 헤더에 알려진 문제가 없습니다."
+
+#: lib/luks1/keymanage.c:689
+#, c-format
+msgid "Error during update of LUKS header on device %s."
+msgstr "%s 장치의 LUKS 헤더 업데이트 중 오류가 있습니다."
+
+#: lib/luks1/keymanage.c:697
+#, c-format
+msgid "Error re-reading LUKS header after update on device %s."
+msgstr "%s 장치 업데이트 후 LUKS 헤더 다시 읽기 오류"
+
+#: lib/luks1/keymanage.c:750
+msgid "Data offset for LUKS header must be either 0 or higher than header size."
+msgstr "LUKS 헤더용 데이터 오프셋은 0 또는 헤더 길이보다 더 큰 값이어야 합니다."
+
+#: lib/luks1/keymanage.c:761 lib/luks1/keymanage.c:832
+#: lib/luks2/luks2_json_format.c:231 lib/luks2/luks2_json_metadata.c:1261
+#: src/utils_reencrypt.c:703
+msgid "Wrong LUKS UUID format provided."
+msgstr "잘못된 LUKS UUID 형식을 지정했습니다."
+
+#: lib/luks1/keymanage.c:783
+msgid "Cannot create LUKS header: reading random salt failed."
+msgstr "LUKS 헤더를 만들 수 없음: 임의 솔트 값 읽기 실패."
+
+#: lib/luks1/keymanage.c:811
+#, c-format
+msgid "Cannot create LUKS header: header digest failed (using hash %s)."
+msgstr "LUKS 헤더를 만들 수 없음: 헤더 다이제스트 실패 (%s 해시 사용)."
+
+#: lib/luks1/keymanage.c:856
+#, c-format
+msgid "Key slot %d active, purge first."
+msgstr "%d번 키 슬롯이 동작 중입니다. 우선 제거하십시오."
+
+#: lib/luks1/keymanage.c:862
+#, c-format
+msgid "Key slot %d material includes too few stripes. Header manipulation?"
+msgstr "%d번 키 슬롯의 스트라이프가 너무 적습니다. 헤더를 조작했습니까?"
+
+#: lib/luks1/keymanage.c:900 lib/luks2/luks2_keyslot_luks2.c:217
+msgid "PBKDF2 iteration value overflow."
+msgstr "PBKDF2 반복 값이 지정 범위를 넘었습니다."
+
+#: lib/luks1/keymanage.c:1022
+#, c-format
+msgid "Cannot open keyslot (using hash %s)."
+msgstr "키 슬롯을 열 수 없습니다 (%s 해시 사용)."
+
+#: lib/luks1/keymanage.c:1118
+#, c-format
+msgid "Key slot %d is invalid, please select keyslot between 0 and %d."
+msgstr "키 슬롯 번호 %d번이 적절하지 않습니다. 0에서 %d 사이 값 중 하나로 키 슬롯을 선택하십시오."
+
+#: lib/luks1/keymanage.c:1136 lib/luks2/luks2_keyslot.c:715
+#, c-format
+msgid "Cannot wipe device %s."
+msgstr "%s 장치를 소거할 수 없습니다."
+
+#: lib/loopaes/loopaes.c:140
+msgid "Detected not yet supported GPG encrypted keyfile."
+msgstr "아직 지원하지 않는 GPG 암호화 키 파일을 확인했습니다."
+
+#: lib/loopaes/loopaes.c:141
+msgid "Please use gpg --decrypt <KEYFILE> | cryptsetup --keyfile=- ...\n"
+msgstr "gpg --decrypt <키_파일> | cryptsetup --keyfile=- ... 명령을 사용하십시오\n"
+
+#: lib/loopaes/loopaes.c:162 lib/loopaes/loopaes.c:182
+msgid "Incompatible loop-AES keyfile detected."
+msgstr "loop-AES 키 파일 비호환 요소를 확인했습니다."
+
+#: lib/loopaes/loopaes.c:238
+msgid "Kernel does not support loop-AES compatible mapping."
+msgstr "커널에서 loop-AES 호환 매핑을 지원하지 않습니다."
+
+#: lib/tcrypt/tcrypt.c:495
+#, c-format
+msgid "Error reading keyfile %s."
+msgstr "%s 키 파일 읽는 중 오류가 있습니다."
+
+#: lib/tcrypt/tcrypt.c:549
+#, c-format
+msgid "Maximum TCRYPT passphrase length (%zu) exceeded."
+msgstr "TCRYPT 최대 암호 길이(%zu)를 초과했습니다."
+
+#: lib/tcrypt/tcrypt.c:591
+#, c-format
+msgid "PBKDF2 hash algorithm %s not available, skipping."
+msgstr "%s PBKDF2 해시 알고리즘을 사용할 수 없습니다. 건너뜀."
+
+#: lib/tcrypt/tcrypt.c:743
+#, c-format
+msgid "Activation is not supported for %d sector size."
+msgstr "%d 섹터 크기의 장치 동작 개시를 지원하지 않습니다."
+
+#: lib/tcrypt/tcrypt.c:749
+msgid "Kernel does not support activation for this TCRYPT legacy mode."
+msgstr "커널에서 TCRYPT 레거시 모드의 동작 시작을 지원하지 않습니다."
+
+#: lib/tcrypt/tcrypt.c:804
+#, c-format
+msgid "Activating TCRYPT system encryption for partition %s."
+msgstr "%s 분할 영역에 대한 TCRYPT 시스템 암호화 동작을 시작합니다."
+
+#: lib/tcrypt/tcrypt.c:819
+msgid "Cannot determine TCRYPT system partition offset, activating whole encrypted area."
+msgstr "TCRYPT 시스템 분할 영역 오프셋을 확인할 수 없어, 전체 암호화 영역의 동작을 시작합니다."
+
+#: lib/tcrypt/tcrypt.c:828
+msgid "Cannot determine TCRYPT system partition offset, activating device as a system partition."
+msgstr "TCRYPT 시스템 분할 영역 오프셋을 확인할 수 없어, 시스템 분할 영역 장치 동작을 시작합니다."
+
+#: lib/tcrypt/tcrypt.c:908
+msgid "Kernel does not support TCRYPT compatible mapping."
+msgstr "커널에서 TCRYPT 호환 매핑을 지원하지 않습니다."
+
+#: lib/tcrypt/tcrypt.c:1137
+msgid "This function is not supported without TCRYPT header load."
+msgstr "이 함수는 TCRYPT 헤더를 불러오지 않으면 동작을 지원하지 않습니다."
+
+#: lib/bitlk/bitlk.c:293
+#, c-format
+msgid "Unexpected metadata entry type '%u' found when parsing supported Volume Master Key."
+msgstr "지원하는 볼륨 마스터 키를 해석하는 동안 예기치 못한 '%u' 메타데이터 요소 형식을 찾았습니다."
+
+#: lib/bitlk/bitlk.c:351
+msgid "Invalid string found when parsing Volume Master Key."
+msgstr "볼륨 마스터 키를 해석하는 동안 부적절한 문자열을 찾았습니다."
+
+#: lib/bitlk/bitlk.c:355
+#, c-format
+msgid "Unexpected string ('%s') found when parsing supported Volume Master Key."
+msgstr "지원하는 볼륨 마스터 키를 해석하는 동안 예기치 못한 문자열('%s')을 찾았습니다."
+
+#: lib/bitlk/bitlk.c:375
+#, c-format
+msgid "Unexpected metadata entry value '%u' found when parsing supported Volume Master Key."
+msgstr "지원하는 볼륨 마스터 키를 해석하는 동안 예기치 못한 '%u' 메타데이터 요소 값을 찾았습니다."
+
+#: lib/bitlk/bitlk.c:528
+msgid "BITLK version 1 is currently not supported."
+msgstr "BITLK 버전 1은 현재 지원하지 않습니다."
+
+#: lib/bitlk/bitlk.c:534
+msgid "Invalid or unknown boot signature for BITLK device."
+msgstr "부적절하거나 알 수 없는 BITLK 장치의 부팅 시그니처입니다."
+
+#: lib/bitlk/bitlk.c:546
+#, c-format
+msgid "Unsupported sector size %<PRIu16>."
+msgstr "지원하지 않는 섹터 크기 값 %<PRIu16>."
+
+#: lib/bitlk/bitlk.c:554
+#, c-format
+msgid "Failed to read BITLK header from %s."
+msgstr "%s에서 BITLK 헤더 읽기 실패."
+
+#: lib/bitlk/bitlk.c:603
+#, c-format
+msgid "Failed to read and validate BITLK FVE metadata from %s."
+msgstr "%s에서 BITLK FVE 메타데이터 읽기 및 검증 실패."
+
+#: lib/bitlk/bitlk.c:610
+#, c-format
+msgid "Failed to validate the location of BITLK FVE metadata from %s."
+msgstr "%s에서 BITLK FVE 메타데이터 위치 검증 실패."
+
+#: lib/bitlk/bitlk.c:621
+#, c-format
+msgid "BITLK FVE metadata changed between reads from %s."
+msgstr "%s에서 읽은 내용 대비 BITLK FVE 메타데이터가 바뀌었습니다."
+
+#: lib/bitlk/bitlk.c:628
+#, c-format
+msgid "Failed to hash BITLK FVE metadata read from %s."
+msgstr "%s에서 읽은 BITLK FVE 메타데이터 해싱 실패."
+
+#: lib/bitlk/bitlk.c:644
+#, c-format
+msgid "Failed to parse BITLK FVE validation metadata from %s."
+msgstr "%s에서 BITLK FVE 유효성 메타데이터 해석 실패."
+
+#: lib/bitlk/bitlk.c:695
+msgid "Unknown or unsupported encryption type."
+msgstr "알 수 없거나 지원하지 않는 암호화 형식."
+
+#: lib/bitlk/bitlk.c:733
+#, c-format
+msgid "Failed to check BITLK metadata entries previously read from %s."
+msgstr "%s에서 앞서 읽은 BITLK 메타데이터 항목 확인 실패."
+
+#: lib/bitlk/bitlk.c:853
+msgid "Failed to convert BITLK volume description"
+msgstr "BITLK 볼륨 설명 변환 실패"
+
+#: lib/bitlk/bitlk.c:1018
+#, c-format
+msgid "Unexpected metadata entry type '%u' found when parsing external key."
+msgstr "외부 키를 해석하는 동안 예기치 못한 '%u' 메타데이터 요소 형식을 찾았습니다."
+
+#: lib/bitlk/bitlk.c:1041
+#, c-format
+msgid "BEK file GUID '%s' does not match GUID of the volume."
+msgstr "BEK 파일 GUID '%s'는 볼륨의 GUID와 일치하지 않습니다."
+
+#: lib/bitlk/bitlk.c:1045
+#, c-format
+msgid "Unexpected metadata entry value '%u' found when parsing external key."
+msgstr "외부 키를 해석하는 동안 예기치 못한 '%u' 메타데이터 항목 값을 찾았습니다."
+
+#: lib/bitlk/bitlk.c:1084
+#, c-format
+msgid "Unsupported BEK metadata version %<PRIu32>"
+msgstr "지원하지 않는 BEK 메타데이터 버전 %<PRIu32>"
+
+#: lib/bitlk/bitlk.c:1089
+#, c-format
+msgid "Unexpected BEK metadata size %<PRIu32> does not match BEK file length"
+msgstr "예기치 못한 %<PRIu32> BEK 메타데이터 크기가 BEK 파일 길이와 일치하지 않습니다"
+
+#: lib/bitlk/bitlk.c:1115
+msgid "Unexpected metadata entry found when parsing startup key."
+msgstr "시작 키를 해석하는 동안 예기치 못한 메타데이터 요소를 찾았습니다."
+
+#: lib/bitlk/bitlk.c:1218
+msgid "This operation is not supported."
+msgstr "이 동작은 지원하지 않습니다."
+
+#: lib/bitlk/bitlk.c:1226
+msgid "Unexpected key data size."
+msgstr "예기치 않은 키 데이터 크기."
+
+#: lib/bitlk/bitlk.c:1442
+msgid "This BITLK device is in an unsupported state and cannot be activated."
+msgstr "이 BITLK 장치는 지원하지 않는 상태이며, 동작을 시작할 수 없습니다."
+
+#: lib/bitlk/bitlk.c:1447
+#, c-format
+msgid "BITLK devices with type '%s' cannot be activated."
+msgstr "'%s' 형식의 BITLK 장치의 동작을 시작할 수 없습니다."
+
+#: lib/bitlk/bitlk.c:1486
+#, c-format
+msgid "WARNING: BitLocker volume size %<PRIu64> does not match the underlying device size %<PRIu64>"
+msgstr "경고: 비트로커 볼륨 크기 %<PRIu64>가 하부 장치 크기 %<PRIu64>와 일치하지 않습니다"
+
+#: lib/bitlk/bitlk.c:1613
+msgid "Cannot activate device, kernel dm-crypt is missing support for BITLK IV."
+msgstr "장치 동작을 개시할 수 없습니다. 커널 dm-crypt 에 BITLK IV 지원이 빠졌습니다."
+
+#: lib/bitlk/bitlk.c:1617
+msgid "Cannot activate device, kernel dm-crypt is missing support for BITLK Elephant diffuser."
+msgstr "장치 동작을 개시할 수 없습니다. 커널 dm-crypt에 BITLK 엘레펀트 diffuser 지원이 빠졌습니다."
+
+#: lib/bitlk/bitlk.c:1621
+msgid "Cannot activate device, kernel dm-crypt is missing support for large sector size."
+msgstr "장치 동작을 개시할 수 없습니다. 커널 dm-crypt 에 거대 섹터 크기 지원이 빠졌습니다."
+
+#: lib/bitlk/bitlk.c:1625
+msgid "Cannot activate device, kernel dm-zero module is missing."
+msgstr "장치 동작을 개시할 수 없습니다. 커널 dm-zero 모듈이 빠졌습니다."
+
+#: lib/fvault2/fvault2.c:532
+#, c-format
+msgid "Could not read %u bytes of volume header."
+msgstr "볼륨 헤더의 %u 바이트를 읽을 수 없습니다."
+
+#: lib/fvault2/fvault2.c:544
+#, c-format
+msgid "Unsupported FVAULT2 version %<PRIu16>."
+msgstr "지원하지 않는 FVAULT2 버전 %<PRIu16>."
+
+#: lib/verity/verity.c:55 lib/verity/verity.c:169
+#, c-format
+msgid "Verity device %s does not use on-disk header."
+msgstr "%s 검증 장치가 디스크의 헤더를 사용하지 않고 있습니다."
+
+#: lib/verity/verity.c:83
+#, c-format
+msgid "Unsupported VERITY version %d."
+msgstr "지원하지 않는 VERITY 버전 %d."
+
+#: lib/verity/verity.c:118
+msgid "VERITY header corrupted."
+msgstr "검증 헤더가 망가졌습니다."
+
+#: lib/verity/verity.c:163
+#, c-format
+msgid "Wrong VERITY UUID format provided on device %s."
+msgstr "%s 장치에서 제공하는  잘못된 검증 UUID 형식."
+
+#: lib/verity/verity.c:207
+#, c-format
+msgid "Error during update of verity header on device %s."
+msgstr "%s 장치에서 검증 헤더 업데이트 중 오류가 있습니다."
+
+#: lib/verity/verity.c:261
+msgid "Root hash signature verification is not supported."
+msgstr "루트 해시 시그니처 검증을 지원하지 않습니다."
+
+#: lib/verity/verity.c:266
+msgid "Root hash signature required."
+msgstr "루트 해시 시그니처가 필요합니다."
+
+#: lib/verity/verity.c:282
+msgid "Errors cannot be repaired with FEC device."
+msgstr "FEC 장치로 오류를 복원할 수 없습니다"
+
+#: lib/verity/verity.c:284
+#, c-format
+msgid "Found %u repairable errors with FEC device."
+msgstr "FEC 장치로 복원할 수 있는 오류  %u건을 찾았습니다."
+
+#: lib/verity/verity.c:368
+msgid "Kernel does not support dm-verity mapping."
+msgstr "커널에서 dm-verity 매핑을 지원하지 않습니다."
+
+#: lib/verity/verity.c:372
+msgid "Kernel does not support dm-verity signature option."
+msgstr "커널에서 dm-verity 시그니처 옵션을 지원하지 않습니다."
+
+#: lib/verity/verity.c:383
+msgid "Verity device detected corruption after activation."
+msgstr "동작 개시 후 검증 장치의 손상을 찾았습니다."
+
+#: lib/verity/verity_hash.c:53
+#, c-format
+msgid "Spare area is not zeroed at position %<PRIu64>."
+msgstr "여분 영역 크기가 %<PRIu64> 위치에서 0이 아닙니다."
+
+#: lib/verity/verity_hash.c:154 lib/verity/verity_hash.c:287
+#: lib/verity/verity_hash.c:298
+msgid "Device offset overflow."
+msgstr "장치 오프셋 영역 넘어감."
+
+#: lib/verity/verity_hash.c:205
+#, c-format
+msgid "Verification failed at position %<PRIu64>."
+msgstr "%<PRIu64> 위치에서 검증 실패."
+
+#: lib/verity/verity_hash.c:294
+msgid "Hash area overflow."
+msgstr "해시 영역 넘쳐남."
+
+#: lib/verity/verity_hash.c:381
+msgid "Verification of data area failed."
+msgstr "데이터 영역 검증 실패."
+
+#: lib/verity/verity_hash.c:386
+msgid "Verification of root hash failed."
+msgstr "루트 해시 검증 실패."
+
+#: lib/verity/verity_hash.c:392
+msgid "Input/output error while creating hash area."
+msgstr "해시 영역을 만드는 동안 입출력 오류가 있습니다."
+
+#: lib/verity/verity_hash.c:394
+msgid "Creation of hash area failed."
+msgstr "해시 영역 만들기 실패."
+
+#: lib/verity/verity_hash.c:429
+#, c-format
+msgid "WARNING: Kernel cannot activate device if data block size exceeds page size (%u)."
+msgstr "경고: 데이터 블록 크기가 페이지 크기(%u)를 초과하면 커널이 장치 동작을 개시할 수 없습니다."
+
+#: lib/verity/verity_fec.c:118
+msgid "Failed to allocate RS context."
+msgstr "RS 컨텍스트 할당 실패."
+
+#: lib/verity/verity_fec.c:136
+msgid "Failed to allocate buffer."
+msgstr "버퍼 할당 실패."
+
+#: lib/verity/verity_fec.c:146
+#, c-format
+msgid "Failed to read RS block %<PRIu64> byte %d."
+msgstr "RS 블록 %<PRIu64> 바이트 %d 읽기 실패."
+
+#: lib/verity/verity_fec.c:159
+#, c-format
+msgid "Failed to read parity for RS block %<PRIu64>."
+msgstr "RS 블록 %<PRIu64>의 패리티 읽기 실패."
+
+#: lib/verity/verity_fec.c:167
+#, c-format
+msgid "Failed to repair parity for block %<PRIu64>."
+msgstr "RS 블록 %<PRIu64> 패리티 복원 실패."
+
+#: lib/verity/verity_fec.c:179
+#, c-format
+msgid "Failed to write parity for RS block %<PRIu64>."
+msgstr "RS 블록 %<PRIu64> 패리티 기록 실패."
+
+#: lib/verity/verity_fec.c:195
+msgid "Block sizes must match for FEC."
+msgstr "블록 크기는 FEC에 일치해야 합니다."
+
+#: lib/verity/verity_fec.c:201
+msgid "Invalid number of parity bytes."
+msgstr "부적절한 많은 양의 패리티 바이트."
+
+#: lib/verity/verity_fec.c:235
+msgid "Invalid FEC segment length."
+msgstr "부적절한 FEC 세그먼트 길이입니다."
+
+#: lib/verity/verity_fec.c:303
+#, c-format
+msgid "Failed to determine size for device %s."
+msgstr "%s 장치 크기 확인 실패."
+
+#: lib/integrity/integrity.c:50
+#, c-format
+msgid "Incompatible kernel dm-integrity metadata (version %u) detected on %s."
+msgstr "%2$s에서 커널의 비호환 dm-integrity 메타데이터(버전 %1$u)를 찾았습니다."
+
+#: lib/integrity/integrity.c:308 lib/integrity/integrity.c:492
+msgid "Kernel does not support dm-integrity mapping."
+msgstr "커널에서 dm-integrity 매핑을 지원하지 않습니다"
+
+#: lib/integrity/integrity.c:314
+msgid "Kernel does not support dm-integrity fixed metadata alignment."
+msgstr "커널에서 dm-integrity 고정 메타데이터 정렬을 지원하지 않습니다."
+
+#: lib/integrity/integrity.c:323
+msgid "Kernel refuses to activate insecure recalculate option (see legacy activation options to override)."
+msgstr "커널에서 안전하지 않은 재계산 옵션 동작 개시를 거부했습니다 (그래도 실행하려면 이전 동작 개시 옵션 참고)."
+
+#: lib/integrity/integrity.c:329
+msgid "Kernel does not support dm-integrity inline mode."
+msgstr "커널에서 dm-integrity 인라인 모드를 지원하지 않습니다."
+
+#: lib/luks2/luks2_disk_metadata.c:382 lib/luks2/luks2_json_metadata.c:1184
+#: lib/luks2/luks2_json_metadata.c:1510
+#, c-format
+msgid "Failed to acquire write lock on device %s."
+msgstr "%s 장치의 쓰기 잠금 획득 실패."
+
+#: lib/luks2/luks2_disk_metadata.c:391
+msgid "Detected attempt for concurrent LUKS2 metadata update. Aborting operation."
+msgstr "LUKS2 메타데이터의 동시 업데이트 시도를 확인했습니다. 동작 멈춤."
+
+#: lib/luks2/luks2_disk_metadata.c:726 lib/luks2/luks2_disk_metadata.c:747
+msgid ""
+"Device contains ambiguous signatures, cannot auto-recover LUKS2.\n"
+"Please run \"cryptsetup repair\" for recovery."
+msgstr ""
+"장치에 모호한 시그니쳐가 있어, LUKS2를 자동으로 복구할 수 없습니다.\n"
+"복구하려면, \"cryptsetup repair\" 명령을 수행하십시오."
+
+#: lib/luks2/luks2_json_format.c:219
+#, c-format
+msgid "WARNING: keyslots area (%<PRIu64> bytes) is very small, available LUKS2 keyslot count is very limited.\n"
+msgstr "경고: 키 슬롯 영역(%<PRIu64> 바이트)이 너무 작아서, 가능한 LUKS2 키 슬롯 수가 매우 제한적입니다.\n"
+
+#: lib/luks2/luks2_json_format.c:418
+msgid "Requested data offset is too small."
+msgstr "요청 데이터 오프셋 값이 너무 작습니다."
+
+#: lib/luks2/luks2_json_format.c:459
+#, c-format
+msgid "WARNING: LUKS2 metadata size changed to %<PRIu64> bytes.\n"
+msgstr "경고: LUKS2 메타데이터 크기가 %<PRIu64> 바이트로 바뀌었습니다.\n"
+
+#: lib/luks2/luks2_json_format.c:463
+#, c-format
+msgid "WARNING: LUKS2 keyslots area size changed to %<PRIu64> bytes.\n"
+msgstr "경고: LUKS2 키 슬롯 영역 크기가 %<PRIu64> 바이트로 바뀌었습니다.\n"
+
+#: lib/luks2/luks2_json_metadata.c:1171 lib/luks2/luks2_json_metadata.c:1357
+#: lib/luks2/luks2_json_metadata.c:1417 lib/luks2/luks2_keyslot_luks2.c:71
+#, c-format
+msgid "Failed to acquire read lock on device %s."
+msgstr "%s 장치의 잠금 읽기 획득 실패."
+
+#: lib/luks2/luks2_json_metadata.c:1277
+msgid "Label is too long."
+msgstr "레이블이 너무 깁니다."
+
+#: lib/luks2/luks2_json_metadata.c:1435
+#, c-format
+msgid "Forbidden LUKS2 requirements detected in backup %s."
+msgstr "%s 백업에서 금지하고 있는 LUKS2 요구 사항을 확인했습니다."
+
+#: lib/luks2/luks2_json_metadata.c:1474
+msgid "Data offset differ on device and backup, restore failed."
+msgstr "장치와 백업 간 데이터 오프셋이 다릅니다. 복원 실패."
+
+#: lib/luks2/luks2_json_metadata.c:1480
+msgid "Binary header with keyslot areas size differ on device and backup, restore failed."
+msgstr "장치와 백업간 키 슬롯 영역이 들어간 바이너리 헤더 크기가 다릅니다. 복구 실패."
+
+#: lib/luks2/luks2_json_metadata.c:1487
+#, c-format
+msgid "Device %s %s%s%s%s"
+msgstr "%s 장치 %s%s%s%s"
+
+#: lib/luks2/luks2_json_metadata.c:1488
+msgid "does not contain LUKS2 header. Replacing header can destroy data on that device."
+msgstr "LUKS2 헤더가 없습니다. 헤더 내용을 바꾸면 장치의 데이터가 깨질 수 있습니다."
+
+#: lib/luks2/luks2_json_metadata.c:1489
+msgid "already contains LUKS2 header. Replacing header will destroy existing keyslots."
+msgstr "이미 LUKS2 헤더가 있습니다. 헤더 내용을 바꾸면 기존 키 슬롯이 깨집니다."
+
+#: lib/luks2/luks2_json_metadata.c:1491
+msgid ""
+"\n"
+"WARNING: unknown LUKS2 requirements detected in real device header!\n"
+"Replacing header with backup may corrupt the data on that device!"
+msgstr ""
+"\n"
+"경고: 알 수 없는 LUKS2 요구사항을 실제 장치 헤더에서 찾았습니다!\n"
+"헤더 내용을 바꾸면 해당 장치의 데이터가 깨질 수도 있습니다!"
+
+#: lib/luks2/luks2_json_metadata.c:1493
+msgid ""
+"\n"
+"WARNING: Unfinished offline reencryption detected on the device!\n"
+"Replacing header with backup may corrupt data."
+msgstr ""
+"\n"
+"경고: 끝내지 않은 오프라인 재암호화를 장치에서 확인했습니다!\n"
+"헤더를 백업 내용으로 바뀌면 데이터가 깨잘 수도 있습니다."
+
+#: lib/luks2/luks2_json_metadata.c:1591
+#, c-format
+msgid "Ignored unknown flag %s."
+msgstr "알 수 없는 %s 플래그를 무시했습니다."
+
+#: lib/luks2/luks2_json_metadata.c:2563 lib/luks2/luks2_reencrypt.c:2110
+#, c-format
+msgid "Missing key for dm-crypt segment %u"
+msgstr "dm-crypt 세그먼트 %u번에 키 빠짐"
+
+#: lib/luks2/luks2_json_metadata.c:2575 lib/luks2/luks2_reencrypt.c:2123
+msgid "Failed to set dm-crypt segment."
+msgstr "dm-crypt 세그먼트 설정 실패."
+
+#: lib/luks2/luks2_json_metadata.c:2581 lib/luks2/luks2_reencrypt.c:2129
+msgid "Failed to set dm-linear segment."
+msgstr "dm-linear 세그먼트 설정 실패."
+
+#: lib/luks2/luks2_json_metadata.c:2701 src/utils_reencrypt.c:580
+msgid "No known cipher specification pattern detected in LUKS2 header."
+msgstr "LUKS2 헤더에서 찾은 알려진 암호화 방식 명세 패턴이 없습니다."
+
+#: lib/luks2/luks2_json_metadata.c:2709
+msgid "OPAL device must have static device size."
+msgstr "OPAL 장치에 정적 장치 크기 정보가 들어가야 합니다."
+
+#: lib/luks2/luks2_json_metadata.c:2729
+msgid "Encrypted OPAL device with integrity must be smaller than locking range."
+msgstr "무결성 정보를 지닌 암호화한 OPAL 장치는 잠금 범위보다 작아야 합니다."
+
+#: lib/luks2/luks2_json_metadata.c:2734
+msgid "OPAL device must have same size as locking range."
+msgstr "OPAL 장치는 잠금 범위와 같은 크기를 지녀야 합니다."
+
+#: lib/luks2/luks2_json_metadata.c:2754
+#, c-format
+msgid "OPAL device is %s already unlocked.\n"
+msgstr "OPAN 장치는 %s(이)며, 이미 잠금을 해제했습니다.\n"
+
+#: lib/luks2/luks2_json_metadata.c:2793
+msgid "Unsupported device integrity configuration."
+msgstr "지원하지 않는 장치 무결성 설정."
+
+#: lib/luks2/luks2_json_metadata.c:2809
+msgid "Underlying dm-integrity device with unexpected provided data sectors."
+msgstr "dm-integrity 장치 기저에 예기치 못한 지정 데이터 섹터가 있습니다."
+
+#: lib/luks2/luks2_json_metadata.c:2911
+msgid "Reencryption in-progress. Cannot deactivate device."
+msgstr "재암호화 진행 중입니다. 장치 동작 상태를 해제할 수 없습니다."
+
+#: lib/luks2/luks2_json_metadata.c:2922 lib/luks2/luks2_reencrypt.c:4287
+#, c-format
+msgid "Failed to replace suspended device %s with dm-error target."
+msgstr "대기 상태에 있는 %s 장치의 dm-error 타겟 전환 실패."
+
+#: lib/luks2/luks2_json_metadata.c:3001 lib/luks2/luks2_json_metadata.c:3023
+#, c-format
+msgid "Device %s was deactivated but hardware OPAL device cannot be locked."
+msgstr "%s 장치의 동작 상태를 해제했지만 OPAL 장치 하드웨어를 잠글 수는 없습니다."
+
+#: lib/luks2/luks2_json_metadata.c:3045
+msgid "Unmet LUKS2 requirements detected."
+msgstr "LUKS2 요구 사항의 불만족 요소를 확인했습니다."
+
+#: lib/luks2/luks2_json_metadata.c:3053
+msgid "Operation incompatible with device marked for legacy reencryption. Aborting."
+msgstr "이전 재암호화 마킹한 장치의 동작 호환성이 없습니다. 멈춤."
+
+#: lib/luks2/luks2_json_metadata.c:3055
+msgid "Operation incompatible with device marked for LUKS2 reencryption. Aborting."
+msgstr "LUKS2 재암호화 마킹한 장치의 동작 호환성이 없습니다. 멈춤."
+
+#: lib/luks2/luks2_json_metadata.c:3057
+msgid "Operation incompatible with device using OPAL. Aborting."
+msgstr "OPAL을 활용하는 장치의 동작 호환성이 없습니다. 멈춤."
+
+#: lib/luks2/luks2_json_metadata.c:3059
+msgid "Operation incompatible with device using inline HW tags. Aborting."
+msgstr "인라인 하드웨어 태그를 사용하는 장치의 동작 호환성이 없습니다. 멈춤."
+
+#: lib/luks2/luks2_keyslot.c:543 lib/luks2/luks2_keyslot.c:601
+msgid "Not enough available memory to open a keyslot."
+msgstr "키 슬롯을 열 충분한 가용 메모리 공간이 없습니다."
+
+#: lib/luks2/luks2_keyslot.c:545 lib/luks2/luks2_keyslot.c:603
+msgid "Keyslot open failed."
+msgstr "키 슬롯 열기 실패."
+
+#: lib/luks2/luks2_keyslot_luks2.c:40 lib/luks2/luks2_keyslot_luks2.c:77
+#, c-format
+msgid "Cannot use %s cipher for keyslot encryption."
+msgstr "%s 암호화 방식을 키 슬롯 암호화에 사용할 수 없습니다."
+
+#: lib/luks2/luks2_keyslot_luks2.c:219
+msgid "Not enough memory for keyslot key derivation."
+msgstr "키 슬롯 키를 가져올 충분한 메모리 공간이 없습니다."
+
+#: lib/luks2/luks2_keyslot_luks2.c:233 lib/luks2/luks2_keyslot_luks2.c:358
+#: lib/luks2/luks2_keyslot_reenc.c:434 lib/luks2/luks2_reencrypt.c:2734
+#, c-format
+msgid "Hash algorithm %s is not available."
+msgstr "%s 해싱 알고리즘은 사용할 수 없습니다."
+
+#: lib/luks2/luks2_keyslot_luks2.c:475
+msgid "No space for new keyslot."
+msgstr "새 키 슬롯을 저장할 공간이 없습니다."
+
+#: lib/luks2/luks2_keyslot_reenc.c:583
+msgid "Invalid reencryption resilience mode change requested."
+msgstr "부적절한 재암호화 복원 모드 변경을 요청했습니다."
+
+#: lib/luks2/luks2_keyslot_reenc.c:704
+#, c-format
+msgid "Can not update resilience type. New type only provides %<PRIu64> bytes, required space is: %<PRIu64> bytes."
+msgstr "복원 형식을 업데이트할 수 없습니다. 새 형식은 %<PRIu64> 바이트만 제공하는데, 요구 공간 영역은 %<PRIu64> 바이트입니다."
+
+#: lib/luks2/luks2_keyslot_reenc.c:714
+msgid "Failed to refresh reencryption verification digest."
+msgstr "재암호화 검증 다이제스트 상태 새로 고침 실패."
+
+#: lib/luks2/luks2_luks1_convert.c:498
+#, c-format
+msgid "Cannot check status of device with uuid: %s."
+msgstr "UUID로 장치 상태를 검사할 수 없습니다: %s."
+
+#: lib/luks2/luks2_luks1_convert.c:524
+msgid "Unable to convert header with LUKSMETA additional metadata."
+msgstr "LUKSMETA 추가 메타데이터로 헤더를 변환할 수 없습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:556 lib/luks2/luks2_reencrypt.c:3894
+#, c-format
+msgid "Unable to use cipher specification %s-%s for LUKS2."
+msgstr "LUKS2에 %s-%s 암호화 방식 명세를 활용할 수 없습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:565
+#, c-format
+msgid "Unable to use cipher specification %s-%s for LUKS2 keyslot."
+msgstr "LUKS2 키 슬롯에 %s-%s 암호화 방식 명세를 활용할 수 없습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:580
+msgid "Unable to move keyslot area. Not enough space."
+msgstr "키 슬롯 영역을 이동할 수 없습니다. 공간이 부족함."
+
+#: lib/luks2/luks2_luks1_convert.c:619
+msgid "Cannot convert to LUKS2 format - invalid metadata."
+msgstr "LUKS2 형식으로 변환할 수 없습니다 - 부적절한 메타데이터."
+
+#: lib/luks2/luks2_luks1_convert.c:636
+msgid "Unable to move keyslot area. LUKS2 keyslots area too small."
+msgstr "키 슬롯 영역을 이동할 수 없습니다. LUKS2 키 슬롯 영역이 너무 작습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:642 lib/luks2/luks2_luks1_convert.c:972
+msgid "Unable to move keyslot area."
+msgstr "키 슬롯 영역을 옮길 수 없습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:757
+msgid "Cannot convert to LUKS1 format - default segment encryption sector size is not 512 bytes."
+msgstr "LUKS1 형식으로 변환할 수 없음 - 기본 세그먼트 암호화 섹터 크기가 512바이트가 아닙니다."
+
+#: lib/luks2/luks2_luks1_convert.c:765
+msgid "Cannot convert to LUKS1 format - key slot digests are not LUKS1 compatible."
+msgstr "LUKS1 형식으로 변환할 수 없음 - 키 슬롯 다이제스트가 LUKS1과 호환성이 없습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:779
+#, c-format
+msgid "Cannot convert to LUKS1 format - device uses wrapped key cipher %s."
+msgstr "LUKS1 형식으로 변환할 수 없음 - 장치에서 래핑 키 암호화 방식 %s을(를) 사용하고 있습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:784
+msgid "Cannot convert to LUKS1 format - device uses more segments."
+msgstr "LUKS1 형식으로 변환할 수 없음 - 장치에서 더 많은 세그먼트가 있습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:792
+#, c-format
+msgid "Cannot convert to LUKS1 format - LUKS2 header contains %u token(s)."
+msgstr "LUKS1 형식으로 변환할 수 없음 - LUKS2 헤더에 토근 %u개가 있습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:798
+msgid "Cannot convert to LUKS1 format - there are no active keyslots."
+msgstr "LUKS1 형식으로 변환할 수 없음 - 동작 중인 키 슬롯이 없습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:810
+#, c-format
+msgid "Cannot convert to LUKS1 format - keyslot %u is in invalid state."
+msgstr "LUKS1 형식으로 변환할 수 없음 - %u번 키 슬롯이 적절하지 않은 상태에 있습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:815
+#, c-format
+msgid "Cannot convert to LUKS1 format - keyslot %u is unbound."
+msgstr "LUKS1 형식으로 변환할 수 없음 - %u번 키 슬롯이 범위 밖에 있습니다."
+
+#: lib/luks2/luks2_luks1_convert.c:820
+#, c-format
+msgid "Cannot convert to LUKS1 format - slot %u (over maximum slots) is still active."
+msgstr "LUKS1 형식으로 변환할 수 없음 - %u번 슬롯(최대 슬롯 범위 밖)이 여전히 동작중입니다."
+
+#: lib/luks2/luks2_luks1_convert.c:825
+#, c-format
+msgid "Cannot convert to LUKS1 format - keyslot %u is not LUKS1 compatible."
+msgstr "LUKS1 형식으로 변환할 수 없음 - %u번 키 슬롯이 LUKS1과 호환성이 없습니다."
+
+#: lib/luks2/luks2_reencrypt.c:1199
+#, c-format
+msgid "Hotzone size must be multiple of calculated zone alignment (%zu bytes)."
+msgstr "핫존 크기는 계산한 영역 값의 배수여야 합니다 (%zu 바이트)."
+
+#: lib/luks2/luks2_reencrypt.c:1204
+#, c-format
+msgid "Device size must be multiple of calculated zone alignment (%zu bytes)."
+msgstr "장치 크기는 계산한 영역 값읠 배수여야 합니다 (%zu 바이트)."
+
+#: lib/luks2/luks2_reencrypt.c:1411 lib/luks2/luks2_reencrypt.c:1597
+#: lib/luks2/luks2_reencrypt.c:1680 lib/luks2/luks2_reencrypt.c:1722
+#: lib/luks2/luks2_reencrypt.c:4081
+msgid "Failed to initialize old segment storage wrapper."
+msgstr "이전 세그먼트 저장소 래퍼 초기화 실패."
+
+#: lib/luks2/luks2_reencrypt.c:1425 lib/luks2/luks2_reencrypt.c:1575
+msgid "Failed to initialize new segment storage wrapper."
+msgstr "새 세그먼트 저장소 래퍼 초기화 실패"
+
+#: lib/luks2/luks2_reencrypt.c:1551 lib/luks2/luks2_reencrypt.c:4093
+msgid "Failed to initialize hotzone protection."
+msgstr "핫존 보호 초기화 실패."
+
+#: lib/luks2/luks2_reencrypt.c:1624
+msgid "Failed to read checksums for current hotzone."
+msgstr "현재 핫존의 체크섬 읽기 실패."
+
+#: lib/luks2/luks2_reencrypt.c:1631 lib/luks2/luks2_reencrypt.c:4108
+#, c-format
+msgid "Failed to read hotzone area starting at %<PRIu64>."
+msgstr "%<PRIu64>에서 시작하는 핫존 영역 읽기 실패."
+
+#: lib/luks2/luks2_reencrypt.c:1650
+#, c-format
+msgid "Failed to decrypt sector %zu."
+msgstr "%zu 섹터 해독 실패."
+
+#: lib/luks2/luks2_reencrypt.c:1656
+#, c-format
+msgid "Failed to recover sector %zu."
+msgstr "%zu 섹터 복원 실패."
+
+#: lib/luks2/luks2_reencrypt.c:2209
+#, c-format
+msgid "Source and target device sizes don't match. Source %<PRIu64>, target: %<PRIu64>."
+msgstr "원본 및 대상 장치 크기가 일치하지 않습니다. 원본: %<PRIu64>, 대상: %<PRIu64>."
+
+#: lib/luks2/luks2_reencrypt.c:2311
+#, c-format
+msgid "Failed to activate hotzone device %s."
+msgstr "%s 핫존 장치 동작 개시 실패."
+
+#: lib/luks2/luks2_reencrypt.c:2323
+#, c-format
+msgid "Failed to allocate hotzone device %s."
+msgstr "%s 핫존 장치 할당 실패"
+
+#: lib/luks2/luks2_reencrypt.c:2340
+#, c-format
+msgid "Failed to activate overlay device %s with actual origin table."
+msgstr "실제 원본 테이블에서 %s 오버레이 장치 동작 개시 실패."
+
+#: lib/luks2/luks2_reencrypt.c:2347
+#, c-format
+msgid "Failed to load new mapping for device %s."
+msgstr "%s 장치의 새 매핑 불러오기 실패."
+
+#: lib/luks2/luks2_reencrypt.c:2419
+msgid "Failed to refresh reencryption devices stack."
+msgstr "재암호화 장치 스택 새로 고침 실패."
+
+#: lib/luks2/luks2_reencrypt.c:2616
+msgid "Failed to set new keyslots area size."
+msgstr "새 키 슬롯 영역 크기 설정 실패."
+
+#: lib/luks2/luks2_reencrypt.c:2752
+#, c-format
+msgid "Data shift value is not aligned to encryption sector size (%<PRIu32> bytes)."
+msgstr "데이터 쉬프트 값이 암호화 섹터 크기와 일치하지 않습니다 (%<PRIu32> 바이트)."
+
+#: lib/luks2/luks2_reencrypt.c:2789 src/utils_reencrypt.c:162
+#, c-format
+msgid "Unsupported resilience mode %s"
+msgstr "지원하지 않는 %s 복원 모드"
+
+#: lib/luks2/luks2_reencrypt.c:2825
+msgid "Moved segment size can not be greater than data shift value."
+msgstr "이동한 세그먼트의 크기는 데이터 쉬프트 값보다 클 수 없습니다."
+
+#: lib/luks2/luks2_reencrypt.c:2867
+msgid "Invalid reencryption resilience parameters."
+msgstr "부적절한 재암호화 복원 매개변수."
+
+#: lib/luks2/luks2_reencrypt.c:2889
+#, c-format
+msgid "Moved segment too large. Requested size %<PRIu64>, available space for: %<PRIu64>."
+msgstr "옮긴 세그먼트가 너무 큽니다. 요청한 크기는 %<PRIu64>이나, 가용 공간은 %<PRIu64> 입니다."
+
+#: lib/luks2/luks2_reencrypt.c:2978
+msgid "Failed to clear table."
+msgstr "테이블 삭제 실패."
+
+#: lib/luks2/luks2_reencrypt.c:3064
+#, c-format
+msgid "Data shift (%<PRIu64> sectors) is less than future data offset (%<PRIu64> sectors)."
+msgstr "데이터 쉬프트 (%<PRIu64> 섹터)는 이후 데이터 오프셋보다 작습니다 (%<PRIu64> 섹터)."
+
+#: lib/luks2/luks2_reencrypt.c:3079 lib/luks2/luks2_reencrypt.c:3086
+msgid "Reduced data size is larger than real device size."
+msgstr "줄어든 데이터 크기가 실제 장치 크기보다 큽니다."
+
+#: lib/luks2/luks2_reencrypt.c:3096
+#, c-format
+msgid "Data device is not aligned to encryption sector size (%<PRIu32> bytes)."
+msgstr "데이터 장치는 암호화 섹터 크기에 정렬한 상태가 아닙니다 (%<PRIu32> 바이트)"
+
+#: lib/luks2/luks2_reencrypt.c:3126 lib/luks2/luks2_reencrypt.c:3644
+#: lib/luks2/luks2_reencrypt.c:3665
+#, c-format
+msgid "Failed to open %s in exclusive mode (already mapped or mounted)."
+msgstr "%s 배타 모드로 열기 실패 (이미 매핑했거나 마운팅함)."
+
+#: lib/luks2/luks2_reencrypt.c:3333
+msgid "Device not marked for LUKS2 reencryption."
+msgstr "LUKS2 재암호화 장치로 표시하지 않았습니다."
+
+#: lib/luks2/luks2_reencrypt.c:3350 lib/luks2/luks2_reencrypt.c:4404
+msgid "Failed to load LUKS2 reencryption context."
+msgstr "LUKS2 재암호화 컨텍스트 불러오기 실패."
+
+#: lib/luks2/luks2_reencrypt.c:3445 lib/luks2/luks2_reencrypt.c:3785
+msgid "Device is not in reencryption."
+msgstr "재암호화 장치가 아닙니다."
+
+#: lib/luks2/luks2_reencrypt.c:3452 lib/luks2/luks2_reencrypt.c:3792
+msgid "Reencryption process is already running."
+msgstr "재암호화 과정을 이미 시행중에 있습니다."
+
+#: lib/luks2/luks2_reencrypt.c:3454 lib/luks2/luks2_reencrypt.c:3794
+msgid "Failed to acquire reencryption lock."
+msgstr "재암호화 잠금 획득 실패."
+
+#: lib/luks2/luks2_reencrypt.c:3472
+msgid "Cannot proceed with reencryption. Run reencryption recovery first."
+msgstr "재암호화로 진행할 수 없습니다. 재암호화 복원을 우선 실행하십시오."
+
+#: lib/luks2/luks2_reencrypt.c:3608
+msgid "Active device size and requested reencryption size don't match."
+msgstr "동작 장치 크기와 요청 재암호화 크기가 일치하지 않습니다."
+
+#: lib/luks2/luks2_reencrypt.c:3622
+msgid "Illegal device size requested in reencryption parameters."
+msgstr "재암호화 매개변수로 부정적 장치 크기를 요청했습니다."
+
+#: lib/luks2/luks2_reencrypt.c:3724
+msgid "Reencryption in-progress. Cannot perform recovery."
+msgstr "재암호화를 진행 중입니다. 복원을 수행할 수 없습니다."
+
+#: lib/luks2/luks2_reencrypt.c:3745
+msgid "LUKS2 reencryption recovery failed."
+msgstr "LUKS 재암호화 복원 실패."
+
+#: lib/luks2/luks2_reencrypt.c:3878 lib/luks2/luks2_reencrypt.c:4357
+msgid "Failed to initialize reencryption device stack."
+msgstr "재암호화 장치 스택 초기화 실패."
+
+#: lib/luks2/luks2_reencrypt.c:3911
+msgid "LUKS2 reencryption already initialized in metadata."
+msgstr "LUKS2 재암호화를 이미 메타데이터에서 초기화했습니다."
+
+#: lib/luks2/luks2_reencrypt.c:3919
+msgid "Failed to initialize LUKS2 reencryption in metadata."
+msgstr "메타데이터의 LUKS2 재암호화 초기화 실패."
+
+#: lib/luks2/luks2_reencrypt.c:3972 lib/luks2/luks2_reencrypt.c:4004
+#: lib/luks2/luks2_reencrypt.c:4034
+msgid "Reencryption is not supported for DAX (persistent memory) devices."
+msgstr "DAX (영속 메모리) 장치에서 재 암호화를 지원하지 않습니다."
+
+#: lib/luks2/luks2_reencrypt.c:4063
+msgid "Failed to set device segments for next reencryption hotzone."
+msgstr "다음 재암호화 핫존 설정을 위한 장치 세그먼트 설정 실패"
+
+#: lib/luks2/luks2_reencrypt.c:4116
+msgid "Failed to write reencryption resilience metadata."
+msgstr "재암호화 복원 메타데이터 기록 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4123
+msgid "Decryption failed."
+msgstr "해독 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4128
+#, c-format
+msgid "Failed to write hotzone area starting at %<PRIu64>."
+msgstr "%<PRIu64>(에)서 시작하는 핫존 영역 기록 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4133
+msgid "Failed to sync data."
+msgstr "데이터 동기화 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4141
+msgid "Failed to update metadata after current reencryption hotzone completed."
+msgstr "현재 재암호화 핫존 처리가 끝난 후 메타데이터 업데이트 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4230
+msgid "Failed to write LUKS2 metadata."
+msgstr "LUKS2 메타데이터 기록 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4253
+msgid "Failed to wipe unused data device area."
+msgstr "사용하지 않는 데이터 장치 영역 소거 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4259
+#, c-format
+msgid "Failed to remove unused (unbound) keyslot %d."
+msgstr "사용하지 않는 (영역 미포함) 키 슬롯 %d번 제거 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4269
+msgid "Failed to remove reencryption keyslot."
+msgstr "재암호화 키 슬롯 제거 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4279
+#, c-format
+msgid "Fatal error while reencrypting chunk starting at %<PRIu64>, %<PRIu64> sectors long."
+msgstr "%<PRIu64>(에)서 시작, %<PRIu64> 섹터 길이 길이 구간을 재암호화 하는 동안 치명적인 오류가 있습니다."
+
+#: lib/luks2/luks2_reencrypt.c:4283
+msgid "Online reencryption failed."
+msgstr "온라인 재암호화 실패."
+
+#: lib/luks2/luks2_reencrypt.c:4288
+msgid "Do not resume the device unless replaced with error target manually."
+msgstr "대상 장치에 오류가 나타나서 직접 대체하는 상황이 아니라면 대상을 동작 상태로 되돌리지 마십시오."
+
+#: lib/luks2/luks2_reencrypt.c:4340
+msgid "Cannot proceed with reencryption. Unexpected reencryption status."
+msgstr "재암호화를 진행할 수 없습니다. 예기치 않은 재암호화 성태를 만났습니다."
+
+#: lib/luks2/luks2_reencrypt.c:4346
+msgid "Missing or invalid reencrypt context."
+msgstr "재암호화 컨텍스트가 빠졌거나 부적절한 상태입니다."
+
+#: lib/luks2/luks2_reencrypt.c:4380 lib/luks2/luks2_reencrypt.c:4417
+msgid "Failed to update reencryption context."
+msgstr "재암호화 컨텍스트 업데이트 실패."
+
+#: lib/luks2/luks2_reencrypt_digest.c:402
+msgid "Reencryption metadata is invalid."
+msgstr "메타데이터 재 암호화가 적절하지 않습니다."
+
+#: lib/luks2/hw_opal/hw_opal.c:335
+#, c-format
+msgid "OPAL range %d offset %<PRIu64> does not match expected values %<PRIu64>."
+msgstr "OPAL 범위 %d 오프셋 %<PRIu64> 값이 기대 값 %<PRIu64> 과 일치하지 않습니다."
+
+#: lib/luks2/hw_opal/hw_opal.c:342
+#, c-format
+msgid "OPAL range %d length %<PRIu64> does not match device length %<PRIu64>."
+msgstr "OPAL 범위 %d 길이 %<PRIu64> 값이 장치 크기 %<PRIu64> 와 일치하지 않습니다."
+
+#: lib/luks2/hw_opal/hw_opal.c:348
+#, c-format
+msgid "OPAL range %d locking is disabled."
+msgstr "OPAL 범위 %d 잠금 해제 상태입니다."
+
+#: lib/luks2/hw_opal/hw_opal.c:358 lib/luks2/hw_opal/hw_opal.c:365
+#, c-format
+msgid "Unexpected OPAL range %d lock state."
+msgstr "예기치 못한 OPAL 범위 %d 잠금 상태."
+
+#: src/cryptsetup.c:87
+msgid "Keyslot encryption parameters can be set only for LUKS2 device."
+msgstr "키 슬롯 암호화 매개변수는 LUKS2 장치에서만 설정할 수 있습니다."
+
+#: src/cryptsetup.c:93
+msgid "Keyslot encryption parameters are not compatible with LUKS2 keyslot encryption."
+msgstr "키 슬롯 암호화 매개변수는 LUKS2 키 슬롯 암호화 과정과 호환성이 없습니다."
+
+#: src/cryptsetup.c:150 src/cryptsetup.c:1180 src/cryptsetup.c:1545
+#: src/utils_reencrypt.c:1890 src/utils_reencrypt_luks1.c:502
+#: src/utils_reencrypt_luks1.c:565
+msgid "No known cipher specification pattern detected."
+msgstr "확인한 암호화 방식 명세 패턴 중 알려진 항목이 없습니다."
+
+#: src/cryptsetup.c:160
+#, c-format
+msgid "WARNING: Using default options for cipher (%s-%s, key size %u bits) that could be incompatible with older versions."
+msgstr "경고: 사용하는 암호화 방식 (%s-%s, 키 크기 %u비트) 의 기본 옵션이 이전 버전과 호환성이 없을 수도 있습니다."
+
+#: src/cryptsetup.c:165
+#, c-format
+msgid "WARNING: Using default options for hash (%s) that could be incompatible with older versions."
+msgstr "경고: 사용하는 해시 기본 옵션 (%s) 이 이전 버전과 호환성이 없을 수도 있습니다."
+
+#: src/cryptsetup.c:169
+msgid "For plain mode, always use options --cipher, --key-size and if no keyfile or keyring is used, then also --hash."
+msgstr "일반 모드에서는 항상 --cipher, --key-size 옵션을 사용하며, 사용하는 키 파일 또는 키 모음이 없다면 --hash 옵션도 사용합니다."
+
+#: src/cryptsetup.c:175
+msgid "WARNING: The --hash parameter is being ignored in plain mode with keyfile specified.\n"
+msgstr "경고: 키 파일을 지정한 상황에서 일반 모드에서는 --hash 매개변수를 무시합니다.\n"
+
+#: src/cryptsetup.c:189
+msgid "WARNING: The --keyfile-size option is being ignored, the read size is the same as the encryption key size.\n"
+msgstr "경고: 읽기 대상 크기가 암호화 키 크기와 동일한 상황에서는 --keyfile-size 옵션을 무시합니다.\n"
+
+#: src/cryptsetup.c:226 src/cryptsetup.c:1375 src/cryptsetup.c:1598
+#: src/integritysetup.c:189 src/utils_reencrypt.c:2141
+#, c-format
+msgid "Blkid scan failed for %s."
+msgstr "%s의 blkid 검사 실패."
+
+#: src/cryptsetup.c:232
+#, c-format
+msgid "Detected device signature(s) on %s. Proceeding further may damage existing data."
+msgstr "%s에서 장치 시그니처를 확인했습니다. 더 이상 진행하면 기존 데이터를 파괴할 수 있습니다."
+
+#: src/cryptsetup.c:238 src/cryptsetup.c:1261 src/cryptsetup.c:1309
+#: src/cryptsetup.c:1382 src/cryptsetup.c:1522 src/cryptsetup.c:1610
+#: src/cryptsetup.c:2495 src/cryptsetup.c:2925 src/integritysetup.c:179
+#: src/utils_reencrypt.c:111 src/utils_reencrypt.c:459
+#: src/utils_reencrypt.c:927
+msgid "Operation aborted.\n"
+msgstr "동작을 멈추었습니다.\n"
+
+#: src/cryptsetup.c:323
+msgid "Option --key-file is required."
+msgstr "--key-file 옵션이 필요합니다."
+
+#: src/cryptsetup.c:378
+msgid "Enter VeraCrypt PIM: "
+msgstr "VeraCrypt PIM 입력: "
+
+#: src/cryptsetup.c:387
+msgid "Invalid PIM value: parse error."
+msgstr "부적절한  PIM 값: 해석 오류."
+
+#: src/cryptsetup.c:390
+msgid "Invalid PIM value: 0."
+msgstr "부적절한 PIM 값: 0."
+
+#: src/cryptsetup.c:393
+msgid "Invalid PIM value: outside of range."
+msgstr "부적절한 PIM 값: 범위 밖."
+
+#: src/cryptsetup.c:416
+msgid "No device header detected with this passphrase."
+msgstr "이 암호로 확인한 장치 헤더가 없습니다."
+
+#: src/cryptsetup.c:493 src/cryptsetup.c:678
+#, c-format
+msgid "Device %s is not a valid BITLK device."
+msgstr "%s 장치는 적절한 BITLK 장치가 아닙니다."
+
+#: src/cryptsetup.c:501
+msgid "Cannot determine volume key size for BITLK, please use --key-size option."
+msgstr "BITLK의 볼륨 키 크기를 알 수 없습니다. --key-size 옵션을 사용하십시오."
+
+#: src/cryptsetup.c:547
+msgid ""
+"Header dump with volume key is sensitive information\n"
+"which allows access to encrypted partition without passphrase.\n"
+"This dump should be always stored encrypted on safe place."
+msgstr ""
+"볼륨 키가 들어간 헤더 덤프에는 암호 없이 암호화 분할 영역에\n"
+"접근할 수 있게 하는 민감 정보가 들어있습니다.\n"
+"이 덤프는 항상 안전한 영역에 암호화하여 저장해야 합니다."
+
+#: src/cryptsetup.c:614 src/cryptsetup.c:700 src/cryptsetup.c:2520
+msgid ""
+"The header dump with volume key is sensitive information\n"
+"that allows access to encrypted partition without a passphrase.\n"
+"This dump should be stored encrypted in a safe place."
+msgstr ""
+"볼륨 키가 들어간 헤더 덤프에는 암호 없이 암호화 분할 영역에\n"
+"접근할 수 있게 하는 민감 정보가 들어있습니다.\n"
+"이 덤프는 안전한 영역에 암호화하여 저장해야 합니다."
+
+#: src/cryptsetup.c:755 src/cryptsetup.c:787
+#, c-format
+msgid "Device %s is not a valid FVAULT2 device."
+msgstr "%s 장치는 적절한 FVAULT2 장치가 아닙니다."
+
+#: src/cryptsetup.c:795
+msgid "Cannot determine volume key size for FVAULT2, please use --key-size option."
+msgstr "FVAULT2 볼륨 키 크기를 확인할 수 없습니다. --key-size 옵션을 활용하십시오."
+
+#: src/cryptsetup.c:849 src/veritysetup.c:317 src/integritysetup.c:422
+#, c-format
+msgid "Device %s is still active and scheduled for deferred removal.\n"
+msgstr "%s 장치는 여전히 동작중이며 지연된 제거 동작에 따라 제거 예정입니다.\n"
+
+#: src/cryptsetup.c:882 src/cryptsetup.c:1808 src/cryptsetup.c:2082
+#: src/cryptsetup.c:2229 src/cryptsetup.c:2648 src/cryptsetup.c:2730
+#: src/cryptsetup.c:3263
+#, c-format
+msgid "Failed to set external tokens path %s."
+msgstr "%s 외부 토큰 경로 설정 실패."
+
+#: src/cryptsetup.c:891
+msgid "Resize of active device requires volume key in keyring but --disable-keyring option is set."
+msgstr "동작 중인 장치 크기 조정은 키 모음의 볼륨 키가 필요합니다만 --disable-keyring 옵션을 지정했습니다."
+
+#: src/cryptsetup.c:1058
+msgid "Benchmark interrupted."
+msgstr "비교 시험을 중단했습니다."
+
+#: src/cryptsetup.c:1079
+#, c-format
+msgid "PBKDF2-%-9s     N/A\n"
+msgstr "PBKDF2-%-9s     N/A\n"
+
+#: src/cryptsetup.c:1081
+#, c-format
+msgid "PBKDF2-%-9s %7u iterations per second for %zu-bit key\n"
+msgstr "PBKDF2-%-9s %7u 초당 반복 + %zu-비트 키\n"
+
+#: src/cryptsetup.c:1095
+#, c-format
+msgid "%-10s N/A\n"
+msgstr "%-10s N/A\n"
+
+#: src/cryptsetup.c:1097
+#, c-format
+msgid "%-10s %4u iterations, %5u memory, %1u parallel threads (CPUs) for %zu-bit key (requested %u ms time)\n"
+msgstr "%-10s %4u 반복, %5u 메모리, %1u 병렬처리 스레드(CPUs) + %zu-비트 키 (%u ms 시간에 요청)\n"
+
+#: src/cryptsetup.c:1121
+msgid "Result of benchmark is not reliable."
+msgstr "비교 시험 결과는 신뢰할 만하지 않습니다."
+
+#: src/cryptsetup.c:1172
+msgid "# Tests are approximate using memory only (no storage IO).\n"
+msgstr "# 시험은 대략적으로 메모리만 사용하여 추산했습니다 (저장장치 입출력 아님).\n"
+
+#. TRANSLATORS: The string is header of a table and must be exactly (right side) aligned.
+#: src/cryptsetup.c:1197
+#, c-format
+msgid "#%*s Algorithm |       Key |      Encryption |      Decryption\n"
+msgstr "#%*s 알고리즘  |       키  |      암호화     |      해  독    \n"
+
+#: src/cryptsetup.c:1205
+#, c-format
+msgid "Cipher %s (with %i bits key) is not available."
+msgstr "%s 암호화 방식(%i 비트 키)을 사용할 수 없습니다."
+
+#. TRANSLATORS: The string is header of a table and must be exactly (right side) aligned.
+#: src/cryptsetup.c:1226
+msgid "#     Algorithm |       Key |      Encryption |      Decryption\n"
+msgstr "#     알고리즘  |       키  |      암호화     |      해  독    \n"
+
+#: src/cryptsetup.c:1239
+msgid "N/A"
+msgstr "해당 없음"
+
+#: src/cryptsetup.c:1242
+msgid "# Cipher speed test is not available.\n"
+msgstr "# 암호화 방식 처리 속도를 시험할 수 없습니다.\n"
+
+#: src/cryptsetup.c:1258
+msgid ""
+"Unprotected LUKS2 reencryption metadata detected. Please verify the reencryption operation is desirable (see luksDump output)\n"
+"and continue (upgrade metadata) only if you acknowledge the operation as genuine."
+msgstr ""
+"보호하지 않은 LUKS2 재암호화 메타데이터를 확인했습니다. 재암호화 동작이 적절한 지 검증하시고 (luksDump 출력 확인)\n"
+"동작에 문제가 없다고 확신이 들 경우에만 계속(메타데이터 업그레이드)하십시오."
+
+#: src/cryptsetup.c:1264
+msgid "Enter passphrase to protect and upgrade reencryption metadata: "
+msgstr "재암호화 메타데이터 보호 및 업그레이드 암호 입력: "
+
+#: src/cryptsetup.c:1308
+msgid "Really proceed with LUKS2 reencryption recovery?"
+msgstr "정말로 LUKS2 재암호화 복원을 진행하시겠습니까?"
+
+#: src/cryptsetup.c:1317
+msgid "Enter passphrase to verify reencryption metadata digest: "
+msgstr "재암호화 메타데이터 다이제스트 검증용 암호 입력: "
+
+#: src/cryptsetup.c:1319
+msgid "Enter passphrase for reencryption recovery: "
+msgstr "재암호화 복원 암호 입력: "
+
+#: src/cryptsetup.c:1381
+msgid "Really try to repair LUKS device header?"
+msgstr "정말로 LUKS 장치 헤더 복원을 시도하시겠습니까?"
+
+#: src/cryptsetup.c:1409 src/integritysetup.c:76 src/integritysetup.c:246
+msgid ""
+"\n"
+"Wipe interrupted."
+msgstr ""
+"\n"
+"소거 중단함."
+
+#: src/cryptsetup.c:1414 src/integritysetup.c:81 src/integritysetup.c:291
+msgid ""
+"Wiping device to initialize integrity checksum.\n"
+"You can interrupt this by pressing CTRL+c (rest of not wiped device will contain invalid checksum).\n"
+msgstr ""
+"무결성 체크섬을 초기화하기 위해 장치를 소거합니다.\n"
+"CTRL+c 키를 눌러 이 동작을 중단할 수 있습니다 (소거하지 않은 장치의 나머지 영역에 부적절한 체크섬이 있을 수도 있음).\n"
+
+#: src/cryptsetup.c:1436 src/integritysetup.c:103
+#, c-format
+msgid "Cannot deactivate temporary device %s."
+msgstr "%s 임시 장치의 동작을 해제할 수 없습니다."
+
+#: src/cryptsetup.c:1484
+msgid "OPAL hw-only encryption does not support --cipher and --key-size, options ignored."
+msgstr "OPAL 하드웨어 전용 암호화는 --cipher와 --key-size 를 지원하지 않아, 옵션을 무시했습니다."
+
+#: src/cryptsetup.c:1497
+msgid "Integrity option can be used only for LUKS2 format."
+msgstr "LUKS2 형식에 대해서\"만\" 무결성 옵션을 사용할 수 있습니다."
+
+#: src/cryptsetup.c:1502 src/cryptsetup.c:1582
+msgid "Unsupported LUKS2 metadata size options."
+msgstr "지원하지 않는 LUKS2 메타데이터 크기 옵션."
+
+#: src/cryptsetup.c:1507
+msgid "OPAL is supported only for LUKS2 format."
+msgstr "OPAL은 LUKS2 형식에서만 지원합니다."
+
+#: src/cryptsetup.c:1512
+msgid "Inline hw tags are supported only for LUKS2 format."
+msgstr "인라인 하드웨어 태그는 LUKS2 형식에서만 지원합니다."
+
+#: src/cryptsetup.c:1521
+msgid "Header file does not exist, do you want to create it?"
+msgstr "헤더 파일이 없습니다. 만드시겠습니까?"
+
+#: src/cryptsetup.c:1529
+#, c-format
+msgid "Cannot create header file %s."
+msgstr "%s 헤더 파일을 만들 수 없습니다."
+
+#: src/cryptsetup.c:1555 src/integritysetup.c:127 src/integritysetup.c:142
+#: src/integritysetup.c:151 src/integritysetup.c:330 src/integritysetup.c:338
+#: src/integritysetup.c:348
+msgid "No known integrity specification pattern detected."
+msgstr "알려진 무결성 명세 패턴이 없습니다."
+
+#: src/cryptsetup.c:1557
+msgid "Cannot use specified integrity key size."
+msgstr "지정 무결성 키 크기를 사용할 수 없습니다."
+
+#: src/cryptsetup.c:1575
+#, c-format
+msgid "Cannot use %s as on-disk header."
+msgstr "%s을(를) 디스크 저장 헤더로 활용할 수 없습니다."
+
+#: src/cryptsetup.c:1604 src/integritysetup.c:173
+#, c-format
+msgid "This will overwrite data on %s irrevocably."
+msgstr "이 동작은 %s의 데이터를 돌이킬 수 없도록 덮어쓰기합니다."
+
+#: src/cryptsetup.c:1641
+msgid "OPAL Admin password cannot be empty."
+msgstr "OPAL 관리자 암호는 비워둘 수 없습니다."
+
+#: src/cryptsetup.c:1655 src/cryptsetup.c:2099 src/cryptsetup.c:2242
+#: src/cryptsetup.c:2377 src/cryptsetup.c:2443 src/utils_reencrypt_luks1.c:428
+msgid "Failed to set pbkdf parameters."
+msgstr "pbkdf 매개변수 설정 실패."
+
+#: src/cryptsetup.c:1786
+msgid "Reduced data offset is allowed only for detached LUKS header."
+msgstr "데이터 오프셋 값의 감소 조절은 LUKS 헤더를 장치에서 분리했을 때만 가능합니다."
+
+#: src/cryptsetup.c:1793
+#, c-format
+msgid "LUKS file container %s is too small for activation, there is no remaining space for data."
+msgstr "%s LUKS 파일 컨테이너의 동작을 개시하기에는 너무 작습니다. 데이터 저장에 필요한 여분 공간이 없습니다."
+
+#: src/cryptsetup.c:1835 src/cryptsetup.c:2248 src/utils_reencrypt.c:278
+#: src/utils_reencrypt.c:371 src/utils_reencrypt.c:1910
+msgid "Cannot determine volume key size for LUKS without keyslots, please use --key-size option."
+msgstr "키 슬롯을 누락한 상태에서 LUKS의 볼륨 키 크기를 알 수 없습니다. --key-size 옵션을 사용하십시오."
+
+#: src/cryptsetup.c:1854 src/utils_reencrypt.c:304
+msgid "Device requires two volume keys."
+msgstr "장치에 볼륨 키 두개가 필요합니다."
+
+#: src/cryptsetup.c:1889
+msgid "Some specified activation parameters were ignored with OPAL hw-only encryption."
+msgstr "OPAL 하드웨어 전용 암호화시 몇가지 동작 개시 매개 변수는 무시합니다."
+
+#: src/cryptsetup.c:1894
+msgid "Device activated but cannot make flags persistent."
+msgstr "장치 동작을 개시했으나, 플래그를 영속적으로 적용할 수는 없습니다."
+
+#: src/cryptsetup.c:1974 src/cryptsetup.c:2042
+#, c-format
+msgid "Keyslot %d is selected for deletion."
+msgstr "%d번 키 슬롯을 삭제 대상으로 선택했습니다."
+
+#: src/cryptsetup.c:1986 src/cryptsetup.c:2046
+msgid "This is the last keyslot. Device will become unusable after purging this key."
+msgstr "이 키 슬롯이 마지막입니다. 이 키를 제거하면 장치를 사용할 수 없습니다."
+
+#: src/cryptsetup.c:1987
+msgid "Enter any remaining passphrase: "
+msgstr "임의의 나머지 암호 입력: "
+
+#: src/cryptsetup.c:1988 src/cryptsetup.c:2048
+msgid "Operation aborted, the keyslot was NOT wiped.\n"
+msgstr "동작을 멈추었습니다. 키 슬롯을 소거하지 않았습니다.\n"
+
+#: src/cryptsetup.c:2024
+msgid "Enter passphrase to be deleted: "
+msgstr "삭제할 암호 입력: "
+
+#: src/cryptsetup.c:2074 src/cryptsetup.c:2426 src/cryptsetup.c:3087
+#: src/cryptsetup.c:3254
+#, c-format
+msgid "Device %s is not a valid LUKS2 device."
+msgstr "%s 장치는 적절한 LUKS2 장치가 아닙니다."
+
+#: src/cryptsetup.c:2113 src/cryptsetup.c:2312
+msgid "Enter new passphrase for key slot: "
+msgstr "키 슬롯의 새 암호 입력: "
+
+#: src/cryptsetup.c:2147 src/utils_luks.c:342
+#, c-format
+msgid "Enter token PIN: "
+msgstr "토큰 PIN 입력: "
+
+#: src/cryptsetup.c:2149 src/utils_luks.c:344
+#, c-format
+msgid "Enter token %d PIN: "
+msgstr "%d번 토큰 PIN 입력: "
+
+#: src/cryptsetup.c:2208
+msgid "WARNING: The --key-slot parameter is used for new keyslot number.\n"
+msgstr "경고: --key-slot 매개변수를 새 키 슬롯 번호에 사용했습니다.\n"
+
+#: src/cryptsetup.c:2285 src/utils_reencrypt_luks1.c:1094
+#, c-format
+msgid "Enter any existing passphrase: "
+msgstr "기존 임의의 암호 입력: "
+
+#: src/cryptsetup.c:2381
+msgid "Enter passphrase to be changed: "
+msgstr "바꿀 암호 입력: "
+
+#: src/cryptsetup.c:2397 src/utils_reencrypt_luks1.c:1080
+msgid "Enter new passphrase: "
+msgstr "새 암호 입력: "
+
+#: src/cryptsetup.c:2447
+msgid "Enter passphrase for keyslot to be converted: "
+msgstr "키 슬롯을 변환할 암호 입력: "
+
+#: src/cryptsetup.c:2471
+msgid "Only one device argument for isLuks operation is supported."
+msgstr "isLuks 동작에 대해 하나의 장치 인자만 지원합니다."
+
+#: src/cryptsetup.c:2576
+#, c-format
+msgid "Keyslot %d does not contain unbound key."
+msgstr "%d번 키 슬롯에는 범위 밖 키가 없습니다."
+
+#: src/cryptsetup.c:2581
+msgid ""
+"The header dump with unbound key is sensitive information.\n"
+"This dump should be stored encrypted in a safe place."
+msgstr ""
+"범위 밖 키를 내포하는 헤더 덤프에 민감 정보가 들어있습니다.\n"
+"이 덤프는 안전한 위치에 암호화 하여 저장해야 합니다."
+
+#: src/cryptsetup.c:2676 src/cryptsetup.c:2713
+#, c-format
+msgid "%s is not active %s device name."
+msgstr "%s은(는) 동작 중인 %s 장치 이름이 아닙니다."
+
+#: src/cryptsetup.c:2708
+#, c-format
+msgid "%s is not active LUKS device name or header is missing."
+msgstr "%s은(는) 동작 중인 LUKS 장치 이름이 아니거나 헤더가 빠졌습니다."
+
+#: src/cryptsetup.c:2785 src/cryptsetup.c:2804
+msgid "Option --header-backup-file is required."
+msgstr "--header-backup-file 옵션이 필요합니다."
+
+#: src/cryptsetup.c:2835
+#, c-format
+msgid "%s is not cryptsetup managed device."
+msgstr "%s은(는) cryptsetup으로 관리하는 장치가 아닙니다."
+
+#: src/cryptsetup.c:2846
+#, c-format
+msgid "Refresh is not supported for device type %s"
+msgstr "%s 장치 형식에는 새로 고침 (최신화) 동작을 지원하지 않습니다."
+
+#: src/cryptsetup.c:2896
+#, c-format
+msgid "Unrecognized metadata device type %s."
+msgstr "인식할 수 없는 %s 메타데이터 장치 형식."
+
+#: src/cryptsetup.c:2898
+msgid "Command requires device and mapped name as arguments."
+msgstr "명쳥에 장치와 매핑 이름을 인자로 지정해야 합니다."
+
+#: src/cryptsetup.c:2916
+msgid "Enter OPAL PSID: "
+msgstr "OPAL PSID 입력: "
+
+#: src/cryptsetup.c:2916
+msgid "Enter OPAL Admin password: "
+msgstr "OPAL 관리자 암호 입력: "
+
+#: src/cryptsetup.c:2924
+msgid "WARNING: WHOLE disk will be factory reset and all data will be lost! Continue?"
+msgstr "경고: 전체 디스크를 공장 초기화하며, 모든 데이터를 잃게 됩니다! 계속 하시겠습니까?"
+
+#: src/cryptsetup.c:2967
+#, c-format
+msgid ""
+"This operation will erase all keyslots on device %s.\n"
+"Device will become unusable after this operation."
+msgstr ""
+"이 동작은 %s 장치의 모든 키 슬롯을 지웁니다.\n"
+"이 동작이 끝나면 장치를 사용할 수 없습니다."
+
+#: src/cryptsetup.c:2974
+msgid "Operation aborted, keyslots were NOT wiped.\n"
+msgstr "동작을 멈추었습니다. 키 슬롯을 소거하지 않았습니다.\n"
+
+#: src/cryptsetup.c:3013
+msgid "Invalid LUKS type, only luks1 and luks2 are supported."
+msgstr "부적절한 LUKS 형식, luks1 및 luks2 형식만 지원합니다."
+
+#: src/cryptsetup.c:3029
+#, c-format
+msgid "Device is already %s type."
+msgstr "장치가 이미 %s 형식입니다."
+
+#: src/cryptsetup.c:3036
+#, c-format
+msgid "This operation will convert %s to %s format.\n"
+msgstr "이 동작은 %s을 %s 형식으로 변환합니다.\n"
+
+#: src/cryptsetup.c:3039
+msgid "Operation aborted, device was NOT converted.\n"
+msgstr "동작을 멈추었습니다. 장치를 변환하지 \"않았습니다\".\n"
+
+#: src/cryptsetup.c:3079
+msgid "Option --priority, --label or --subsystem is missing."
+msgstr "--priority, --label, --subsystem 옵션 중 하나가 빠졌습니다."
+
+#: src/cryptsetup.c:3113 src/cryptsetup.c:3153 src/cryptsetup.c:3173
+#, c-format
+msgid "Token %d is invalid."
+msgstr "%d번 토큰이 부적절합니다."
+
+#: src/cryptsetup.c:3116 src/cryptsetup.c:3176
+#, c-format
+msgid "Token %d in use."
+msgstr "%d번 토큰은 사용중입니다."
+
+#: src/cryptsetup.c:3128
+#, c-format
+msgid "Failed to add luks2-keyring token %d."
+msgstr "luks2-keyring 토큰 %d번 추가 실패."
+
+#: src/cryptsetup.c:3139 src/cryptsetup.c:3202
+#, c-format
+msgid "Failed to assign token %d to keyslot %d."
+msgstr "키 슬롯 %2$d번으로의 토큰 %1$d번 할당 실패."
+
+#: src/cryptsetup.c:3156
+#, c-format
+msgid "Token %d is not in use."
+msgstr "%d번 토큰은 미사용중입니다."
+
+#: src/cryptsetup.c:3193
+msgid "Failed to import token from file."
+msgstr "파일에서 토큰 가져오기 실패."
+
+#: src/cryptsetup.c:3218
+#, c-format
+msgid "Failed to get token %d for export."
+msgstr "내보낼 %d번 토큰 가져오기 실패."
+
+#: src/cryptsetup.c:3231
+#, c-format
+msgid "Token %d is not assigned to keyslot %d."
+msgstr "%d번 토큰은 %d번 키 슬롯에 할당하지 않았습니다."
+
+#: src/cryptsetup.c:3233 src/cryptsetup.c:3240
+#, c-format
+msgid "Failed to unassign token %d from keyslot %d."
+msgstr "%d번 키 슬롯에서 %d번 토큰 할당 해제 실패."
+
+#: src/cryptsetup.c:3299
+msgid "Option --tcrypt-hidden, --tcrypt-system or --tcrypt-backup is supported only for TCRYPT device."
+msgstr "--tcrypt-hidden, --tcrypt-system, --tcrypt-backup 옵션은 TCRYPT 장치 형식에서만 지원합니다."
+
+#: src/cryptsetup.c:3302
+msgid "Option --veracrypt or --disable-veracrypt is supported only for TCRYPT device type."
+msgstr "--veracrypt, --disable-veracrypt 옵션은 TCRYPT 장치 형식에서만 지원합니다."
+
+#: src/cryptsetup.c:3305
+msgid "Option --veracrypt-pim is supported only for VeraCrypt compatible devices."
+msgstr "--veracrypt-pim 옵션은 VeraCrypt 호환 장치에서만 지원합니다."
+
+#: src/cryptsetup.c:3309
+msgid "Option --veracrypt-query-pim is supported only for VeraCrypt compatible devices."
+msgstr "--veracrypt-query-pim 옵션은 VeraCrypt 호환 장치에서만 지원합니다."
+
+#: src/cryptsetup.c:3311
+msgid "The options --veracrypt-pim and --veracrypt-query-pim are mutually exclusive."
+msgstr "--veracrypt-pim 옵션과 --veracrypt-query-pim 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3320
+msgid "Option --persistent is not allowed with --test-passphrase."
+msgstr "--persistent 옵션은 --test-passphrase 옵션의 혼용을 허용하지 않습니다."
+
+#: src/cryptsetup.c:3323
+msgid "Options --refresh and --test-passphrase are mutually exclusive."
+msgstr "--refresh 옵션과 --test-passphrase 옵션은 혼용할 수 없습니다"
+
+#: src/cryptsetup.c:3326
+msgid "Option --shared is allowed only for open of plain device."
+msgstr "--shared 옵션 사용은 일반 장비를 열 때만 허용합니다."
+
+#: src/cryptsetup.c:3329
+msgid "Option --skip is supported only for open of plain and loopaes devices."
+msgstr "--skip 옵션 사용은 일반 장비와 루프 장비를 열 때만 지원합니다."
+
+#: src/cryptsetup.c:3332
+msgid "Option --offset with open action is only supported for plain and loopaes devices."
+msgstr "열기 동작시 --offset 옵션의 사용은 일반 장비와 루프 장비에서만 지원합니다."
+
+#: src/cryptsetup.c:3335
+msgid "Option --tcrypt-hidden cannot be combined with --allow-discards."
+msgstr "--tcrypt-hidden 옵션과 --allow-discards 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3339
+msgid "Sector size option with open action is supported only for plain devices."
+msgstr "섹터 크기 옵션과 열기 동작은 일반 장비 에서만 지원합니다."
+
+#: src/cryptsetup.c:3343
+msgid "Large IV sectors option is supported only for opening plain type device with sector size larger than 512 bytes."
+msgstr "Large IV 섹터 옵션은 512 바이트 이상의 섹터 크기를 가진 일반 장비를 열 때만 지원합니다."
+
+#: src/cryptsetup.c:3348
+msgid "Option --test-passphrase is allowed only for open of LUKS, TCRYPT, BITLK and FVAULT2 devices."
+msgstr "--test-passphrase 옵션 사용은 LUKS, TCRYPT, BITLK, FVAULT2 장비를 열 때만 허용합니다."
+
+#: src/cryptsetup.c:3351 src/cryptsetup.c:3381
+msgid "Options --device-size and --size cannot be combined."
+msgstr "--device-size 옵션과 --size 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3354
+msgid "Option --unbound is allowed only for open of luks device."
+msgstr "--unbound 옵션의 사용은 luks 장치를 열 때만 허용합니다."
+
+#: src/cryptsetup.c:3357
+msgid "Option --unbound cannot be used without --test-passphrase."
+msgstr "--unbound 옵션은 --test-passphrase 옵션을 제외하고는 사용할 수 없습니다."
+
+#: src/cryptsetup.c:3361
+msgid "Option --volume-key-keyring cannot be combined with --hash or --volume-key-file."
+msgstr "--volume-key-keyring 옵션은 --hash 옵션 또는 --volume-key-file 옵션과 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3364
+msgid "Both --volume-key-file options must be paired with respective --key-size options."
+msgstr "--volume-key-file 옵션 개별 지정에 따라 --key-size 옵션을 하나씩 짝으로 지정해야 합니다."
+
+#: src/cryptsetup.c:3373 src/veritysetup.c:673 src/integritysetup.c:793
+msgid "Options --cancel-deferred and --deferred cannot be used at the same time."
+msgstr "--cancel-deferred 옵션과 --deferred 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3389
+msgid "Option --active-name can be set only for LUKS2 device."
+msgstr "--active-name 옵션은 LUKS2 장치에 대해서만 설정할 수 있습니다."
+
+#: src/cryptsetup.c:3392
+msgid "Options --active-name and --force-offline-reencrypt cannot be combined."
+msgstr "--active-name 옵션과 --force-offline-reencrypt 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3395
+msgid "Options --new-volume-key-file and --keep-key cannot be combined."
+msgstr "--new-volume-key-file 옵션과 --keep-key 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3398
+msgid "Options --new-volume-key-keyring and --keep-key cannot be combined."
+msgstr "--new-volume-key-keyring 옵션과 --keep-key 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3406 src/cryptsetup.c:3436
+msgid "Keyslot specification is required."
+msgstr "키 슬롯 명세가 필요합니다."
+
+#: src/cryptsetup.c:3414
+msgid "Options --align-payload and --offset cannot be combined."
+msgstr "--align-payload 옵션과 --offset 옵션은 혼용할 수 없습니다."
+
+#: src/cryptsetup.c:3417
+msgid "Option --integrity-no-wipe can be used only for format action with integrity extension."
+msgstr "--integrity-no-wipe 옵션은 무결성 확장 기능을 동반한 포매팅 동작에만 사용할 수 있습니다."
+
+#: src/cryptsetup.c:3420
+msgid "Only one of --use-[u]random options is allowed."
+msgstr "--use-[u]random 옵션 중 하나만 허용합니다."
+
+#: src/cryptsetup.c:3428
+msgid "Key size is required with --unbound option."
+msgstr "키 크키 값은 --unbound 옵션 사용이 필요합니다."
+
+#: src/cryptsetup.c:3448
+msgid "Invalid token action."
+msgstr "부적절한 토근 동작입니다."
+
+#: src/cryptsetup.c:3451
+msgid "--key-description parameter is mandatory for token add action."
+msgstr "--key-description 매개변수는 토큰 추가 동작에 있어 필수입니다."
+
+#: src/cryptsetup.c:3455 src/cryptsetup.c:3468
+msgid "Action requires specific token. Use --token-id parameter."
+msgstr "동작에 지정 토큰이 필요합니다. --token-id 매개변수를 활용하십시오."
+
+#: src/cryptsetup.c:3459
+msgid "Option --unbound is valid only with token add action."
+msgstr "--unbound 옵션은 토큰 추가 동작일 설정했을 경우에만 유효합니다."
+
+#: src/cryptsetup.c:3461
+msgid "Options --key-slot and --unbound cannot be combined."
+msgstr "--key-slot 옵션과 --unbound 옵션은 함께 사용할 수 없습니다."
+
+#: src/cryptsetup.c:3466
+msgid "Action requires specific keyslot. Use --key-slot parameter."
+msgstr "동작에 지정 키 슬롯이 필요합니다. --key-slot 매개변수를 활용하십시오."
+
+#: src/cryptsetup.c:3482
+msgid "<device> [--type <type>] [<name>]"
+msgstr "<장치> [--type <형식>] [<명칭>]"
+
+#: src/cryptsetup.c:3482 src/veritysetup.c:487 src/integritysetup.c:560
+msgid "open device as <name>"
+msgstr "<명칭> 으로 장치를 엽니다"
+
+#: src/cryptsetup.c:3483 src/cryptsetup.c:3484 src/cryptsetup.c:3485
+#: src/veritysetup.c:488 src/veritysetup.c:489 src/integritysetup.c:561
+#: src/integritysetup.c:562 src/integritysetup.c:564
+msgid "<name>"
+msgstr "<명칭>"
+
+#: src/cryptsetup.c:3483 src/veritysetup.c:488 src/integritysetup.c:561
+msgid "close device (remove mapping)"
+msgstr "장치를 닫습니다 (매핑 제거)"
+
+#: src/cryptsetup.c:3484 src/integritysetup.c:564
+msgid "resize active device"
+msgstr "활성 장치 크기를 조절합니다."
+
+#: src/cryptsetup.c:3485
+msgid "show device status"
+msgstr "장치 상태를 보여줍니다"
+
+#: src/cryptsetup.c:3486
+msgid "[--cipher <cipher>]"
+msgstr "[--cipher <암호화방식>]"
+
+#: src/cryptsetup.c:3486
+msgid "benchmark cipher"
+msgstr "암호화 방식을 비교 시험합니다"
+
+#: src/cryptsetup.c:3487 src/cryptsetup.c:3488 src/cryptsetup.c:3489
+#: src/cryptsetup.c:3490 src/cryptsetup.c:3491 src/cryptsetup.c:3498
+#: src/cryptsetup.c:3499 src/cryptsetup.c:3500 src/cryptsetup.c:3501
+#: src/cryptsetup.c:3502 src/cryptsetup.c:3503 src/cryptsetup.c:3504
+#: src/cryptsetup.c:3505 src/cryptsetup.c:3506 src/cryptsetup.c:3507
+msgid "<device>"
+msgstr "<장치>"
+
+#: src/cryptsetup.c:3487
+msgid "try to repair on-disk metadata"
+msgstr "디스크 메타데이터의 복구를 시도합니다."
+
+#: src/cryptsetup.c:3488
+msgid "reencrypt LUKS2 device"
+msgstr "LUKS2 장치를 재암호화합니다"
+
+#: src/cryptsetup.c:3489
+msgid "erase all keyslots (remove encryption key)"
+msgstr "모든 키 슬롯을 삭제합니다 (암호화 키 제거)"
+
+#: src/cryptsetup.c:3490
+msgid "convert LUKS from/to LUKS2 format"
+msgstr "LUKS 에서/을 LUKS2 으로/부터 형식을 상호 변환합니다"
+
+#: src/cryptsetup.c:3491
+msgid "set permanent configuration options for LUKS2"
+msgstr "LUKS2의 영구 설정 옵션을 설정합니다"
+
+#: src/cryptsetup.c:3492 src/cryptsetup.c:3493
+msgid "<device> [<new key file>]"
+msgstr "<장치> [<새_키_파일>]"
+
+#: src/cryptsetup.c:3492
+msgid "formats a LUKS device"
+msgstr "LUKS 장치를 포매팅합니다"
+
+#: src/cryptsetup.c:3493
+msgid "add key to LUKS device"
+msgstr "LUKS 장치에 키를 추가합니다"
+
+#: src/cryptsetup.c:3494 src/cryptsetup.c:3495 src/cryptsetup.c:3496
+msgid "<device> [<key file>]"
+msgstr "<장치> [<키_파일>]"
+
+#: src/cryptsetup.c:3494
+msgid "removes supplied key or key file from LUKS device"
+msgstr "보관 키 또는 키 파일을 LUKS 장치에서 제거합니다"
+
+#: src/cryptsetup.c:3495
+msgid "changes supplied key or key file of LUKS device"
+msgstr "LUKS 장치의 보관 키 또는 키 파일을 바꿉니다"
+
+#: src/cryptsetup.c:3496
+msgid "converts a key to new pbkdf parameters"
+msgstr "새 pbkdf 매개변수를 사용하여 키를 변환합니다"
+
+#: src/cryptsetup.c:3497
+msgid "<device> <key slot>"
+msgstr "<장치> <키_슬롯>"
+
+#: src/cryptsetup.c:3497
+msgid "wipes key with number <key slot> from LUKS device"
+msgstr "LUKS 장치에서 <키_슬롯> 번호로 키를 소거합니다"
+
+#: src/cryptsetup.c:3498
+msgid "print UUID of LUKS device"
+msgstr "LUKS 장치의 UUID를 출력합니다"
+
+#: src/cryptsetup.c:3499
+msgid "tests <device> for LUKS partition header"
+msgstr "<장치>의 LUKS 분할 영역 헤더를 시험합니다"
+
+#: src/cryptsetup.c:3500
+msgid "dump LUKS partition information"
+msgstr "LUKS 분할 영역 정보 덤프"
+
+#: src/cryptsetup.c:3501
+msgid "dump TCRYPT device information"
+msgstr "TCRYPT 장치 정보 덤프"
+
+#: src/cryptsetup.c:3502
+msgid "dump BITLK device information"
+msgstr "BITLK 장치 정보 덤프"
+
+#: src/cryptsetup.c:3503
+msgid "dump FVAULT2 device information"
+msgstr "FVAULT2 장치 정보 덤프"
+
+#: src/cryptsetup.c:3504
+msgid "Suspend LUKS device and wipe key (all IOs are frozen)"
+msgstr "LUKS 장치를 대기 상태로 놓고 키를 소거합니다 (모든 입출력 동작을 중단)"
+
+#: src/cryptsetup.c:3505
+msgid "Resume suspended LUKS device"
+msgstr "대기 상태로 들어간 LUKS 장치의 동작을 재개합니다"
+
+#: src/cryptsetup.c:3506
+msgid "Backup LUKS device header and keyslots"
+msgstr "LUKS 장치 헤더와 키 슬롯을 백업합니다"
+
+#: src/cryptsetup.c:3507
+msgid "Restore LUKS device header and keyslots"
+msgstr "LUKS 장치 헤더와 키 슬롯을 복원합니다"
+
+#: src/cryptsetup.c:3508
+msgid "<add|remove|import|export> <device>"
+msgstr "<add|remove|import|export> <장치>"
+
+#: src/cryptsetup.c:3508
+msgid "Manipulate LUKS2 tokens"
+msgstr "LUKS2 토큰을 처리합니다"
+
+#: src/cryptsetup.c:3527 src/veritysetup.c:505 src/integritysetup.c:579
+msgid ""
+"\n"
+"<action> is one of:\n"
+msgstr ""
+"\n"
+"<동작>은 다음 중 하나입니다:\n"
+
+#: src/cryptsetup.c:3533
+msgid ""
+"\n"
+"You can also use old <action> syntax aliases:\n"
+"\topen: create (plainOpen), luksOpen, loopaesOpen, tcryptOpen, bitlkOpen, fvault2Open\n"
+"\tclose: remove (plainClose), luksClose, loopaesClose, tcryptClose, bitlkClose, fvault2Close\n"
+msgstr ""
+"\n"
+"또한  이전 <동작> 문법 별칭을 사용할 수도 있습니다:\n"
+"\t열기: create (plainOpen), luksOpen, loopaesOpen, tcryptOpen, bitlkOpen, fvault2Open\n"
+"\t닫기: remove (plainClose), luksClose, loopaesClose, tcryptClose, bitlkClose, fvault2Close\n"
+
+#: src/cryptsetup.c:3537
+#, c-format
+msgid ""
+"\n"
+"<name> is the device to create under %s\n"
+"<device> is the encrypted device\n"
+"<key slot> is the LUKS key slot number to modify\n"
+"<key file> optional key file for the new key for luksAddKey action\n"
+msgstr ""
+"\n"
+"<명칭>은 %s에서 만든 장치\n"
+"<장치>는 암호화 장치\n"
+"<키_슬롯>은 수정할 LUKS 키 슬롯 번호\n"
+"<키_파일>은 luksAddKey 동작에 사용할 새 키의 추가 키 파일입니다\n"
+
+#: src/cryptsetup.c:3544
+#, c-format
+msgid ""
+"\n"
+"Default compiled-in metadata format is %s (for luksFormat action).\n"
+msgstr ""
+"\n"
+"컴파일 과정에 들어간 기본 메타데이터 형식은 %s 입니다(luksFormat 동작용).\n"
+
+#: src/cryptsetup.c:3549
+msgid ""
+"\n"
+"LUKS2 external token plugin support is enabled.\n"
+msgstr ""
+"\n"
+"LUKS2 외부 토큰 플러그인 지원을 사용합니다.\n"
+
+#: src/cryptsetup.c:3550
+#, c-format
+msgid "LUKS2 external token plugin path: %s.\n"
+msgstr "LUKS2 외부 토큰 플러그인 경로: %s.\n"
+
+#: src/cryptsetup.c:3552
+msgid ""
+"\n"
+"LUKS2 external token plugin support is disabled.\n"
+msgstr ""
+"\n"
+"LUKS2 외부 토큰 플러그인 지원 사용을 해제합니다.\n"
+
+#: src/cryptsetup.c:3556
+#, c-format
+msgid ""
+"\n"
+"Default compiled-in key and passphrase parameters:\n"
+"\tMaximum keyfile size: %dkB, Maximum interactive passphrase length %d (characters)\n"
+"Default PBKDF for LUKS1: %s, iteration time: %d (ms)\n"
+"Default PBKDF for LUKS2: %s\n"
+"\tIteration time: %d, Memory required: %dkB, Parallel threads: %d\n"
+msgstr ""
+"\n"
+"컴파일 과정에 들어간 기본 키 및 암호 매개변수:\n"
+"\t최대 키 파일 크기: %dkB, 최대 대화식 암호 길이 %d(문자)\n"
+"LUKS1의 기본 PBKDF: %s, 반복 횟수: %d(ms)\n"
+"LUKS2의 기본 PBKDF: %s\n"
+"\t반복 횟수: %d, 요구 메모리 용량: %dkB, 병렬 스레드: %d\n"
+
+#: src/cryptsetup.c:3567
+#, c-format
+msgid ""
+"\n"
+"Default compiled-in device cipher parameters:\n"
+"\tloop-AES: %s, Key %d bits\n"
+"\tplain: %s, Key: %d bits, Password hashing: %s\n"
+"\tLUKS: %s, Key: %d bits, LUKS header hashing: %s, RNG: %s\n"
+msgstr ""
+"\n"
+"컴파일 과정에 들어간 장치 암호 매개 변수:\n"
+"\tloop-AES: %s, 키 %d비트\n"
+"\t평문: %s, 키: %d비트, 암호 해싱: %s\n"
+"\tLUKS: %s, 키: %d비트, LUKS 헤더 해싱: %s, RNG: %s\n"
+
+#: src/cryptsetup.c:3576
+msgid "\tLUKS: Default keysize with XTS mode (two internal keys) will be doubled.\n"
+msgstr "\tLUKS: XTS 모드에서의 기본 키 크기(내부 키 2개)가 2배로 늘어납니다.\n"
+
+#: src/cryptsetup.c:3594 src/veritysetup.c:647 src/integritysetup.c:739
+#, c-format
+msgid "%s: requires %s as arguments"
+msgstr "%s: %s 인자 값이 필요합니다"
+
+#: src/cryptsetup.c:3634 src/utils_reencrypt_luks1.c:1143
+msgid "Key slot is invalid."
+msgstr "키 슬롯이 적절하지 않습니다."
+
+#: src/cryptsetup.c:3662
+msgid "Device size must be multiple of 512 bytes sector."
+msgstr "장치 크기는 512 바이트 섹터의 배수여야 합니다."
+
+#: src/cryptsetup.c:3667
+msgid "Invalid max reencryption hotzone size specification."
+msgstr "부절적한 최대 재암호화 핫존 크기 지정 값입니다."
+
+#: src/cryptsetup.c:3681 src/cryptsetup.c:3698 src/cryptsetup.c:3710
+msgid "Key size must be a multiple of 8 bits"
+msgstr "키 크기는 8비트의 배수여야 합니다."
+
+#: src/cryptsetup.c:3688
+msgid "At most 2 key size specifications can be supplied."
+msgstr "최대 키 크키 명세 2가지를 지정할 수 있습니다."
+
+#: src/cryptsetup.c:3717 src/cryptsetup.c:3728
+#, c-format
+msgid "At most %d volume key specifications can be supplied."
+msgstr "최대 볼륨 키 명세 %d가지를 지정할 수 있습니다."
+
+#: src/cryptsetup.c:3740
+#, c-format
+msgid "At most %d keyring link specifications can be supplied."
+msgstr "최대 키 모음 링크 명세 %d가지를 지정할 수 있습니다."
+
+#: src/cryptsetup.c:3749
+msgid "Maximum device reduce size is 1 GiB."
+msgstr "최대 장치 축소 용량은 1GiB 입니다."
+
+#: src/cryptsetup.c:3752
+msgid "Reduce size must be multiple of 512 bytes sector."
+msgstr "축소 용량은 512바이트 섹터의 배수여야 합니다."
+
+#: src/cryptsetup.c:3769
+msgid "Option --priority can be only ignore/normal/prefer."
+msgstr "--priority 옵션은 ignore/normal/prefer 셋 중 한가지 값만 지정 가능합니다."
+
+#: src/cryptsetup.c:3774
+msgid "Invalid maximal tries specification."
+msgstr "부적절한 최대 시도 지정 값입니다."
+
+#: src/cryptsetup.c:3793 src/veritysetup.c:568 src/integritysetup.c:659
+msgid "Show this help message"
+msgstr "이 도움말 메시지를 나타냅니다"
+
+#: src/cryptsetup.c:3794 src/veritysetup.c:569 src/integritysetup.c:660
+msgid "Display brief usage"
+msgstr "간단한 사용법을 나타냅니다"
+
+#: src/cryptsetup.c:3795 src/veritysetup.c:570 src/integritysetup.c:661
+msgid "Print package version"
+msgstr "패키지 버전을 출력합니다"
+
+#: src/cryptsetup.c:3806 src/veritysetup.c:581 src/integritysetup.c:672
+msgid "Help options:"
+msgstr "도움말 옵션:"
+
+#: src/cryptsetup.c:3829 src/veritysetup.c:602 src/integritysetup.c:692
+msgid "[OPTION...] <action> <action-specific>"
+msgstr "[옵션...] <동작> <동작별_옵션>"
+
+#: src/cryptsetup.c:3838 src/veritysetup.c:611 src/integritysetup.c:703
+msgid "Argument <action> missing."
+msgstr "<동작> 인자가 빠졌습니다."
+
+#: src/cryptsetup.c:3917 src/veritysetup.c:642 src/integritysetup.c:734
+msgid "Unknown action."
+msgstr "알 수 없는 동작."
+
+#: src/cryptsetup.c:3935
+msgid "Option --key-file takes precedence over specified key file argument."
+msgstr "--key-file 옵션은 키 파일 인자 값보다 우선합니다."
+
+#: src/cryptsetup.c:3941
+msgid "Only one --key-file argument is allowed."
+msgstr "--key-file 인자는 하나만 허용합니다."
+
+#: src/cryptsetup.c:3946
+msgid "Password-based key derivation function (PBKDF) can be only pbkdf2 or argon2i/argon2id."
+msgstr "암호 기반 키 파생 함수(PBKDF)는 pbkdf2 또는 argon2i/argon2id만 지정 가능합니다."
+
+#: src/cryptsetup.c:3951
+msgid "PBKDF forced iterations cannot be combined with iteration time option."
+msgstr "PBKDF 강제 반복 옵션은 반복 횟수 옵션과 함께 사용할 수 없습니다."
+
+#: src/cryptsetup.c:3956
+msgid "Cannot link volume key to a keyring when keyring is disabled."
+msgstr "키 모음을 사용하지 않을 때는 볼륨 키를 키 모음에 연결할 수 없습니다."
+
+#: src/cryptsetup.c:3961
+msgid "Cannot use keyring key description when keyring is disabled."
+msgstr "키 모음을 사용하지 않을 때는 키 모음 키 설명을 사용할 수 없습니다."
+
+#: src/cryptsetup.c:3966
+msgid "Inline integrity must be used together with --integrity option."
+msgstr "인라인 무결성 확인은 --integrity 옵션을 함꼐 사용해야 합니다."
+
+#: src/cryptsetup.c:3977
+msgid "Options --keyslot-cipher and --keyslot-key-size must be used together."
+msgstr "--keyslot-cipher 옵션과 --keyslow-key-size 옵션을 함께 사용해야 합니다."
+
+#: src/cryptsetup.c:3985
+msgid "No action taken. Invoked with --test-args option.\n"
+msgstr "취한 동작이 없습니다. --test-args 옵션을 넣어 실행했습니다.\n"
+
+#: src/cryptsetup.c:3998
+msgid "Cannot disable metadata locking."
+msgstr "메타데이터 잠금을 해제할 수 없습니다."
+
+#: src/veritysetup.c:41
+msgid "Invalid salt string specified."
+msgstr "부적절한 솔트 문자열을 지정했습니다."
+
+#: src/veritysetup.c:74
+#, c-format
+msgid "Cannot create hash image %s for writing."
+msgstr "기록할 %s 해시 이미지를 만들 수 없습니다."
+
+#: src/veritysetup.c:84
+#, c-format
+msgid "Cannot create FEC image %s for writing."
+msgstr "기록할 %s FEC 이미지를 만들 수 없습니다."
+
+#: src/veritysetup.c:123
+#, c-format
+msgid "Cannot create root hash file %s for writing."
+msgstr "기록할 %s 루트 패시 파일을 만들 수 없습니다."
+
+#: src/veritysetup.c:130
+#, c-format
+msgid "Cannot write to root hash file %s."
+msgstr "%s 루트 해시 파일에 기록할 수 없습니다."
+
+#: src/veritysetup.c:189 src/veritysetup.c:472
+#, c-format
+msgid "Device %s is not a valid VERITY device."
+msgstr "%s 장치는 적절한 검증 장치가 아닙니다."
+
+#: src/veritysetup.c:206 src/veritysetup.c:223
+#, c-format
+msgid "Cannot read root hash file %s."
+msgstr "%s 루트 해시 파일을 읽을 수 없습니다."
+
+#: src/veritysetup.c:211
+#, c-format
+msgid "Invalid root hash file %s."
+msgstr "부적절한 %s 루트 해시 파일입니다."
+
+#: src/veritysetup.c:232
+msgid "Invalid root hash string specified."
+msgstr "부적절한 루트 해시 문자열을 지정했습니다."
+
+#: src/veritysetup.c:240
+#, c-format
+msgid "Invalid signature file %s."
+msgstr "부적절한 %s 시그니처 파일입니다."
+
+#: src/veritysetup.c:247
+#, c-format
+msgid "Cannot read signature file %s."
+msgstr "%s 시그니처 파일을 읽을 수 없습니다."
+
+#: src/veritysetup.c:270 src/veritysetup.c:287
+msgid "Command requires <root_hash> or --root-hash-file option as argument."
+msgstr "명령에 <루트_해시> 또는 --root-hash-file 옵션 인자 값이 필요합니다."
+
+#: src/veritysetup.c:485
+msgid "<data_device> <hash_device>"
+msgstr "<데이터_장치> <해시_장치>"
+
+#: src/veritysetup.c:485 src/integritysetup.c:559
+msgid "format device"
+msgstr "장치를 포매팅합니다"
+
+#: src/veritysetup.c:486
+msgid "<data_device> <hash_device> [<root_hash>]"
+msgstr "<데이터_장치> <해시_장치> [<루트_해시>]"
+
+#: src/veritysetup.c:486
+msgid "verify device"
+msgstr "장치를 검증합니다"
+
+#: src/veritysetup.c:487
+msgid "<data_device> <name> <hash_device> [<root_hash>]"
+msgstr "<데이터_장치> <명칭> <해시_장치> [<루트_해시>]"
+
+#: src/veritysetup.c:489 src/integritysetup.c:562
+msgid "show active device status"
+msgstr "장치 동작 상황을 보여줍니다"
+
+#: src/veritysetup.c:490
+msgid "<hash_device>"
+msgstr "<해시_장치>"
+
+#: src/veritysetup.c:490 src/integritysetup.c:563
+msgid "show on-disk information"
+msgstr "디스크 정보를 보여줍니다"
+
+#: src/veritysetup.c:509
+#, c-format
+msgid ""
+"\n"
+"<name> is the device to create under %s\n"
+"<data_device> is the data device\n"
+"<hash_device> is the device containing verification data\n"
+"<root_hash> hash of the root node on <hash_device>\n"
+msgstr ""
+"\n"
+"<명칭>은 %s에 만든 장치\n"
+"<데이터_장치>는 데이터 장치\n"
+"<해시_장치>는 검증 데이터가 들어간 장치\n"
+"<루트_해시>는 <해시_장치> 루트 노드의 해시입니다\n"
+
+#: src/veritysetup.c:516
+#, c-format
+msgid ""
+"\n"
+"Default compiled-in dm-verity parameters:\n"
+"\tHash: %s, Data block (bytes): %u, Hash block (bytes): %u, Salt size: %u, Hash format: %u\n"
+msgstr ""
+"\n"
+"컴파일 과정에 넣은 기본 dm-verity 매개변수:\n"
+"\t해시: %s, 데이터 블록 (바이트): %u, 해시 블록 (바이트): %u, 솔트 길이: %u, 해시 형식: %u\n"
+
+#: src/veritysetup.c:657
+msgid "Option --ignore-corruption and --restart-on-corruption cannot be used together."
+msgstr "--ignore-corruption 옵션과 --restart-on-corruption 옵션은 혼용할 수 없습니다."
+
+#: src/veritysetup.c:662
+msgid "Option --panic-on-corruption and --restart-on-corruption cannot be used together."
+msgstr "--panic-on-corruption 옵션과 --restart-on-corruption 옵션을 혼용할 수 없습니다."
+
+#: src/veritysetup.c:668
+msgid "Option --error-as-corruption must be used with --panic-on-corruption or --restart-on-corruption."
+msgstr "--error-as-corruption 옵션은 --panic-on-corruption 옵션 또는 --restart-on-corruption 옵션을 함께 사용해야 합니다."
+
+#: src/integritysetup.c:169
+#, c-format
+msgid ""
+"This will overwrite data on %s and %s irrevocably.\n"
+"To preserve data device use --no-wipe option (and then activate with --integrity-recalculate)."
+msgstr ""
+"%s와 %s의 데이터를 덮어쓰며 돌이킬 수 없습니다.\n"
+"데이터 장치를 보존하려면 --no-wipe 옵션을 사용하십시오 (그리고 --integrity-recalculate 옵션으로 장치 동작 시작)."
+
+#: src/integritysetup.c:215
+#, c-format
+msgid "Formatted with tag size %u%s, internal integrity %s.\n"
+msgstr "%u%s 태그 크기와 내부 무결성 %s(으)로 포매팅했습니다.\n"
+
+#: src/integritysetup.c:216
+msgid " (inline hw tags)"
+msgstr " (인라인 hw 태그)"
+
+#: src/integritysetup.c:305
+msgid "Setting recalculate flag is not supported, you may consider using --wipe instead."
+msgstr "재계산 플래그 설정은 지원하지 않습니다. --wipe 옵션 사용을 대신 고려하십시오."
+
+#: src/integritysetup.c:382 src/integritysetup.c:546
+#, c-format
+msgid "Device %s is not a valid INTEGRITY device."
+msgstr "%s 장치는 적절한 \"무결성\" 장치가 아닙니다."
+
+#: src/integritysetup.c:559 src/integritysetup.c:563
+msgid "<integrity_device>"
+msgstr "<무결성_장치>"
+
+#: src/integritysetup.c:560
+msgid "<integrity_device> <name>"
+msgstr "<무결성_장치> <명칭>"
+
+#: src/integritysetup.c:583
+#, c-format
+msgid ""
+"\n"
+"<name> is the device to create under %s\n"
+"<integrity_device> is the device containing data with integrity tags\n"
+msgstr ""
+"\n"
+"<명칭> 은 %s에 만들 장치\n"
+"<무결성_장치>는 무결성 태그와 데이터가 들어간 장치입니다\n"
+
+#: src/integritysetup.c:588
+#, c-format
+msgid ""
+"\n"
+"Default compiled-in dm-integrity parameters:\n"
+"\tChecksum algorithm: %s\n"
+"\tMaximum keyfile size: %dkB\n"
+msgstr ""
+"\n"
+"컴파일 과정에 넣은 기본 dm-integrity 매개변수:\n"
+"\t체크섬 알고리즘: %s\n"
+"\t최대 키 파일 크기: %dkB\n"
+
+#: src/integritysetup.c:645
+#, c-format
+msgid "Invalid --%s size. Maximum is %u bytes."
+msgstr "부적절한 --%s 크기 값입니다. 최대값은 %u 바이트입니다."
+
+#: src/integritysetup.c:748
+msgid "Both key file and key size options must be specified."
+msgstr "키 파일과 키 크기 옵션을 함께 지정해야 합니다."
+
+#: src/integritysetup.c:752
+msgid "Both journal integrity key file and key size options must be specified."
+msgstr "저널 무결성 키와 키 크키 옵션을 함께 지정해야 합니다."
+
+#: src/integritysetup.c:755
+msgid "Journal integrity algorithm must be specified if journal integrity key is used."
+msgstr "저널 무결성 키를 사용한다면 저널 무결성 알고리즘은 지정해야 합니다."
+
+#: src/integritysetup.c:759
+msgid "Both journal encryption key file and key size options must be specified."
+msgstr "저널 암호화 키 파일과 키 크기 옵션을 함께 지정해야 합니다."
+
+#: src/integritysetup.c:762
+msgid "Journal encryption algorithm must be specified if journal encryption key is used."
+msgstr "저널 암호화 키를 사용할 경우 저널 암호화 알고리즘을 지정해야 합니다."
+
+#: src/integritysetup.c:766
+msgid "Recovery and bitmap mode options are mutually exclusive."
+msgstr "복구 및 비트맵 모드 옵션은 혼용할 수 없습니다."
+
+#: src/integritysetup.c:773
+msgid "Journal options cannot be used in bitmap mode."
+msgstr "저널 옵션은 비트맵 모드에서 사용할 수 없습니다."
+
+#: src/integritysetup.c:778
+msgid "Bitmap options can be used only in bitmap mode."
+msgstr "비트맵 옵션은 비트맵 모드에서만 사용할 수 있습니다."
+
+#: src/integritysetup.c:784
+msgid "Inline mode cannot be combined with journal or bitmap options."
+msgstr "인라인 모드는 저널 옵션 또는 비트맵 옵션과 혼용할 수 없습니다."
+
+#: src/integritysetup.c:788
+msgid "Inline mode cannot be combined with separate data device."
+msgstr "인라인 모드는 개별 데이터 장치와 혼용할 수 없습니다."
+
+#: src/utils_tools.c:105
+msgid ""
+"\n"
+"WARNING!\n"
+"========\n"
+msgstr ""
+"\n"
+"경고!\n"
+"========\n"
+
+#. TRANSLATORS: User must type "YES" (in capital letters), do not translate this word.
+#: src/utils_tools.c:107
+#, c-format
+msgid ""
+"%s\n"
+"\n"
+"Are you sure? (Type 'yes' in capital letters): "
+msgstr ""
+"%s\n"
+"\n"
+"정말로 진행하시겠습니까? (대문자로 'yes' 입력하십시오): "
+
+#: src/utils_tools.c:113
+msgid "Error reading response from terminal."
+msgstr "터미널 응답을 읽는 중 오류가 있습니다."
+
+#: src/utils_tools.c:145
+msgid "Command successful."
+msgstr "명령 실행에 성공했습니다."
+
+#: src/utils_tools.c:153
+msgid "wrong or missing parameters"
+msgstr "잘못된 또는 빠진 매개변수"
+
+#: src/utils_tools.c:155
+msgid "no permission or bad passphrase"
+msgstr "권한이 없거나 잘못된 암호 입력"
+
+#: src/utils_tools.c:157
+msgid "out of memory"
+msgstr "메모리 부족"
+
+#: src/utils_tools.c:159
+msgid "wrong device or file specified"
+msgstr "잘못된 장치 또는 파일을 지정했습니다"
+
+#: src/utils_tools.c:161
+msgid "device already exists or device is busy"
+msgstr "장치가 이미 있거나 사용하고 있습니다."
+
+#: src/utils_tools.c:163
+msgid "unknown error"
+msgstr "알 수 없는 오류"
+
+#: src/utils_tools.c:165
+#, c-format
+msgid "Command failed with code %i (%s)."
+msgstr "%i 결과로 명령 실행 실패 (%s)."
+
+#: src/utils_tools.c:243
+#, c-format
+msgid "Key slot %i created."
+msgstr "%i 키 슬롯을 만들었습니다."
+
+#: src/utils_tools.c:245
+#, c-format
+msgid "Key slot %i unlocked."
+msgstr "%i 키 슬롯 잠금을 해제했습니다."
+
+#: src/utils_tools.c:247
+#, c-format
+msgid "Key slot %i removed."
+msgstr "%i 키 슬롯을 제거했습니다."
+
+#: src/utils_tools.c:256
+#, c-format
+msgid "Token %i created."
+msgstr "%i 토큰을 만들었습니다."
+
+#: src/utils_tools.c:258
+#, c-format
+msgid "Token %i removed."
+msgstr "%i 토큰을 제거했습니다."
+
+#: src/utils_tools.c:268
+msgid "No token could be unlocked with this PIN."
+msgstr "이 PIN으로 잠금을 해제할 수 있는 토큰이 없습니다."
+
+#: src/utils_tools.c:270
+#, c-format
+msgid "Token %i requires PIN."
+msgstr "%i 토큰에 PIN이 필요합니다."
+
+#: src/utils_tools.c:272
+#, c-format
+msgid "Token (type %s) requires PIN."
+msgstr "토큰(%s 형식)에 PIN이 필요합니다."
+
+#: src/utils_tools.c:275
+#, c-format
+msgid "Token %i cannot unlock assigned keyslot(s) (wrong keyslot passphrase)."
+msgstr "%i 토큰으로 할당 키 슬롯의 잠금을 해제할 수 없습니다(잘못된 키 슬롯 암호)."
+
+#: src/utils_tools.c:277
+#, c-format
+msgid "Token (type %s) cannot unlock assigned keyslot(s) (wrong keyslot passphrase)."
+msgstr "토큰(%s 형식)에 할당한 키 슬롯의 잠금을 해제할 수 없습니다(잘못된 키 슬롯 암호)."
+
+#: src/utils_tools.c:280
+#, c-format
+msgid "Token %i requires additional missing resource."
+msgstr "%i 토큰에 추가 누락 자원 정보가 필요합니다."
+
+#: src/utils_tools.c:282
+#, c-format
+msgid "Token (type %s) requires additional missing resource."
+msgstr "토큰(%s 형식)에 추가 누락 자원 정보가 필요합니다."
+
+#: src/utils_tools.c:285
+#, c-format
+msgid "No usable token (type %s) is available."
+msgstr "사용할 수 있는 토큰(%s 형식)이 없습니다."
+
+#: src/utils_tools.c:287
+msgid "No usable token is available."
+msgstr "사용할 수 있는 토큰이 없습니다."
+
+#: src/utils_tools.c:380
+#, c-format
+msgid "Cannot read keyfile %s."
+msgstr "%s 키 파일을 읽을 수 없습니다."
+
+#: src/utils_tools.c:385
+#, c-format
+msgid "Cannot read %d bytes from keyfile %s."
+msgstr "%2$s 키 파일에서 %1$d 바이트를 읽을 수 없습니다."
+
+#: src/utils_tools.c:410
+#, c-format
+msgid "Cannot open keyfile %s for write."
+msgstr "쓰기 모드로 %s 키 파일을 열 수 없습니다."
+
+#: src/utils_tools.c:417
+#, c-format
+msgid "Cannot write to keyfile %s."
+msgstr "%s 키 파일에 기록할 수 없습니다."
+
+#: src/utils_tools.c:468
+msgid "Name is too long."
+msgstr "이름이 너무 깁니다."
+
+#: src/utils_tools.c:471
+msgid "Name must not contain '/' character."
+msgstr "이름에 '/' 문자가 들어가면 안됩니다."
+
+#: src/utils_progress.c:61
+#, c-format
+msgid "%02<PRIu64>m%02<PRIu64>s"
+msgstr "%02<PRIu64>분 %02<PRIu64>초"
+
+#: src/utils_progress.c:63
+#, c-format
+msgid "%02<PRIu64>h%02<PRIu64>m%02<PRIu64>s"
+msgstr "%02<PRIu64>시간 %02<PRIu64>분 %02<PRIu64>초"
+
+#: src/utils_progress.c:65
+#, c-format
+msgid "%02<PRIu64> days"
+msgstr "%02<PRIu64> 일"
+
+#: src/utils_progress.c:92 src/utils_progress.c:125
+#, c-format
+msgid "%4<PRIu64> %s written"
+msgstr "%4<PRIu64> %s 기록"
+
+#: src/utils_progress.c:96 src/utils_progress.c:129
+#, c-format
+msgid "speed %5.1f %s/s"
+msgstr "처리 속도 %5.1f %s/s"
+
+#. TRANSLATORS: 'time', 'written' and 'speed' string are supposed
+#. to get translated as well. 'eol' is always new-line or empty.
+#. See above.
+#.
+#: src/utils_progress.c:105
+#, c-format
+msgid "Progress: %5.1f%%, ETA %s, %s, %s%s"
+msgstr "진행: %5.1f%%, 예상 완료 %s, %s, %s%s"
+
+#. TRANSLATORS: 'time', 'written' and 'speed' string are supposed
+#. to get translated as well. See above
+#.
+#: src/utils_progress.c:137
+#, c-format
+msgid "Finished, time %s, %s, %s\n"
+msgstr "완료, 시간  %s, %s, %s\n"
+
+#: src/utils_password.c:28 src/utils_password.c:59
+#, c-format
+msgid "Cannot check password quality: %s"
+msgstr "암호 수준을 확인할 수 없음: %s"
+
+#: src/utils_password.c:36
+#, c-format
+msgid ""
+"Password quality check failed:\n"
+" %s"
+msgstr ""
+"암호 수준 확인 실패:\n"
+" %s"
+
+#: src/utils_password.c:66
+#, c-format
+msgid "Password quality check failed: Bad passphrase (%s)"
+msgstr "암호 수준 확인 실패: 잘못된 암호 (%s)"
+
+#: src/utils_password.c:197
+msgid "Read stopped at maximal interactive input length, passphrase can be trimmed."
+msgstr "최대 전송 입력 길이 위치에서 읽기 멈춤. 암호 입력이 잘릴 수 있습니다."
+
+#: src/utils_password.c:224 src/utils_password.c:238
+msgid "Error reading passphrase from terminal."
+msgstr "터미널 암호 입력을 읽는 중 오류가 있습니다."
+
+#: src/utils_password.c:236
+msgid "Verify passphrase: "
+msgstr "암호 확인: "
+
+#: src/utils_password.c:243
+msgid "Passphrases do not match."
+msgstr "암호가 일치하지 않습니다."
+
+#: src/utils_password.c:281
+msgid "Cannot use offset with terminal input."
+msgstr "터미널 입력 오프셋을 사용할 수 없습니다."
+
+#: src/utils_password.c:285
+#, c-format
+msgid "Enter passphrase: "
+msgstr "암호 입력: "
+
+#: src/utils_password.c:288
+#, c-format
+msgid "Enter passphrase for %s: "
+msgstr "%s 암호 입력: "
+
+#: src/utils_password.c:322
+msgid "No key available with this passphrase."
+msgstr "이 암호의 키가 없습니다."
+
+#: src/utils_password.c:324
+msgid "No usable keyslot is available."
+msgstr "사용할 수 있는 키 슬롯이 없습니다."
+
+#: src/utils_luks.c:55
+msgid "Can't do passphrase verification on non-tty inputs."
+msgstr "non-tty 입력에 대해 암호 입력을 검증할 수 없습니다."
+
+#: src/utils_luks.c:179
+#, c-format
+msgid "Failed to open file %s in read-only mode."
+msgstr "읽기 전용 모드 %s 파일 열기 실패."
+
+#: src/utils_luks.c:193
+msgid "Provide valid LUKS2 token JSON:\n"
+msgstr "유효한 LUKS2 토큰 JSON을 제공하십시오:\n"
+
+#: src/utils_luks.c:200
+msgid "Failed to read JSON file."
+msgstr "JSON 파일 읽기 실패."
+
+#: src/utils_luks.c:205
+msgid ""
+"\n"
+"Read interrupted."
+msgstr ""
+"\n"
+"읽기 동작을 중단했습니다."
+
+#: src/utils_luks.c:246
+#, c-format
+msgid "Failed to open file %s in write mode."
+msgstr "%s 파일의 쓰기 모드 열기 실패."
+
+#: src/utils_luks.c:255
+msgid ""
+"\n"
+"Write interrupted."
+msgstr ""
+"\n"
+"기록 동작을 중단했습니다."
+
+#: src/utils_luks.c:259
+msgid "Failed to write JSON file."
+msgstr "JSON 파일 기록 실패."
+
+#: src/utils_reencrypt.c:93
+#, c-format
+msgid "Auto-detected active dm device '%s' for data device %s.\n"
+msgstr "%2$s 데이터 장치용으로 자동 확인한 동작 중인 '%1$s' dm 장치입니다.\n"
+
+#: src/utils_reencrypt.c:97
+#, c-format
+msgid "Failed to auto-detect device %s holders."
+msgstr "%s 장치 홀더 자동 확인 실패."
+
+#: src/utils_reencrypt.c:103
+#, c-format
+msgid "Device %s is not a block device.\n"
+msgstr "%s 장치는 블록 장치가 아닙니다.\n"
+
+#: src/utils_reencrypt.c:105
+#, c-format
+msgid ""
+"Unable to decide if device %s is activated or not.\n"
+"Are you sure you want to proceed with reencryption in offline mode?\n"
+"It may lead to data corruption if the device is actually activated.\n"
+"To run reencryption in online mode, use --active-name parameter instead.\n"
+msgstr ""
+"%s 장치가 동작 중인지 여부를 확인할 수 없습니다.\n"
+"정말로 오프라인 모드에서 재암호화를 진행하시겠습니까?\n"
+"장치가 실제로 동작 중이면 데이터가 깨질 수 있습니다.\n"
+"온라인 모드에서 재암호화를 진행하려면, 대신 --active-name 매개변수를 사용하십시오.\n"
+
+#: src/utils_reencrypt.c:114 src/utils_reencrypt.c:247
+#, c-format
+msgid ""
+"Device %s is not a block device. Can not auto-detect if it is active or not.\n"
+"Use --force-offline-reencrypt to bypass the check and run in offline mode (dangerous!)."
+msgstr ""
+"%s 장치는 블록 장치가 아닙니다. 동작 중인지 여부를 자동으로 확인할 수 없습니다.\n"
+"검사를 건너뛰고 오프라인 모드에서 실행하려면 --force-offline-reencrypt 옵션을 활용하십시오(위험함!)."
+
+#: src/utils_reencrypt.c:151 src/utils_reencrypt.c:194
+#: src/utils_reencrypt.c:204
+msgid "Requested --resilience option cannot be applied to current reencryption operation."
+msgstr "요청한 --resilience 옵션을 현재 재암호화 동작에 적용할 수 없습니다."
+
+#: src/utils_reencrypt.c:176
+msgid "Device is not in LUKS2 encryption. Conflicting option --encrypt."
+msgstr "LUKS2 암호화 장치가 아닙니다. --encrypt 옵션의 사용이 맞지 않습니다."
+
+#: src/utils_reencrypt.c:181
+msgid "Device is not in LUKS2 decryption. Conflicting option --decrypt."
+msgstr "LUKS2 암호화 장치가 아닙니다. --decrypt 옵션의 사용이 맞지 않습니다."
+
+#: src/utils_reencrypt.c:188
+msgid "Device is in reencryption using datashift resilience. Requested --resilience option cannot be applied."
+msgstr "데이터 쉬프트 복원 기능을 활용하여 장치를 재암호화중입니다. 요청한 --resilience 옵션을 적용할 수 없습니다."
+
+#: src/utils_reencrypt.c:283 src/utils_reencrypt.c:1927
+msgid "Cannot determine volume key size for LUKS without keyslots, please use --new-key-size option."
+msgstr "키 슬롯을 제외하고 LUKS 볼륨 키 크기를 확인할 수 없습니다. --new-key-size 옵션을 활용하십시오."
+
+#: src/utils_reencrypt.c:438
+msgid "Device requires reencryption recovery. Run repair first."
+msgstr "장치 재암호화 복원이 필요합니다. 우선 복원을 실행하십시오."
+
+#: src/utils_reencrypt.c:452
+#, c-format
+msgid "Device %s is already in LUKS2 reencryption. Do you wish to resume previously initialised operation?"
+msgstr "%s 장치가 이미 LUKS2 재암호화 상태입니다. 앞서 초기화한 동작을 재개하시겠습니까?"
+
+#: src/utils_reencrypt.c:563
+msgid "Legacy LUKS2 reencryption is no longer supported."
+msgstr "기존의 LUKS2 재암호화 기능은 더 이상 지원하지 않습니다."
+
+#: src/utils_reencrypt.c:568
+msgid "Can not reencrypt LUKS2 device configured to use OPAL."
+msgstr "OPAL을 사용하도록 설정한 LUKS2 장치를 재암호화할 수 없습니다."
+
+#: src/utils_reencrypt.c:574
+msgid "Reencryption of device with integrity profile is not supported."
+msgstr "무결성 프로파일을 동반한 장치 재암호화는 지원하지 않습니다."
+
+#: src/utils_reencrypt.c:611
+#, c-format
+msgid ""
+"Requested --sector-size %<PRIu32> is incompatible with %s superblock\n"
+"(block size: %<PRIu32> bytes) detected on device %s."
+msgstr ""
+"요청한 --sector-size %1$<PRIu32> 옵션은 %4$s 장치에서 찾은\n"
+"%2$s 수퍼블록(블록 크기: %3$<PRIu32>바이트)과의 호환성이 없습니다."
+
+#: src/utils_reencrypt.c:680 src/utils_reencrypt.c:2207
+msgid "Encryption without detached header (--header) is not possible without data device size reduction (--reduce-device-size)."
+msgstr "분리 헤더(--header)를 제외한 암호화는 데이터 장치 용량을 줄이지 않고는(--reduce-device-size) 불가능합니다."
+
+#: src/utils_reencrypt.c:689
+msgid "Requested data offset must be less than or equal to half of --reduce-device-size parameter."
+msgstr "요청한 데이터 오프셋은 --reduce-device-size 매개변수 값의 절반보다 작거나 같아야 합니다."
+
+#: src/utils_reencrypt.c:699
+#, c-format
+msgid "Adjusting --reduce-device-size value to twice the --offset %<PRIu64> (sectors).\n"
+msgstr "--reduce-device-size 값을 --offset %<PRIu64> (섹터)로 두번 조정합니다.\n"
+
+#: src/utils_reencrypt.c:729
+#, c-format
+msgid "Temporary header file %s already exists. Aborting."
+msgstr "%s 임시 헤더 파일이 이미 있습니다. 멈춤."
+
+#: src/utils_reencrypt.c:731 src/utils_reencrypt.c:738
+#, c-format
+msgid "Cannot create temporary header file %s."
+msgstr "%s 임시 헤더 파일을 만들 수 없습니다."
+
+#: src/utils_reencrypt.c:763
+msgid "LUKS2 metadata size is larger than data shift value."
+msgstr "LUKS2 메타데이터 크기가 데이터 쉬프트 값보다 큽니다."
+
+#: src/utils_reencrypt.c:802
+#, c-format
+msgid "Failed to place new header at head of device %s."
+msgstr "장치 %s의 헤드에 새 헤더 설정 실패."
+
+#: src/utils_reencrypt.c:815
+#, c-format
+msgid "%s/%s is now active and ready for online encryption.\n"
+msgstr "%s/%s은(는) 이제부터 동작하며 온라인 암호화 대기중입니다.\n"
+
+#: src/utils_reencrypt.c:852
+#, c-format
+msgid "Active device %s is not LUKS2."
+msgstr "%s 동작 장치는 LUKS2 버전이 아닙니다."
+
+#: src/utils_reencrypt.c:880
+msgid "Restoring original LUKS2 header."
+msgstr "원본 LUKS2 헤더를 복원합니다."
+
+#: src/utils_reencrypt.c:888
+msgid "Original LUKS2 header restore failed."
+msgstr "원본 LUKS2 헤더 복원 실패."
+
+#: src/utils_reencrypt.c:920
+#, c-format
+msgid "Header file %s does not exist. Do you want to initialize LUKS2 decryption of device %s and export LUKS2 header to file %s?"
+msgstr "%s 헤더 파일이 없습니다. %s 장치의 LUKS2 해독 과정을 초기화하고 %s 파일로 LUKS2 헤더를 내보낼까요?"
+
+#: src/utils_reencrypt.c:963
+msgid "Failed to add read/write permissions to exported header file."
+msgstr "내보낸 헤더 파일의 읽기/쓰기 권한 추가 실패."
+
+#: src/utils_reencrypt.c:1017
+#, c-format
+msgid "Reencryption initialization failed. Header backup is available in %s."
+msgstr "재엄호화 초기화 실패. 헤더 백업은 %s에 있습니다."
+
+#: src/utils_reencrypt.c:1045
+msgid "LUKS2 decryption is supported with detached header device only (with data offset set to 0)."
+msgstr "분리한 헤더 장치에서만 LUKS2 해독을 지원합니다 (데이터 오프셋 0값으로)."
+
+#: src/utils_reencrypt.c:1490
+msgid "No token could unlock the device."
+msgstr "장치 잠금을 해제할 수 있는 토큰이 없습니다."
+
+#: src/utils_reencrypt.c:1522 src/utils_reencrypt.c:1531
+msgid "Not enough free keyslots for reencryption."
+msgstr "재암호화에 활용할 여분의 키 슬롯이 부족합니다."
+
+#: src/utils_reencrypt.c:1562
+msgid "Key file or keyring key description can be used only with --key-slot or with exactly one key slot active."
+msgstr "키 파일 또는 키 모음의 키 설명은 --key-slot 옵션의 값으로 또는 정확히 하나의 동작하는 키 슬롯과 사용할 수 있습니다."
+
+#: src/utils_reencrypt.c:1569 src/utils_reencrypt.c:1582
+#: src/utils_reencrypt_luks1.c:1092 src/utils_reencrypt_luks1.c:1103
+#, c-format
+msgid "Enter passphrase for key slot %d: "
+msgstr "키 슬롯 %d번의 암호 입력: "
+
+#: src/utils_reencrypt.c:1879
+#, c-format
+msgid "Switching data encryption cipher to %s.\n"
+msgstr "데이터 암호화 암호 알고리즘을 %s(으)로 전환합니다.\n"
+
+#: src/utils_reencrypt.c:1980 src/utils_reencrypt.c:2001
+msgid "Use --force-no-keyslots to reencrypt device with active keyslots by passing volume keys directly."
+msgstr "볼륨 키를 직접 전달하여 동작하고 있는 키 슬롯으로 장치를 재암호화하려면 --force-no-keyslots 옵션을 사용하십시오."
+
+#: src/utils_reencrypt.c:1996
+msgid "Option --new-volume-key-file must be paired with --new-key-size"
+msgstr "--new-volume-key-file 옵션은 --new-key-size 옵션과 함께 사용해야 합니다."
+
+#: src/utils_reencrypt.c:2038
+msgid "No data segment parameters changed. Reencryption aborted."
+msgstr "바뀐 데이터 세그먼트 매개변수가 없습니다. 재암호화를 멈추었습니다."
+
+#: src/utils_reencrypt.c:2075
+msgid ""
+"Encryption sector size increase on offline device is not supported.\n"
+"Activate the device first or use --force-offline-reencrypt option (dangerous!)."
+msgstr ""
+"오프라인 장치에서의 암호화 섹터 크기 증가는 지원하지 않습니다.\n"
+"우선 장치를 동작하게 만들거나 --force-offline-reencrypt 옵션(위험!)을 사용하십시오."
+
+#: src/utils_reencrypt.c:2117 src/utils_reencrypt_luks1.c:688
+#: src/utils_reencrypt_luks1.c:759
+msgid ""
+"\n"
+"Reencryption interrupted."
+msgstr ""
+"\n"
+"재암호화를 중단했습니다."
+
+#: src/utils_reencrypt.c:2122
+msgid "Resuming LUKS reencryption in forced offline mode.\n"
+msgstr "강제 오프라인 모드에서 LUKS 재암호화 동작을 재개합니다.\n"
+
+#: src/utils_reencrypt.c:2145
+#, c-format
+msgid "Device %s contains broken LUKS metadata. Aborting operation."
+msgstr "%s 장치에 망가진 LUKS 메타데이터가 있습니다. 동작을 멈춥니다."
+
+#: src/utils_reencrypt.c:2161 src/utils_reencrypt.c:2183
+#, c-format
+msgid "Device %s is already LUKS device. Aborting operation."
+msgstr "%s 장치에 이미 LUKS 장치가 있습니다. 동작을 멈춥니다."
+
+#: src/utils_reencrypt.c:2189
+#, c-format
+msgid "Device %s is already in LUKS reencryption. Aborting operation."
+msgstr "%s 장치가 이미 LUKS 재암호화 상태입니다. 동작을 멈춥니다."
+
+#: src/utils_reencrypt.c:2272
+msgid "LUKS2 decryption requires --header option."
+msgstr "LUKS2 암호화 해제에 --header 옵션이 필요합니다."
+
+#: src/utils_reencrypt.c:2320
+msgid "Command requires device as argument."
+msgstr "명쳥에 장치를 인자로 지정해야합니다."
+
+#: src/utils_reencrypt.c:2333
+#, c-format
+msgid "Conflicting versions. Device %s is LUKS1."
+msgstr "버전이 맞지 않습니다. %s 장치는 LUKS1입니다."
+
+#: src/utils_reencrypt.c:2339
+#, c-format
+msgid "Conflicting versions. Device %s is in LUKS1 reencryption."
+msgstr "버전이 맞지 않습니다. %s 장치는 LUKS1 재암호화 상태입니다."
+
+#: src/utils_reencrypt.c:2345
+#, c-format
+msgid "Conflicting versions. Device %s is LUKS2."
+msgstr "버전이 맞지 않습니다. %s 장치는 LUKS2입니다."
+
+#: src/utils_reencrypt.c:2351
+#, c-format
+msgid "Conflicting versions. Device %s is in LUKS2 reencryption."
+msgstr "버전이 맞지 않습니다. %s 장치는 LUKS2 재암호화 상태입니다."
+
+#: src/utils_reencrypt.c:2357
+msgid "LUKS2 reencryption already initialized. Aborting operation."
+msgstr "LUKS2 재암호화를 이미 초기화했습니다. 동작을 멈줍니다."
+
+#: src/utils_reencrypt.c:2364
+msgid "Device reencryption not in progress."
+msgstr "장치 재암호화를 진행하고 있지 않습니다."
+
+#: src/utils_reencrypt_luks1.c:116 src/utils_blockdev.c:285
+#, c-format
+msgid "Cannot exclusively open %s, device in use."
+msgstr "이미 사용중인 %s 장치를 별개로 열 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:130 src/utils_reencrypt_luks1.c:883
+msgid "Allocation of aligned memory failed."
+msgstr "정렬 메모리 할당 실패."
+
+#: src/utils_reencrypt_luks1.c:137
+#, c-format
+msgid "Cannot read device %s."
+msgstr "%s 장치를 읽을 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:148
+#, c-format
+msgid "Marking LUKS1 device %s unusable."
+msgstr "%s LUKS1 장치를 사용할 수 없도록 표시합니다."
+
+#: src/utils_reencrypt_luks1.c:164
+#, c-format
+msgid "Cannot write device %s."
+msgstr "%s 장치에 기록할 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:213
+msgid "Cannot write reencryption log file."
+msgstr "재암호화 로그 파일을 기록할 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:268
+msgid "Cannot read reencryption log file."
+msgstr "재암호화 로그 파일을 읽을 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:279
+msgid "Wrong log format."
+msgstr "잘못된 로그 형식입니다."
+
+#: src/utils_reencrypt_luks1.c:307
+#, c-format
+msgid "Log file %s exists, resuming reencryption.\n"
+msgstr "%s 로그 파일이 있습니다. 재암호화를 재개합니다.\n"
+
+#: src/utils_reencrypt_luks1.c:354
+msgid "Activating temporary device using old LUKS header."
+msgstr "이전 LUKS 헤더를 활용하여 임시 장치 동작을 시작합니다."
+
+#: src/utils_reencrypt_luks1.c:364
+msgid "Activating temporary device using new LUKS header."
+msgstr "새 LUKS 헤더를 활용하여 임시 장치 동작을 시작합니다."
+
+#: src/utils_reencrypt_luks1.c:374
+msgid "Activation of temporary devices failed."
+msgstr "임시 장치 동작 시작 실패."
+
+#: src/utils_reencrypt_luks1.c:434
+msgid "Failed to set data offset."
+msgstr "데이터 오프셋 설정 실패"
+
+#: src/utils_reencrypt_luks1.c:440
+msgid "Failed to set metadata size."
+msgstr "메타데이터 크기 설정 실패."
+
+#: src/utils_reencrypt_luks1.c:448
+#, c-format
+msgid "New LUKS header for device %s created."
+msgstr "%s 장치의 새 LUKS 헤더를 만들었습니다."
+
+#: src/utils_reencrypt_luks1.c:485
+#, c-format
+msgid "%s header backup of device %s created."
+msgstr "%2$s 장치의 %1$s 헤더 백업을 만들었습니다."
+
+#: src/utils_reencrypt_luks1.c:541
+msgid "Creation of LUKS backup headers failed."
+msgstr "LUKS 백업 헤더 생성 실패."
+
+#: src/utils_reencrypt_luks1.c:670
+#, c-format
+msgid "Cannot restore %s header on device %s."
+msgstr "%2$s 장치의 %1$s 헤더를 복원할 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:672
+#, c-format
+msgid "%s header on device %s restored."
+msgstr "%2$s 장치의 %1$s 헤더를 복원했습니다."
+
+#: src/utils_reencrypt_luks1.c:855 src/utils_reencrypt_luks1.c:861
+msgid "Cannot open temporary LUKS device."
+msgstr "임시 LUKS 장치를 열 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:866 src/utils_reencrypt_luks1.c:871
+msgid "Cannot get device size."
+msgstr "장치 크기를 가져올 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:913
+msgid "IO error during reencryption."
+msgstr "재암호화 중 입출력 오류."
+
+#: src/utils_reencrypt_luks1.c:943
+msgid "Provided UUID is invalid."
+msgstr "제시한 UUID 값이 부적절합니다."
+
+#: src/utils_reencrypt_luks1.c:1045
+msgid "Key file can be used only with --key-slot or with exactly one key slot active."
+msgstr "키 파일은 --key-slot 옵션으로 또는 정확히 하나의 키 슬롯이 동작할 때만 사용할 수 있습니다."
+
+#: src/utils_reencrypt_luks1.c:1169
+msgid "Cannot open reencryption log file."
+msgstr "재암호화 로그 파일을 열 수 없습니다."
+
+#: src/utils_reencrypt_luks1.c:1175
+msgid "No decryption in progress, provided UUID can be used only to resume suspended decryption process."
+msgstr "해독을 진행하고 있지 않습니다. 지정한 UUID는 대기 중인 복호화 처리 과정을 재개할 때만 사용할 수 있습니다."
+
+#: src/utils_reencrypt_luks1.c:1231
+#, c-format
+msgid "Reencryption will change: %s%s%s%s%s%s."
+msgstr "재암호화로 바뀝니다: %s%s%s%s%s%s."
+
+#: src/utils_reencrypt_luks1.c:1232
+msgid "volume key"
+msgstr "볼륨 키"
+
+#: src/utils_reencrypt_luks1.c:1234
+msgid "set hash to "
+msgstr "다음으로 해시 설정: "
+
+#: src/utils_reencrypt_luks1.c:1235
+msgid ", set cipher to "
+msgstr ", 다음 방식으로 암호화: "
+
+#: src/utils_blockdev.c:179
+#, c-format
+msgid "WARNING: Device %s already contains a '%s' partition signature.\n"
+msgstr "경고: %s 장치에 이미 '%s' 분할 영역 시그니처가 들어있습니다.\n"
+
+#: src/utils_blockdev.c:187
+#, c-format
+msgid "WARNING: Device %s already contains a '%s' superblock signature.\n"
+msgstr "경고: %s 장치에 이미 '%s' 수퍼블록 시그니처가 들어있습니다.\n"
+
+#: src/utils_blockdev.c:209 src/utils_blockdev.c:292 src/utils_blockdev.c:344
+msgid "Failed to initialize device signature probes."
+msgstr "장치 시그니처 확인 과정 초기화 실패."
+
+#: src/utils_blockdev.c:272
+#, c-format
+msgid "Failed to stat device %s."
+msgstr "%s 장치 상태 확인 실패."
+
+#: src/utils_blockdev.c:287
+#, c-format
+msgid "Failed to open file %s in read/write mode."
+msgstr "읽기/쓰기 모드로 %s 파일 열기 실패."
+
+#: src/utils_blockdev.c:307
+#, c-format
+msgid "Existing '%s' partition signature on device %s will be wiped."
+msgstr "%2$s 장치의 기존 '%1$s' 분할 영역 시그니처를 소거합니다."
+
+#: src/utils_blockdev.c:310
+#, c-format
+msgid "Existing '%s' superblock signature on device %s will be wiped."
+msgstr "%2$s 장치의 기존 '%1$s' 수퍼블록 시그니처를 소거합니다."
+
+#: src/utils_blockdev.c:313
+msgid "Failed to wipe device signature."
+msgstr "장치 시그니처 소거 실패."
+
+#: src/utils_blockdev.c:320
+#, c-format
+msgid "Failed to probe device %s for a signature."
+msgstr "%s 장치 시그니처 확인 실패."
+
+#: src/utils_args.c:52
+#, c-format
+msgid "Invalid size specification in parameter --%s."
+msgstr "--%s 매개변수의 크기 명세가 부적절합니다."
+
+#: src/utils_args.c:112
+#, c-format
+msgid "Option --%s is not allowed with %s action."
+msgstr "--%s 옵션은 %s 동작을 함께 취할 수 없습니다."
+
+#: src/utils_key_description.c:66
+msgid "Type specification in --link-vk-to-keyring keyring specification is ignored."
+msgstr "--link-vk-to-keyring 키 모음 명세의 형식 명세를 무시합니다."
+
+#: src/utils_key_description.c:131
+msgid "Key types have to be the same for both volume keys."
+msgstr "키 형식은 두 볼륨 키와 같아야 합니다."
+
+#: src/utils_key_description.c:136
+msgid "Both volume keys have to be linked to the same keyring."
+msgstr "두 볼륨 키는 동일한 키 모음에 연결해야 합니다."
+
+#: src/utils_key_description.c:146
+msgid "You need to supply more key names."
+msgstr "더 많은 키 이름을 지정해야 합니다."
+
+#: src/utils_key_description.c:150
+msgid "Invalid --link-vk-to-keyring value."
+msgstr "--link-vk-to-keyring 값이 적절하지 않습니다."
+
+#: src/utils_keyslot_check.c:114
+#, c-format
+msgid "Keyslot %d binary data could be corrupted.\n"
+msgstr "%d번 키 슬롯의 바이너리 데이터가 깨졌을 수도 있습니다.\n"
+
+#: src/utils_keyslot_check.c:124
+#, c-format
+msgid "  Suspected offset: 0x%<PRIx64>\n"
+msgstr "  이상한 오프셋: 0x%<PRIx64>\n"
+
+#: src/utils_keyslot_check.c:127
+msgid "  Subsequent suspected offsets are suppressed.\n"
+msgstr "  뒤따라오는 이상한 오프셋 값을 무시합니다.\n"
+
+#: src/utils_keyslot_check.c:178 src/utils_keyslot_check.c:183
+#, c-format
+msgid "Keyslot %d cannot be read from the device."
+msgstr "%d번 키 슬롯을 이 장치에서 읽을 수 없습니다."
+
+#: src/utils_keyslot_check.c:194
+#, c-format
+msgid "You can use hexdump -v -C -n 128 -s <offset_0xXXXX> \"%s\" to inspect the data.\n"
+msgstr "hexdump -v -C -n 128 -s <offset_0xXXXX> \"%s\" 명령을 사용하여 데이터를 검사할 수 있습니다.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:110
+msgid "Failed to write ssh token json."
+msgstr "ssh 토큰 json 기록 실패."
+
+#: tokens/ssh/cryptsetup-ssh.c:128
+msgid ""
+"Experimental cryptsetup plugin for unlocking LUKS2 devices with token connected to an SSH server\vThis plugin currently allows only adding a token to an existing key slot.\n"
+"\n"
+"Specified SSH server must contain a key file on the specified path with a passphrase for an existing key slot on the device.\n"
+"Provided credentials will be used by cryptsetup to get the password when opening the device using the token.\n"
+"\n"
+"Note: The information provided when adding the token (SSH server address, user and paths) will be stored in the LUKS2 header in plaintext."
+msgstr ""
+"SSH 서버에 연결한 토큰으로 LUKS2 장치의 잠금을 해제하는 cryptsetup 플러그인 시험버전입니다\v이 플러그인은 현재 기존 키 슬롯으로의 토큰 추가만 허용합니다.\n"
+"\n"
+"지정 SSH 서버에는 지정 경로에 장치에 있는 키 슬롯용 암호가 들어간 키 파일이 있어야 합니다.\n"
+"제시한 암호는 cryptsetup에서 토큰을 사용하여 장치를 열 때 암호를 가져오는 용도로 사용합니다.\n"
+"\n"
+"참고: 토큰을 추가할 때 지정한 정보 (SSH 서버 주소, 사용자이름, 경로)는 LUKS2 헤더에 평문 형태로 저장합니다."
+
+#: tokens/ssh/cryptsetup-ssh.c:138
+msgid "<action> <device>"
+msgstr "<동작> <장치>"
+
+#: tokens/ssh/cryptsetup-ssh.c:141
+msgid "Options for the 'add' action:"
+msgstr "'추가' 동작 옵션:"
+
+#: tokens/ssh/cryptsetup-ssh.c:142
+msgid "IP address/URL of the remote server for this token"
+msgstr "이 토큰의 원격 서버 IP 주소/URL"
+
+#: tokens/ssh/cryptsetup-ssh.c:143
+msgid "Username used for the remote server"
+msgstr "원격 서버에서 사용할 사용자 이름"
+
+#: tokens/ssh/cryptsetup-ssh.c:144
+msgid "Path to the key file on the remote server"
+msgstr "원격 서버의 키 파일 경로"
+
+#: tokens/ssh/cryptsetup-ssh.c:145
+msgid "Path to the SSH key for connecting to the remote server"
+msgstr "원격 서버에 연결할 SSH 키 경로"
+
+#: tokens/ssh/cryptsetup-ssh.c:147
+msgid "Path to directory containinig libcryptsetup external tokens"
+msgstr "libcryptsetup 외부 토큰이 들어있는 디렉터리 경로"
+
+#: tokens/ssh/cryptsetup-ssh.c:148
+msgid "Keyslot to assign the token to. If not specified, token will be assigned to the first keyslot matching provided passphrase."
+msgstr "토큰을 할당할 키 슬롯입니다. 지정하지 않으면, 지정한 암호와 일치하는 처음 키 슬롯에 토큰을 배정합니다."
+
+#: tokens/ssh/cryptsetup-ssh.c:150
+msgid "Generic options:"
+msgstr "일반 옵션:"
+
+#: tokens/ssh/cryptsetup-ssh.c:151
+msgid "Shows more detailed error messages"
+msgstr "더 자세한 오류 메시지 표시"
+
+#: tokens/ssh/cryptsetup-ssh.c:152
+msgid "Show debug messages"
+msgstr "디버깅 메시지 표시"
+
+#: tokens/ssh/cryptsetup-ssh.c:153
+msgid "Show debug messages including JSON metadata"
+msgstr "JSON 메타데이터를 곁들여 디버깅 메시지 표시"
+
+#: tokens/ssh/cryptsetup-ssh.c:268
+msgid "Failed to open and import private key:\n"
+msgstr "개인키 가져오기 및 열기 실패:\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:272
+msgid "Failed to import private key (password protected?).\n"
+msgstr "개인 키 가져오기 실패 (암호로 보호했습니까?).\n"
+
+#. TRANSLATORS: SSH credentials prompt, e.g. "user@server's password: "
+#: tokens/ssh/cryptsetup-ssh.c:274
+#, c-format
+msgid "%s@%s's password: "
+msgstr "%s@%s 암호: "
+
+#: tokens/ssh/cryptsetup-ssh.c:363
+#, c-format
+msgid "Failed to parse arguments.\n"
+msgstr "인자 해석 실패.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:374
+#, c-format
+msgid "An action must be specified\n"
+msgstr "동작을 지정해야 합니다\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:380
+#, c-format
+msgid "Device must be specified for '%s' action.\n"
+msgstr "'%s' 동작에 장치를 지정해야 합니다.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:385
+#, c-format
+msgid "SSH server must be specified for '%s' action.\n"
+msgstr "'%s' 동작에 SSH 서버를 지정해야 합니다.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:390
+#, c-format
+msgid "SSH user must be specified for '%s' action.\n"
+msgstr "'%s' 동작에 SSH 사용자를 지정해야 합니다.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:395
+#, c-format
+msgid "SSH path must be specified for '%s' action.\n"
+msgstr "'%s' 동작에 SSH 경로를 지정해야 합니다.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:400
+#, c-format
+msgid "SSH key path must be specified for '%s' action.\n"
+msgstr "'%s' 동작에 SSH 키 경로를 지정해야 합니다.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:407
+#, c-format
+msgid "Failed open %s using provided credentials.\n"
+msgstr "지정 인증 정보로 %s 열기 실패.\n"
+
+#: tokens/ssh/cryptsetup-ssh.c:424
+#, c-format
+msgid "Only 'add' action is currently supported by this plugin.\n"
+msgstr "이 플러그인에서는 현재 'add' 동작만 지원합니다.\n"
+
+#: tokens/ssh/ssh-utils.c:33
+msgid "Cannot create sftp session: "
+msgstr "sftp 세션을 만들 수 없음: "
+
+#: tokens/ssh/ssh-utils.c:40
+msgid "Cannot init sftp session: "
+msgstr "sftp 세션을 초기화할 수 없음: "
+
+#: tokens/ssh/ssh-utils.c:46
+msgid "Cannot open sftp session: "
+msgstr "sftp 세션을 열 수 없음: "
+
+#: tokens/ssh/ssh-utils.c:53
+msgid "Cannot stat sftp file: "
+msgstr "sftp 파일 상태를 볼 수 없음: "
+
+#: tokens/ssh/ssh-utils.c:61
+msgid "Not enough memory.\n"
+msgstr "메모리가 부족합니다.\n"
+
+#: tokens/ssh/ssh-utils.c:68
+msgid "Cannot read remote key: "
+msgstr "원격 키를 읽을 수 없음: "
+
+#: tokens/ssh/ssh-utils.c:109
+msgid "Connection failed: "
+msgstr "연결 실패: "
+
+#: tokens/ssh/ssh-utils.c:119
+msgid "Server not known: "
+msgstr "알 수 없는 서버: "
+
+#: tokens/ssh/ssh-utils.c:147
+msgid "Public key auth method not allowed on host.\n"
+msgstr "이 호스트에서는 공개 키 인증 방식을 허용하지 않습니다.\n"
+
+#: tokens/ssh/ssh-utils.c:158
+msgid "Public key authentication error: "
+msgstr "공개 키 인증 오류: "

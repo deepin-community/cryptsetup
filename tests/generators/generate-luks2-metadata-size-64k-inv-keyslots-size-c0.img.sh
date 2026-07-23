@@ -14,7 +14,7 @@
 # $1 full target dir
 # $2 full source luks2 image
 
-function generate()
+generate()
 {
 	# 64KiB metadata
 	TEST_MDA_SIZE=$LUKS2_HDR_SIZE_64K
@@ -26,7 +26,7 @@ function generate()
 	JSON_SIZE=$((TEST_JSN_SIZE*512))
 	DATA_OFFSET=16777216
 
-	json_str=$(jq -c --arg jdiff $JSON_DIFF --arg jsize $JSON_SIZE --arg off $DATA_OFFSET \
+	json_str=$(_jq --arg jdiff $JSON_DIFF --arg jsize $JSON_SIZE --arg off $DATA_OFFSET \
 			 --arg mda $((2*TEST_MDA_SIZE_BYTES)) \
 		   '.keyslots[].area.offset |= ( . | tonumber + ($jdiff | tonumber) | tostring) |
 		    .config.json_size = $jsize |
@@ -45,12 +45,12 @@ function generate()
 	lib_mangle_json_hdr1 $TEST_MDA_SIZE $TEST_JSN_SIZE kill
 }
 
-function check()
+check()
 {
 	lib_hdr1_killed $TEST_MDA_SIZE || exit 2
 
 	read_luks2_json0 $TGT_IMG $TMPDIR/json_res0 $TEST_JSN_SIZE
-	jq -c --arg koff $KEYSLOTS_OFFSET --arg jsize $JSON_SIZE --arg off $DATA_OFFSET --arg mda $((2*TEST_MDA_SIZE_BYTES)) \
+	_jq --arg koff $KEYSLOTS_OFFSET --arg jsize $JSON_SIZE --arg off $DATA_OFFSET --arg mda $((2*TEST_MDA_SIZE_BYTES)) \
 		'if ([.keyslots[].area.offset] | map(tonumber) | min | tostring != $koff) or
 		    (.config.json_size != $jsize) or
 		    (.config.keyslots_size != (((($off | tonumber) - ($mda | tonumber) + 4096)) | tostring ))

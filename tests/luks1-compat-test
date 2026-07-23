@@ -6,6 +6,8 @@ TST_DIR=luks1-images
 MAP=luks1tst
 KEYFILE=keyfile1
 
+CRYPTOCHECK=./crypto-check
+
 if [ -n "$CRYPTSETUP_TESTS_RUN_IN_MESON" ]; then
 	CRYPTSETUP_VALGRIND=$CRYPTSETUP
 else
@@ -15,13 +17,13 @@ fi
 
 [ -z "$srcdir" ] && srcdir="."
 
-function remove_mapping()
+remove_mapping()
 {
 	[ -b /dev/mapper/$MAP ] && dmsetup remove --retry $MAP
 	rm -rf $TST_DIR
 }
 
-function fail()
+fail()
 {
 	[ -n "$1" ] && echo "$1"
 	echo " [FAILED]"
@@ -31,14 +33,17 @@ function fail()
 	exit 2
 }
 
-function skip()
+_sigchld() { local c=$?; [ $c -eq 139 ] && fail "Segfault"; [ $c -eq 134 ] && fail "Aborted"; }
+trap _sigchld CHLD
+
+skip()
 {
 	[ -n "$1" ] && echo "$1"
 	remove_mapping
 	exit 77
 }
 
-function valgrind_setup()
+valgrind_setup()
 {
 	command -v valgrind >/dev/null || fail "Cannot find valgrind."
 	[ ! -f $CRYPTSETUP_VALGRIND ] && fail "Unable to get location of cryptsetup executable."
@@ -48,39 +53,38 @@ function valgrind_setup()
 	fi
 }
 
-function valgrind_run()
+valgrind_run()
 {
 	INFOSTRING="$(basename ${BASH_SOURCE[1]})-line-${BASH_LINENO[0]}" ./valg.sh ${CRYPTSETUP_VALGRIND} "$@"
 }
 
-function remove_imgs()
+remove_imgs()
 {
 	echo "WARNING: $1 not available, not testing some images."
 	rm $(ls $TST_DIR/*$1*.img)
 }
 
-function test_one()
+test_one()
 {
-	$CRYPTSETUP benchmark -c "$1" -s "$2" | grep -v "#" || remove_imgs $1
+	$CRYPTOCHECK cipher $1 $2 $3 || remove_imgs "$1-$2"
 }
 
-function test_required()
+test_required()
 {
 	echo "REQUIRED KDF TEST"
-	$CRYPTSETUP benchmark -h whirlpool | grep "N/A" && remove_imgs whirlpool
+	$CRYPTOCHECK hash whirlpool || remove_imgs whirlpool
 
 	echo "REQUIRED CIPHERS TEST"
-	echo "#     Algorithm | Key |  Encryption |  Decryption"
-
-	test_one aes-xts 256
-	test_one twofish-xts 256
-	test_one serpent-xts 256
-	test_one aes-cbc 256
-	test_one aes-lrw 256
+	test_one aes xts 256
+	test_one twofish xts 256
+	test_one serpent xts 256
+	test_one aes cbc 256
+	test_one aes lrw 256
 }
 
 export LANG=C
 [ ! -x "$CRYPTSETUP" ] && skip "Cannot find $CRYPTSETUP, test skipped."
+[ ! -x "$CRYPTOCHECK" ] && skip "Cannot find $CRYPTOCHECK, test skipped."
 command -v blkid >/dev/null || skip "blkid tool required, test skipped."
 [ -n "$VALG" ] && valgrind_setup && CRYPTSETUP=valgrind_run
 [ ! -d $TST_DIR ] && tar xJf $srcdir/luks1-images.tar.xz --no-same-owner
