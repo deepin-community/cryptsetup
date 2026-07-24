@@ -164,6 +164,7 @@ crypttab_validate_option() {
         submit-from-crypt-cpus) OPTION="submit_from_crypt_cpus";;
         no-read-workqueue) OPTION="no_read_workqueue";;
         no-write-workqueue) OPTION="no_write_workqueue";;
+        tpm2-device) OPTION="tpm2_device";;
     esac
 
     case "$o" in
@@ -250,6 +251,7 @@ crypttab_validate_option() {
         submit-from-crypt-cpus) ;;
         no-read-workqueue) ;;
         no-write-workqueue) ;;
+        tpm2-device) ;;
         x-initrd.attach)
             unset -v OPTION ;; # ignored, cf. #1072058
         *)
@@ -599,9 +601,11 @@ _resolve_device() {
         MAJ="$maj"
         MIN="$min"
         return 0
-    else
-        cryptsetup_message "ERROR: Couldn't resolve device $spec"
     fi
+    case $spec in
+        overlay|usr-overlay) ;;
+        *) cryptsetup_message "ERROR: Couldn't resolve device $spec";;
+    esac
     return 1
 }
 
