@@ -1,1 +1,2 @@
 Exclude-reencryption-compat-test-from-Makefile.localtest.patch
+Fix-quote-printf-arguments-in-tests-generators.patch
