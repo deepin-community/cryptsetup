@@ -1,3 +1,19 @@
+cryptsetup (2:2.8.7-1deepin2) unstable; urgency=medium
+
+  * debian/initramfs/hooks/cryptroot: Improve locale handling robustness.
+    Instead of hardcoding zh_CN, iterate over all installed cryptroot.mo
+    locale files so that any present or future translation is automatically
+    included.  Replace the mkdir-p-plus-cp pair with `install -D -m 0644`
+    to create parent directories on demand and set permissions in one step.
+    Silently skip missing .mo files instead of erroring out during initramfs
+    generation.
+  * debian/initramfs/hooks/cryptroot: Use cryptsetup_message for user-facing
+    prompts, matching the behaviour of other initramfs scripts.
+  * debian/initramfs/hooks/cryptroot: Quote printf arguments to prevent
+    accidental word-splitting and glob expansion.
+
+ -- WangYuli <wangyl5933@chinaunicom.cn>  Fri, 24 Jul 2026 23:54:00 +0800
+
 cryptsetup (2:2.8.7-1deepin1) unstable; urgency=medium
 
   * Reapply deepin custom patches on top of 2:2.8.7-1:

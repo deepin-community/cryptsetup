@@ -194,8 +194,8 @@ setup_mapping() {
             else
                 pattern=$(get_loc_str "Wrong password! You have %s input chances more")
             fi
-            wrong_pass_tip=$(printf $pattern $left_count)
-            plymouth message --text="$wrong_pass_tip"
+            wrong_pass_tip=$(printf -- "$pattern" "$left_count")
+            cryptsetup_message "$wrong_pass_tip"
             sleep 2
             plymouth message --text=""
             continue
@@ -215,12 +215,12 @@ setup_mapping() {
             fi
         fi
 
-        plymouth message --text="$(get_loc_str "Unlocking successfully!")"
+        cryptsetup_message "$(get_loc_str "Unlocking successfully!")"
         wait_for_udev 10
         return 0
     done
 
-    plymouth message --text="$(get_loc_str "Please reboot!")"
+    cryptsetup_message "$(get_loc_str "Please reboot!")"
     while true; do
         sleep 100
     done
