@@ -353,8 +353,11 @@ copy_exec /sbin/dmsetup
 [ "$ASKPASS" = n ] || copy_exec /lib/cryptsetup/askpass
 
 copy_exec /bin/gettext
-mkdir -p $DESTDIR/usr/share/locale/zh_CN/LC_MESSAGES/
-cp /usr/share/locale/zh_CN/LC_MESSAGES/cryptroot.mo $DESTDIR/usr/share/locale/zh_CN/LC_MESSAGES/
+
+for mo in /usr/share/locale/*/LC_MESSAGES/cryptroot.mo; do
+    [ -f "$mo" ] || continue
+    install -D -m 0644 "$mo" "$DESTDIR$mo"
+done
 
 # We need sed. Either via busybox or as standalone binary.
 if [ "$BUSYBOX" = n ] || [ -z "$BUSYBOXDIR" ]; then

@@ -27,8 +27,6 @@ Depends: cryptsetup-bin,
   keyutils,
 # for modprobe(8) and rmmod(8)
   kmod,
-# for legacy hash algorithms such as whirlpool, see OSSL_PROVIDER-legacy(7ssl)
-  openssl-provider-legacy,
 # for free(1)
   procps,
 # for uuencode(1)
@@ -78,7 +76,6 @@ Tests: initramfs-hook-legacy
 Depends: cryptsetup-initramfs,
          e2fsprogs,
          initramfs-tools-core,
-         openssl-provider-legacy,
          zstd,
 Restrictions: allow-stderr, needs-root, isolation-machine
 
