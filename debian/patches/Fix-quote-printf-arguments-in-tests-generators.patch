@@ -1,0 +1,44 @@
+From: WangYuli <wangyl5933@chinaunicom.cn>
+Date: Fri Jul 24 20:48:42 2026 +0800
+Subject: Fix quote printf arguments in tests/generators to prevent word-splitting and glob expansion
+
+In generate-luks2-correct-full-json0.img.sh and
+generate-luks2-missing-trailing-null-byte-json0.img.sh, the printf
+invocations pass $format_str, $KEY, $fill and ${json_str:$offset}
+without double-quoting, which subjects them to shell word-splitting
+(IFS) and pathname expansion (globbing). Add double quotes to all
+affected variable expansions and use printf -- to guard against
+leading hyphens in the format string.
+
+Signed-off-by: WangYuli <wangyl5933@chinaunicom.cn>
+---
+ tests/generators/generate-luks2-correct-full-json0.img.sh               | 2 +-
+ tests/generators/generate-luks2-missing-trailing-null-byte-json0.img.sh | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/tests/generators/generate-luks2-correct-full-json0.img.sh b/tests/generators/generate-luks2-correct-full-json0.img.sh
+index c7ea781..d70f1ef 100755
+--- a/tests/generators/generate-luks2-correct-full-json0.img.sh
++++ b/tests/generators/generate-luks2-correct-full-json0.img.sh
+@@ -36,7 +36,7 @@ generate()
+ 
+ 	fill=$(repeat_str "X" $remain)"\""
+ 
+-	printf $format_str $KEY $fill ${json_str:$offset} | _dd of=$TMPDIR/json0 bs=1 seek=$offset conv=notrunc
++	printf -- "$format_str" "$KEY" "$fill" "${json_str:$offset}" | _dd of=$TMPDIR/json0 bs=1 seek=$offset conv=notrunc
+ 
+ 	lib_mangle_json_hdr0_kill_hdr1
+ }
+diff --git a/tests/generators/generate-luks2-missing-trailing-null-byte-json0.img.sh b/tests/generators/generate-luks2-missing-trailing-null-byte-json0.img.sh
+index 7d7220c..e9725ed 100755
+--- a/tests/generators/generate-luks2-missing-trailing-null-byte-json0.img.sh
++++ b/tests/generators/generate-luks2-missing-trailing-null-byte-json0.img.sh
+@@ -39,7 +39,7 @@ generate()
+ 	fill=$(repeat_str "X" $remain)
+ 	fill=$(repeat_str "X" $remain)"\""
+ 
+-	printf $format_str $KEY $fill ${json_str:$offset} | _dd of=$TMPDIR/json0 bs=1 seek=$offset conv=notrunc
++	printf -- "$format_str" "$KEY" "$fill" "${json_str:$offset}" | _dd of=$TMPDIR/json0 bs=1 seek=$offset conv=notrunc
+ 
+ 	lib_mangle_json_hdr0_kill_hdr1
+ }
