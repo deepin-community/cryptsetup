@@ -1,3 +1,9 @@
+cryptsetup (2:2.8.7-1deepin3) unstable; urgency=medium
+
+  * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
+
+ -- tunaichao <tunaichao@uniontech.com>  Fri, 11 Sep 2026 10:07:34 +0800
+
 cryptsetup (2:2.8.7-1deepin2) unstable; urgency=medium
 
   * debian/initramfs/hooks/cryptroot: Improve locale handling robustness.
